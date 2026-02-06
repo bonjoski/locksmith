@@ -1,6 +1,7 @@
 package locksmith
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"strings"
@@ -16,7 +17,7 @@ func TestDiskCache(t *testing.T) {
 	}
 
 	secret := Secret{
-		Value:     "test-value",
+		Value:     []byte("test-value"),
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(1 * time.Hour),
 	}
@@ -37,7 +38,7 @@ func TestDiskCache(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to get secret: %v", err)
 	}
-	if got == nil || got.Value != secret.Value {
+	if got == nil || !bytes.Equal(got.Value, secret.Value) {
 		t.Errorf("Expected secret value %s, got %v", secret.Value, got)
 	}
 
@@ -67,7 +68,7 @@ func TestGosecTraversalFix(t *testing.T) {
 
 	// Ensure that path traversal attempts are blocked
 	key := "../../etc/passwd"
-	secret := Secret{Value: "traversal-test"}
+	secret := Secret{Value: []byte("traversal-test")}
 
 	err := cache.Set(key, secret, 1*time.Hour)
 	if err == nil {
@@ -85,7 +86,7 @@ func TestDiskCacheEncryption(t *testing.T) {
 	cache, _ := NewDiskCache(mockKey)
 
 	key := "encrypt-test"
-	secret := Secret{Value: "super-secret"}
+	secret := Secret{Value: []byte("super-secret")}
 	defer func() { _ = cache.Delete(key) }()
 
 	if err := cache.Set(key, secret, time.Hour); err != nil {
@@ -113,7 +114,7 @@ func TestDiskCacheEncryption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get encrypted secret: %v", err)
 	}
-	if got.Value != "super-secret" {
+	if !bytes.Equal(got.Value, []byte("super-secret")) {
 		t.Errorf("Expected super-secret, got %s", got.Value)
 	}
 }

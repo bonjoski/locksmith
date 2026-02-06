@@ -1,6 +1,7 @@
 package locksmith
 
 import (
+	"bytes"
 	"testing"
 	"time"
 )
@@ -35,7 +36,7 @@ func TestLocksmithWithMockCache(t *testing.T) {
 	mock := &MockCache{secrets: make(map[string]Secret)}
 	ls := NewWithCache(mock)
 
-	secret := Secret{Value: "mock-value"}
+	secret := Secret{Value: []byte("mock-value")}
 	err := ls.Cache.Set("test", secret, time.Hour)
 	if err != nil {
 		t.Fatalf("Failed to set mock secret: %v", err)
@@ -45,7 +46,7 @@ func TestLocksmithWithMockCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get mock secret: %v", err)
 	}
-	if got.Value != "mock-value" {
+	if !bytes.Equal(got.Value, []byte("mock-value")) {
 		t.Errorf("Expected mock-value, got %s", got.Value)
 	}
 }

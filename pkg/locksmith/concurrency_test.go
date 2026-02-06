@@ -25,7 +25,7 @@ func TestDiskCacheConcurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
 				key := fmt.Sprintf("worker-%d-key-%d", workerID, j)
-				secret := Secret{Value: "v"}
+				secret := Secret{Value: []byte("v")}
 				_ = cache.Set(key, secret, time.Hour)
 				_, _ = cache.Get(key)
 				_ = cache.Delete(key)
@@ -49,7 +49,7 @@ func TestDiskCacheSharedKeyConcurrency(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < iterations; i++ {
-			_ = cache.Set(key, Secret{Value: fmt.Sprintf("val-%d", i)}, time.Hour)
+			_ = cache.Set(key, Secret{Value: []byte(fmt.Sprintf("val-%d", i))}, time.Hour)
 		}
 	}()
 

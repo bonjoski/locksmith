@@ -81,7 +81,15 @@ func handleAdd(ls *locksmith.Locksmith, args []string) error {
 	}
 
 	key := cmdArgs[0]
-	secret := cmdArgs[1]
+	secretStr := cmdArgs[1]
+	// Convert string to []byte
+	secretBytes := []byte(secretStr)
+	defer func() {
+		// Zero out the secret after use
+		for i := range secretBytes {
+			secretBytes[i] = 0
+		}
+	}()
 
 	duration, err := ParseDuration(*expiresStr)
 	if err != nil {
@@ -89,7 +97,7 @@ func handleAdd(ls *locksmith.Locksmith, args []string) error {
 	}
 
 	expiresAt := time.Now().Add(duration)
-	err = ls.Set(key, secret, expiresAt)
+	err = ls.Set(key, secretBytes, expiresAt)
 	if err != nil {
 		return fmt.Errorf("error saving secret: %w", err)
 	}
@@ -108,8 +116,14 @@ func handleGet(ls *locksmith.Locksmith, args []string) error {
 	if err != nil {
 		return fmt.Errorf("error retrieving secret: %w", err)
 	}
+	defer func() {
+		// Zero out the secret after printing
+		for i := range value {
+			value[i] = 0
+		}
+	}()
 
-	fmt.Println(value)
+	fmt.Println(string(value))
 	return nil
 }
 

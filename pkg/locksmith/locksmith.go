@@ -82,7 +82,7 @@ func NewWithCache(cache Cache) *Locksmith {
 	}
 }
 
-func (l *Locksmith) Set(key string, value string, expiresAt time.Time) error {
+func (l *Locksmith) Set(key string, value []byte, expiresAt time.Time) error {
 	secret := Secret{
 		Value:     value,
 		CreatedAt: time.Now(),
@@ -104,12 +104,15 @@ func (l *Locksmith) Set(key string, value string, expiresAt time.Time) error {
 	return l.Cache.Set(key, secret, DefaultCacheTTL)
 }
 
-func (l *Locksmith) Get(key string) (string, error) {
+func (l *Locksmith) Get(key string) ([]byte, error) {
 	// 1. Check Cache
 	if !l.Cache.IsExpired(key, DefaultCacheTTL) {
 		secret, err := l.Cache.Get(key)
 		if err == nil && secret != nil {
-			return secret.Value, nil
+			// Return a copy to prevent cache modification
+			valueCopy := make([]byte, len(secret.Value))
+			copy(valueCopy, secret.Value)
+			return valueCopy, nil
 		}
 	}
 
@@ -117,18 +120,21 @@ func (l *Locksmith) Get(key string) (string, error) {
 	prompt := fmt.Sprintf("Authentication required to access '%s'", key)
 	data, err := native.Get(l.Service, key, true, prompt)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var secret Secret
 	if err := json.Unmarshal(data, &secret); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// 3. Update Cache for subsequent calls
 	_ = l.Cache.Set(key, secret, DefaultCacheTTL)
 
-	return secret.Value, nil
+	// Return a copy to prevent cache modification
+	valueCopy := make([]byte, len(secret.Value))
+	copy(valueCopy, secret.Value)
+	return valueCopy, nil
 }
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
