@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+# Cancel in-progress builds when new commits are pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality-check:
     name: Lint and Security
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       # Pinning by SHA instead of version tag
       - name: Checkout code

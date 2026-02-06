@@ -42,8 +42,13 @@ KeychainResult keychain_set(const char *service, const char *account,
     if (!success) {
       if (authError.code == LAErrorUserCancel) {
         result.error = strdup("User canceled authentication");
+      } else if (authError.code == LAErrorBiometryLockout) {
+        result.error =
+            strdup("Biometrics locked. Please unlock with device passcode");
+      } else if (authError.code == LAErrorBiometryNotEnrolled) {
+        result.error = strdup("Biometrics not enrolled on this device");
       } else {
-        result.error = strdup([[authError localizedDescription] UTF8String]);
+        result.error = strdup("Authentication failed");
       }
       return result;
     }
@@ -103,8 +108,13 @@ KeychainResult keychain_get(const char *service, const char *account,
     if (!success) {
       if (authError.code == LAErrorUserCancel) {
         result.error = strdup("User canceled authentication");
+      } else if (authError.code == LAErrorBiometryLockout) {
+        result.error =
+            strdup("Biometrics locked. Please unlock with device passcode");
+      } else if (authError.code == LAErrorBiometryNotEnrolled) {
+        result.error = strdup("Biometrics not enrolled on this device");
       } else {
-        result.error = strdup([[authError localizedDescription] UTF8String]);
+        result.error = strdup("Authentication failed");
       }
       return result;
     }
@@ -166,8 +176,13 @@ KeychainResult keychain_delete(const char *service, const char *account,
     if (!success) {
       if (authError.code == LAErrorUserCancel) {
         result.error = strdup("User canceled authentication");
+      } else if (authError.code == LAErrorBiometryLockout) {
+        result.error =
+            strdup("Biometrics locked. Please unlock with device passcode");
+      } else if (authError.code == LAErrorBiometryNotEnrolled) {
+        result.error = strdup("Biometrics not enrolled on this device");
       } else {
-        result.error = strdup([[authError localizedDescription] UTF8String]);
+        result.error = strdup("Authentication failed");
       }
       return result;
     }
@@ -220,8 +235,13 @@ KeychainListResult keychain_list(const char *service, bool use_biometrics,
     if (!success) {
       if (authError.code == LAErrorUserCancel) {
         result.error = strdup("User canceled authentication");
+      } else if (authError.code == LAErrorBiometryLockout) {
+        result.error =
+            strdup("Biometrics locked. Please unlock with device passcode");
+      } else if (authError.code == LAErrorBiometryNotEnrolled) {
+        result.error = strdup("Biometrics not enrolled on this device");
       } else {
-        result.error = strdup([[authError localizedDescription] UTF8String]);
+        result.error = strdup("Authentication failed");
       }
       return result;
     }

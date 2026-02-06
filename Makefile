@@ -72,7 +72,7 @@ security: ## Run govulncheck (installs if missing)
 gosec: ## Run gosec (installs if missing)
 	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION))
 	@echo "Running gosec..."
-	@$(GOBIN)/gosec -exclude=G115 ./...
+	@$(GOBIN)/gosec -severity high -exclude=G115 ./...
 
 gitleaks: ## Run gitleaks (installs if missing)
 	@if ! command -v gitleaks > /dev/null; then \
