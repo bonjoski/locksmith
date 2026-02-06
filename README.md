@@ -56,6 +56,26 @@ make check
 make help
 ```
 
+## Security Features
+
+Locksmith implements defense-in-depth security:
+
+- **Hardware-backed encryption**: Secrets protected by macOS Secure Enclave
+- **Biometric authentication**: Touch ID/Face ID required for all operations
+- **Memory zeroing**: Secrets cleared from memory immediately after use
+- **SLSA provenance**: Releases include cryptographic attestations
+- **OpenSSF Scorecard**: Automated security assessment
+
+### Verifying Releases
+
+All releases include cryptographic attestations. Verify a binary:
+
+```bash
+gh attestation verify locksmith-darwin-arm64 --owner bonjoski
+```
+
+See [RELEASING.md](RELEASING.md) for details.
+
 ## License
 Distributed under the [MIT License](LICENSE). See `LICENSE` for more information.
 

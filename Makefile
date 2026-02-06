@@ -32,6 +32,21 @@ sign: build ## Sign the binary with developer identity
 	@codesign --force --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BINARY_NAME)
 	@codesign -dvvv $(BINARY_NAME)
 
+release: ## Build release binaries for multiple architectures
+	@echo "Building release binaries for $(BINARY_NAME) v$(VERSION)..."
+	@mkdir -p $(BUILD_DIR)
+	@echo "Building for darwin/arm64..."
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/locksmith
+	@echo "Building for darwin/amd64..."
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/locksmith
+	@echo "Signing binaries..."
+	@codesign --force --identifier $(IDENTIFIER) --sign "-" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
+	@codesign --force --identifier $(IDENTIFIER) --sign "-" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
+	@echo "Creating checksums..."
+	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
+	@echo "Release binaries built in $(BUILD_DIR)/"
+
 ## Verification targets
 check: fmt tidy vet lint security gosec gitleaks semgrep ## Run all quality and security checks
 
