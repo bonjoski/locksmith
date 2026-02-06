@@ -6,20 +6,24 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Build and Check
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb5afd8a7bb5c62930c205 # v4.1.9
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@d0a8fa9f3152066d9b4b0a1f0a149c47e8e4c10c # v5
         with:
           go-version: '1.23'
+
 
       - name: Run checks
         run: |
