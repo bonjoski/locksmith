@@ -281,8 +281,11 @@ KeychainListResult keychain_list(const char *service, bool use_biometrics,
 }
 
 void free_keychain_result(KeychainResult result) {
-  if (result.data)
+  if (result.data) {
+    // Zero out sensitive data before freeing
+    memset(result.data, 0, result.length);
     free(result.data);
+  }
   if (result.error)
     free(result.error);
 }
