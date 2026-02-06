@@ -3,8 +3,9 @@ package locksmith
 import (
 	"encoding/json"
 	"fmt"
-	"locksmith/pkg/native"
 	"time"
+
+	"github.com/bonjoski/locksmith/pkg/native"
 )
 
 const (

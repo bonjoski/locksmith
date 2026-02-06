@@ -3,16 +3,28 @@ package main
 import (
 	"flag"
 	"fmt"
-	"locksmith/pkg/locksmith"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/bonjoski/locksmith/pkg/locksmith"
 )
 
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
+	}
+
+	// Handle global flags
+	if os.Args[1] == "--version" || os.Args[1] == "-v" {
+		fmt.Printf("locksmith v%s\n", locksmith.Version)
+		return
+	}
+
+	if os.Args[1] == "help" || os.Args[1] == "-h" || os.Args[1] == "--help" {
+		printUsage()
+		return
 	}
 
 	ls, err := locksmith.New()
@@ -22,15 +34,17 @@ func main() {
 	}
 
 	command := os.Args[1]
+	args := os.Args[2:]
+
 	switch command {
 	case "add":
-		handleAdd(ls)
+		handleAdd(ls, args)
 	case "get":
-		handleGet(ls)
+		handleGet(ls, args)
 	case "list":
-		handleList(ls)
+		handleList(ls, args)
 	case "delete":
-		handleDelete(ls)
+		handleDelete(ls, args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		printUsage()
@@ -47,22 +61,27 @@ func printUsage() {
 	fmt.Println("  delete <key>                               Remove a secret")
 }
 
-func handleAdd(ls *locksmith.Locksmith) {
+func handleAdd(ls *locksmith.Locksmith, args []string) {
 	fs := flag.NewFlagSet("add", flag.ExitOnError)
 	expiresStr := fs.String("expires", "30d", "Expiration duration (e.g. 1h, 30d, 1w)")
 
-	if len(os.Args) < 4 {
+	// Parse subcommand flags from the provided args
+	err := fs.Parse(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing arguments for add command: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Now, fs.Args() will contain the non-flag arguments for the 'add' command
+	cmdArgs := fs.Args()
+
+	if len(cmdArgs) < 2 {
 		fmt.Println("Usage: locksmith add <key> <secret> [--expires <duration>]")
 		os.Exit(1)
 	}
 
-	key := os.Args[2]
-	secret := os.Args[3]
-	err := fs.Parse(os.Args[4:])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing arguments: %v\n", err)
-		os.Exit(1)
-	}
+	key := cmdArgs[0]
+	secret := cmdArgs[1]
 
 	duration, err := parseDuration(*expiresStr)
 	if err != nil {
@@ -80,13 +99,13 @@ func handleAdd(ls *locksmith.Locksmith) {
 	fmt.Printf("Successfully saved secret '%s' (expires at %v)\n", key, expiresAt.Format(time.RFC822))
 }
 
-func handleGet(ls *locksmith.Locksmith) {
-	if len(os.Args) < 3 {
+func handleGet(ls *locksmith.Locksmith, args []string) {
+	if len(args) < 1 {
 		fmt.Println("Usage: locksmith get <key>")
 		os.Exit(1)
 	}
 
-	key := os.Args[2]
+	key := args[0]
 	value, err := ls.Get(key)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error retrieving secret: %v\n", err)
@@ -96,7 +115,7 @@ func handleGet(ls *locksmith.Locksmith) {
 	fmt.Println(value)
 }
 
-func handleList(ls *locksmith.Locksmith) {
+func handleList(ls *locksmith.Locksmith, _ []string) {
 	items, err := ls.List()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error listing secrets: %v\n", err)
@@ -117,13 +136,13 @@ func handleList(ls *locksmith.Locksmith) {
 	}
 }
 
-func handleDelete(ls *locksmith.Locksmith) {
-	if len(os.Args) < 3 {
+func handleDelete(ls *locksmith.Locksmith, args []string) {
+	if len(args) < 1 {
 		fmt.Println("Usage: locksmith delete <key>")
 		os.Exit(1)
 	}
 
-	key := os.Args[2]
+	key := args[0]
 	err := ls.Delete(key)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error deleting secret: %v\n", err)

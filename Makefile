@@ -3,6 +3,7 @@ BINARY_NAME=locksmith
 BUILD_DIR=bin
 SIGN_ID="Apple Development"
 IDENTIFIER="com.locksmith"
+VERSION=$(shell grep "Version =" pkg/locksmith/version.go | cut -d '"' -f 2)
 
 # Path configuration
 GOPATH=$(shell go env GOPATH)
@@ -16,8 +17,8 @@ all: build sign
 
 ## Build targets
 build: ## Compile the binary
-	@echo "Building $(BINARY_NAME)..."
-	@go build -o $(BINARY_NAME) ./cmd/locksmith
+	@echo "Building $(BINARY_NAME) v$(VERSION)..."
+	@go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY_NAME) ./cmd/locksmith
 
 sign: build ## Sign the binary with developer identity
 	@echo "Signing $(BINARY_NAME)..."
