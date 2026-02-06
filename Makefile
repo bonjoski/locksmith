@@ -10,7 +10,12 @@ GOPATH=$(shell go env GOPATH)
 GOBIN=$(GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
-.PHONY: all build sign clean test lint security gosec gitleaks check fmt tidy vet help
+# Tool versions
+GOLANGCI_LINT_VERSION=v1.64.2
+GOVULNCHECK_VERSION=v1.1.4
+GOSEC_VERSION=v2.22.11
+
+.PHONY: all build sign clean test lint security gosec gitleaks check fmt tidy vet help updates
 
 # Default target
 all: build sign
@@ -55,17 +60,17 @@ define install_if_missing
 endef
 
 lint: ## Run golangci-lint (installs if missing)
-	$(call install_if_missing,golangci-lint,curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN))
+	$(call install_if_missing,golangci-lint,curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VERSION))
 	@echo "Running golangci-lint..."
 	@$(GOBIN)/golangci-lint run
 
 security: ## Run govulncheck (installs if missing)
-	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@latest)
+	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck..."
 	@$(GOBIN)/govulncheck ./...
 
 gosec: ## Run gosec (installs if missing)
-	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@latest)
+	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION))
 	@echo "Running gosec..."
 	@$(GOBIN)/gosec -exclude=G115 ./...
 
@@ -102,6 +107,9 @@ clean: ## Remove build artifacts
 	@echo "Cleaning up..."
 	@rm -f $(BINARY_NAME)
 	@rm -rf $(BUILD_DIR)
+
+updates: ## Check for Go module updates
+	@go list -u -m all
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
