@@ -1,0 +1,25 @@
+# Binaries and build artifacts
+locksmith
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test coverage
+*.out
+coverage.txt
+
+# Dependency directories (though we use go mod)
+vendor/
+
+# macOS system files
+.DS_Store
+
+# IDEs
+.idea/
+.vscode/
+
+# Local logs
+logs/
