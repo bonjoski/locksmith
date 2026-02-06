@@ -1,5 +1,5 @@
 # Binaries and build artifacts
-locksmith
+/locksmith
 bin/
 *.exe
 *.exe~
