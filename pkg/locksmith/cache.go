@@ -1,8 +1,12 @@
 package locksmith
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,10 +14,14 @@ import (
 )
 
 type DiskCache struct {
-	Dir string
+	Dir       string
+	MasterKey []byte
 }
 
-func NewDiskCache() (*DiskCache, error) {
+func NewDiskCache(masterKey []byte) (*DiskCache, error) {
+	if len(masterKey) != 32 {
+		return nil, fmt.Errorf("invalid master key length: expected 32 bytes, got %d", len(masterKey))
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -22,45 +30,61 @@ func NewDiskCache() (*DiskCache, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	return &DiskCache{Dir: dir}, nil
+	return &DiskCache{Dir: dir, MasterKey: masterKey}, nil
 }
 
-func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
+func (c *DiskCache) validatePath(key string) (string, error) {
 	path := filepath.Join(c.Dir, filepath.Clean(key))
-	// Ensure path starts with c.Dir to prevent traversal
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return err
+		return "", err
 	}
 	absDir, err := filepath.Abs(c.Dir)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !strings.HasPrefix(absPath, absDir) {
-		return fmt.Errorf("security: path traversal attempt detected")
+		return "", fmt.Errorf("security: path traversal attempt detected")
+	}
+	return path, nil
+}
+
+func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
+	path, err := c.validatePath(key)
+	if err != nil {
+		return err
 	}
 
 	data, err := json.Marshal(secret)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+
+	encrypted, err := c.encrypt(data)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt cache item: %w", err)
+	}
+
+	return os.WriteFile(path, encrypted, 0600)
 }
 
 func (c *DiskCache) Get(key string) (*Secret, error) {
-	path := filepath.Join(c.Dir, filepath.Clean(key))
-	absPath, _ := filepath.Abs(path)
-	absDir, _ := filepath.Abs(c.Dir)
-	if !strings.HasPrefix(absPath, absDir) {
-		return nil, fmt.Errorf("security: path traversal attempt detected")
+	path, err := c.validatePath(key)
+	if err != nil {
+		return nil, err
 	}
 
-	data, err := os.ReadFile(path) // #nosec G304
+	encrypted, err := os.ReadFile(path) // #nosec G304
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	data, err := c.decrypt(encrypted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt cache item: %w", err)
 	}
 
 	_, err = os.Stat(path)
@@ -82,15 +106,52 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 	return &secret, nil
 }
 
-func (c *DiskCache) Delete(key string) error {
-	path := filepath.Join(c.Dir, filepath.Clean(key))
-	absPath, _ := filepath.Abs(path)
-	absDir, _ := filepath.Abs(c.Dir)
-	if !strings.HasPrefix(absPath, absDir) {
-		return fmt.Errorf("security: path traversal attempt detected")
+func (c *DiskCache) encrypt(data []byte) ([]byte, error) {
+	block, err := aes.NewCipher(c.MasterKey)
+	if err != nil {
+		return nil, err
 	}
 
-	err := os.Remove(path)
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	return gcm.Seal(nonce, nonce, data, nil), nil
+}
+
+func (c *DiskCache) decrypt(data []byte) ([]byte, error) {
+	block, err := aes.NewCipher(c.MasterKey)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return nil, fmt.Errorf("data too short")
+	}
+
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
+}
+
+func (c *DiskCache) Delete(key string) error {
+	path, err := c.validatePath(key)
+	if err != nil {
+		return err
+	}
+
+	err = os.Remove(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -98,10 +159,8 @@ func (c *DiskCache) Delete(key string) error {
 }
 
 func (c *DiskCache) IsExpired(key string, ttl time.Duration) bool {
-	path := filepath.Join(c.Dir, filepath.Clean(key))
-	absPath, _ := filepath.Abs(path)
-	absDir, _ := filepath.Abs(c.Dir)
-	if !strings.HasPrefix(absPath, absDir) {
+	path, err := c.validatePath(key)
+	if err != nil {
 		return true
 	}
 

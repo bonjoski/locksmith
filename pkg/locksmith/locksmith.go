@@ -1,6 +1,7 @@
 package locksmith
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -9,24 +10,64 @@ import (
 )
 
 const (
-	DefaultService  = "com.locksmith.keychain"
-	DefaultCacheTTL = 1 * time.Hour
+	DefaultService   = "com.locksmith.keychain"
+	DefaultCacheTTL  = 1 * time.Hour
+	MasterKeyAccount = "locksmith-master-cache-key"
 )
+
+type Cache interface {
+	Set(key string, secret Secret, ttl time.Duration) error
+	Get(key string) (*Secret, error)
+	Delete(key string) error
+	IsExpired(key string, ttl time.Duration) bool
+}
 
 type Locksmith struct {
 	Service string
-	Cache   *DiskCache
+	Cache   Cache
 }
 
 func New() (*Locksmith, error) {
-	cache, err := NewDiskCache()
+	// 1. Get or Generate Master Key from Keychain
+	// We store it without biometrics so we can decrypt the cache transparently
+	masterKey, err := getOrGenerateMasterKey(DefaultService)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize master key: %w", err)
+	}
+
+	cache, err := NewDiskCache(masterKey)
 	if err != nil {
 		return nil, err
 	}
+	return NewWithCache(cache), nil
+}
+
+func getOrGenerateMasterKey(service string) ([]byte, error) {
+	// Try to get existing key
+	key, err := native.Get(service, MasterKeyAccount, false, "")
+	if err == nil && len(key) == 32 {
+		return key, nil
+	}
+
+	// Generate new key
+	newKey := make([]byte, 32)
+	if _, err := rand.Read(newKey); err != nil {
+		return nil, err
+	}
+
+	// Store in Keychain (no biometrics for the master key itself)
+	if err := native.Set(service, MasterKeyAccount, newKey, false); err != nil {
+		return nil, err
+	}
+
+	return newKey, nil
+}
+
+func NewWithCache(cache Cache) *Locksmith {
 	return &Locksmith{
 		Service: DefaultService,
 		Cache:   cache,
-	}, nil
+	}
 }
 
 func (l *Locksmith) Set(key string, value string, expiresAt time.Time) error {

@@ -36,18 +36,24 @@ func main() {
 	command := os.Args[1]
 	args := os.Args[2:]
 
+	var cmdErr error
 	switch command {
 	case "add":
-		handleAdd(ls, args)
+		cmdErr = handleAdd(ls, args)
 	case "get":
-		handleGet(ls, args)
+		cmdErr = handleGet(ls, args)
 	case "list":
-		handleList(ls, args)
+		cmdErr = handleList(ls, args)
 	case "delete":
-		handleDelete(ls, args)
+		cmdErr = handleDelete(ls, args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		printUsage()
+		os.Exit(1)
+	}
+
+	if cmdErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", cmdErr)
 		os.Exit(1)
 	}
 }
@@ -61,98 +67,87 @@ func printUsage() {
 	fmt.Println("  delete <key>                               Remove a secret")
 }
 
-func handleAdd(ls *locksmith.Locksmith, args []string) {
-	fs := flag.NewFlagSet("add", flag.ExitOnError)
+func handleAdd(ls *locksmith.Locksmith, args []string) error {
+	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	expiresStr := fs.String("expires", "30d", "Expiration duration (e.g. 1h, 30d, 1w)")
 
-	// Parse subcommand flags from the provided args
-	err := fs.Parse(args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing arguments for add command: %v\n", err)
-		os.Exit(1)
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
-	// Now, fs.Args() will contain the non-flag arguments for the 'add' command
 	cmdArgs := fs.Args()
-
 	if len(cmdArgs) < 2 {
-		fmt.Println("Usage: locksmith add <key> <secret> [--expires <duration>]")
-		os.Exit(1)
+		return fmt.Errorf("usage: locksmith add <key> <secret> [--expires <duration>]")
 	}
 
 	key := cmdArgs[0]
 	secret := cmdArgs[1]
 
-	duration, err := parseDuration(*expiresStr)
+	duration, err := ParseDuration(*expiresStr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid expiration duration: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("invalid expiration duration: %w", err)
 	}
 
 	expiresAt := time.Now().Add(duration)
 	err = ls.Set(key, secret, expiresAt)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error saving secret: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error saving secret: %w", err)
 	}
 
 	fmt.Printf("Successfully saved secret '%s' (expires at %v)\n", key, expiresAt.Format(time.RFC822))
+	return nil
 }
 
-func handleGet(ls *locksmith.Locksmith, args []string) {
+func handleGet(ls *locksmith.Locksmith, args []string) error {
 	if len(args) < 1 {
-		fmt.Println("Usage: locksmith get <key>")
-		os.Exit(1)
+		return fmt.Errorf("usage: locksmith get <key>")
 	}
 
 	key := args[0]
 	value, err := ls.Get(key)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error retrieving secret: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error retrieving secret: %w", err)
 	}
 
 	fmt.Println(value)
+	return nil
 }
 
-func handleList(ls *locksmith.Locksmith, _ []string) {
+func handleList(ls *locksmith.Locksmith, _ []string) error {
 	items, err := ls.List()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error listing secrets: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error listing secrets: %w", err)
 	}
 
 	if len(items) == 0 {
 		fmt.Println("No secrets stored.")
-		return
+		return nil
 	}
 
 	fmt.Printf("%-20s %-20s %-20s\n", "KEY", "CREATED", "EXPIRES")
 	fmt.Println(strings.Repeat("-", 62))
 	for key := range items {
-		// Note: Metadata is currently empty because native_list only returns keys.
-		// Future enhancement: parse metadata during list.
 		fmt.Printf("%-20s %-20s %-20s\n", key, "N/A", "N/A")
 	}
+	return nil
 }
 
-func handleDelete(ls *locksmith.Locksmith, args []string) {
+func handleDelete(ls *locksmith.Locksmith, args []string) error {
 	if len(args) < 1 {
-		fmt.Println("Usage: locksmith delete <key>")
-		os.Exit(1)
+		return fmt.Errorf("usage: locksmith delete <key>")
 	}
 
 	key := args[0]
 	err := ls.Delete(key)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error deleting secret: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error deleting secret: %w", err)
 	}
 
 	fmt.Printf("Successfully deleted secret '%s'\n", key)
+	return nil
 }
 
-func parseDuration(s string) (time.Duration, error) {
+func ParseDuration(s string) (time.Duration, error) {
 	s = strings.ToLower(s)
 	if strings.HasSuffix(s, "d") {
 		daysStr := strings.TrimSuffix(s, "d")
@@ -172,9 +167,9 @@ func parseDuration(s string) (time.Duration, error) {
 		}
 		return time.Duration(weeks) * 7 * 24 * time.Hour, nil
 	}
-	if strings.HasSuffix(s, "m") {
+	if strings.HasSuffix(s, "mo") {
 		// Simplified month as 30 days
-		monthsStr := strings.TrimSuffix(s, "m")
+		monthsStr := strings.TrimSuffix(s, "mo")
 		var months int
 		_, err := fmt.Sscanf(monthsStr, "%d", &months)
 		if err != nil {
