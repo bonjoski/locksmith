@@ -46,13 +46,15 @@ func Get(service, account string, useBiometrics bool, prompt string) ([]byte, er
 	return C.GoBytes(unsafe.Pointer(res.data), C.int(res.length)), nil
 }
 
-func Delete(service, account string) error {
+func Delete(service, account string, useBiometrics bool, prompt string) error {
 	cService := C.CString(service)
 	cAccount := C.CString(account)
+	cPrompt := C.CString(prompt)
 	defer C.free(unsafe.Pointer(cService))
 	defer C.free(unsafe.Pointer(cAccount))
+	defer C.free(unsafe.Pointer(cPrompt))
 
-	res := C.keychain_delete(cService, cAccount)
+	res := C.keychain_delete(cService, cAccount, C.bool(useBiometrics), cPrompt)
 	defer C.free_keychain_result(res)
 
 	if res.error != nil {
@@ -61,11 +63,13 @@ func Delete(service, account string) error {
 	return nil
 }
 
-func List(service string) ([]string, error) {
+func List(service string, useBiometrics bool, prompt string) ([]string, error) {
 	cService := C.CString(service)
+	cPrompt := C.CString(prompt)
 	defer C.free(unsafe.Pointer(cService))
+	defer C.free(unsafe.Pointer(cPrompt))
 
-	res := C.keychain_list(cService)
+	res := C.keychain_list(cService, C.bool(useBiometrics), cPrompt)
 	defer C.free_keychain_list_result(res)
 
 	if res.error != nil {

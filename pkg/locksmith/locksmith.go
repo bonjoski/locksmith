@@ -1,9 +1,11 @@
 package locksmith
 
 import (
-	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/bonjoski/locksmith/pkg/native"
@@ -28,11 +30,11 @@ type Locksmith struct {
 }
 
 func New() (*Locksmith, error) {
-	// 1. Get or Generate Master Key from Keychain
-	// We store it without biometrics so we can decrypt the cache transparently
-	masterKey, err := getOrGenerateMasterKey(DefaultService)
+	// 1. Derive Master Key from Hardware UUID
+	// This ensures the cache is device-locked without triggering Keychain prompts
+	masterKey, err := deriveMasterKey()
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize master key: %w", err)
+		return nil, fmt.Errorf("failed to derive master key: %w", err)
 	}
 
 	cache, err := NewDiskCache(masterKey)
@@ -42,25 +44,35 @@ func New() (*Locksmith, error) {
 	return NewWithCache(cache), nil
 }
 
-func getOrGenerateMasterKey(service string) ([]byte, error) {
-	// Try to get existing key
-	key, err := native.Get(service, MasterKeyAccount, false, "")
-	if err == nil && len(key) == 32 {
-		return key, nil
+func deriveMasterKey() ([]byte, error) {
+	// Get Hardware UUID via ioreg
+	// ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/ {print $(NF-1)}'
+	cmd := exec.Command("ioreg", "-d2", "-c", "IOPlatformExpertDevice")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hardware info: %w", err)
 	}
 
-	// Generate new key
-	newKey := make([]byte, 32)
-	if _, err := rand.Read(newKey); err != nil {
-		return nil, err
+	// Simple parsing for IOPlatformUUID
+	lines := strings.Split(string(out), "\n")
+	var uuid string
+	for _, line := range lines {
+		if strings.Contains(line, "IOPlatformUUID") {
+			parts := strings.Split(line, "\"")
+			if len(parts) >= 4 {
+				uuid = parts[3]
+				break
+			}
+		}
 	}
 
-	// Store in Keychain (no biometrics for the master key itself)
-	if err := native.Set(service, MasterKeyAccount, newKey, false); err != nil {
-		return nil, err
+	if uuid == "" {
+		return nil, fmt.Errorf("failed to extract IOPlatformUUID")
 	}
 
-	return newKey, nil
+	// Hash the UUID to get a 32-byte key
+	hash := sha256.Sum256([]byte(uuid))
+	return hash[:], nil
 }
 
 func NewWithCache(cache Cache) *Locksmith {
@@ -120,20 +132,20 @@ func (l *Locksmith) Get(key string) (string, error) {
 }
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
-	keys, err := native.List(l.Service)
+	prompt := "Authentication required to list secrets"
+	keys, err := native.List(l.Service, true, prompt)
 	if err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]SecretMetadata)
 	for _, key := range keys {
-		// To list metadata, we technically need to READ the item, which requires biometrics
-		// if NOT using kSecAccessControlUserPresence without the secret part.
-		// HOWEVER, in macOS Keychain, if we just want attributes, we can skip biometrics
-		// if we only ask for attributes and the item isn't marked as "always prompt for attributes".
-		// In our native_list, we only ask for attributes.
+		// Filter out the internal master key
+		if key == MasterKeyAccount {
+			continue
+		}
 
-		// If we want more metadata, we might need a more complex native_list.
+		// To list metadata, we technically need to READ the item, which requires biometrics…
 		// For now, let's just return what we have (the keys).
 		result[key] = SecretMetadata{}
 	}
@@ -142,5 +154,6 @@ func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 
 func (l *Locksmith) Delete(key string) error {
 	_ = l.Cache.Delete(key)
-	return native.Delete(l.Service, key)
+	prompt := fmt.Sprintf("Authentication required to delete secret '%s'", key)
+	return native.Delete(l.Service, key, true, prompt)
 }

@@ -7,6 +7,8 @@ KeychainResult keychain_set(const char *service, const char *account,
                             const char *data, size_t length,
                             bool require_biometrics) {
   KeychainResult result = {NULL, 0, NULL};
+  // ... rest of the function (I'll use a more surgical approach if I can, but
+  // I'll add them to all key points)
 
   NSString *serviceNS = [NSString stringWithUTF8String:service];
   NSString *accountNS = [NSString stringWithUTF8String:account];
@@ -22,11 +24,12 @@ KeychainResult keychain_set(const char *service, const char *account,
 
   if (require_biometrics) {
     LAContext *context = [[LAContext alloc] init];
+    context.localizedFallbackTitle = @"";
     dispatch_semaphore_t sema = dispatch_semaphore_create(0);
     __block BOOL success = NO;
     __block NSError *authError = nil;
 
-    [context evaluatePolicy:LAPolicyDeviceOwnerAuthentication
+    [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
             localizedReason:@"Authentication required to save secret"
                       reply:^(BOOL s, NSError *e) {
                         success = s;
@@ -47,7 +50,7 @@ KeychainResult keychain_set(const char *service, const char *account,
   }
 
   query[(__bridge id)kSecAttrAccessible] =
-      (__bridge id)kSecAttrAccessibleWhenUnlocked;
+      (__bridge id)kSecAttrAccessibleAfterFirstUnlock;
 
   query[(__bridge id)kSecValueData] = dataNS;
 
@@ -77,6 +80,7 @@ KeychainResult keychain_get(const char *service, const char *account,
 
   if (use_biometrics || [promptNS length] > 0) {
     LAContext *context = [[LAContext alloc] init];
+    context.localizedFallbackTitle = @"";
     dispatch_semaphore_t sema = dispatch_semaphore_create(0);
     __block BOOL success = NO;
     __block NSError *authError = nil;
@@ -86,7 +90,7 @@ KeychainResult keychain_get(const char *service, const char *account,
       reason = @"Authentication required to retrieve secret";
     }
 
-    [context evaluatePolicy:LAPolicyDeviceOwnerAuthentication
+    [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
             localizedReason:reason
                       reply:^(BOOL s, NSError *e) {
                         success = s;
@@ -129,11 +133,45 @@ KeychainResult keychain_get(const char *service, const char *account,
   return result;
 }
 
-KeychainResult keychain_delete(const char *service, const char *account) {
+KeychainResult keychain_delete(const char *service, const char *account,
+                               bool use_biometrics, const char *prompt) {
   KeychainResult result = {NULL, 0, NULL};
 
   NSString *serviceNS = [NSString stringWithUTF8String:service];
   NSString *accountNS = [NSString stringWithUTF8String:account];
+  NSString *promptNS = [NSString stringWithUTF8String:prompt];
+
+  if (use_biometrics || [promptNS length] > 0) {
+    LAContext *context = [[LAContext alloc] init];
+    context.localizedFallbackTitle = @"";
+    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+    __block BOOL success = NO;
+    __block NSError *authError = nil;
+
+    NSString *reason = promptNS;
+    if ([reason length] == 0) {
+      reason = @"Authentication required to delete secret";
+    }
+
+    [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
+            localizedReason:reason
+                      reply:^(BOOL s, NSError *e) {
+                        success = s;
+                        authError = e;
+                        dispatch_semaphore_signal(sema);
+                      }];
+
+    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+
+    if (!success) {
+      if (authError.code == LAErrorUserCancel) {
+        result.error = strdup("User canceled authentication");
+      } else {
+        result.error = strdup([[authError localizedDescription] UTF8String]);
+      }
+      return result;
+    }
+  }
 
   NSMutableDictionary *query = [NSMutableDictionary dictionary];
   query[(__bridge id)kSecClass] = (__bridge id)kSecClassGenericPassword;
@@ -150,10 +188,44 @@ KeychainResult keychain_delete(const char *service, const char *account) {
   return result;
 }
 
-KeychainListResult keychain_list(const char *service) {
+KeychainListResult keychain_list(const char *service, bool use_biometrics,
+                                 const char *prompt) {
   KeychainListResult result = {NULL, 0, NULL};
 
   NSString *serviceNS = [NSString stringWithUTF8String:service];
+  NSString *promptNS = [NSString stringWithUTF8String:prompt];
+
+  if (use_biometrics || [promptNS length] > 0) {
+    LAContext *context = [[LAContext alloc] init];
+    context.localizedFallbackTitle = @"";
+    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+    __block BOOL success = NO;
+    __block NSError *authError = nil;
+
+    NSString *reason = promptNS;
+    if ([reason length] == 0) {
+      reason = @"Authentication required to list secrets";
+    }
+
+    [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics
+            localizedReason:reason
+                      reply:^(BOOL s, NSError *e) {
+                        success = s;
+                        authError = e;
+                        dispatch_semaphore_signal(sema);
+                      }];
+
+    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+
+    if (!success) {
+      if (authError.code == LAErrorUserCancel) {
+        result.error = strdup("User canceled authentication");
+      } else {
+        result.error = strdup([[authError localizedDescription] UTF8String]);
+      }
+      return result;
+    }
+  }
 
   NSMutableDictionary *query = [NSMutableDictionary dictionary];
   query[(__bridge id)kSecClass] = (__bridge id)kSecClassGenericPassword;
