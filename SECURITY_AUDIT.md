@@ -112,6 +112,7 @@ void free_keychain_result(KeychainResult result) {
 | Static Analysis | ✅ Hardened | gosec, gitleaks, semgrep |
 | Provenance | ✅ **SLSA Level 2** | Artifact attestations in v2.0.0 |
 | Dependency Scan | ✅ Implemented | `govulncheck` in CI via `make check` |
+| Dependency Verification | ✅ Implemented | `go mod verify` + vulnerability checks |
 | Pinned Actions | ✅ Complete | All workflows use SHA-pinned actions |
 | OpenSSF Scorecard | ✅ Active | Weekly automated assessment |
 

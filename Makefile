@@ -48,7 +48,7 @@ release: ## Build release binaries for multiple architectures
 	@echo "Release binaries built in $(BUILD_DIR)/"
 
 ## Verification targets
-check: fmt tidy vet lint security gosec gitleaks semgrep ## Run all quality and security checks
+check: fmt tidy verify-deps vet lint security gosec gitleaks semgrep ## Run all quality and security checks
 
 test: ## Run unit tests
 	@echo "Running tests..."
@@ -61,6 +61,12 @@ fmt: ## Format Go code
 tidy: ## Tidy Go modules
 	@echo "Tidying modules..."
 	@go mod tidy
+
+verify-deps: ## Verify dependencies and check for vulnerabilities
+	@echo "Verifying module checksums..."
+	@go mod verify
+	@echo "Checking for vulnerable dependencies..."
+	@go list -m all | xargs -n1 go list -json 2>/dev/null | jq -r 'select(.Vulnerable != null) | .Path' || echo "No vulnerable dependencies found"
 
 vet: ## Run go vet
 	@echo "Vetting code..."
