@@ -25,7 +25,7 @@ sign: build ## Sign the binary with developer identity
 	@codesign -dvvv $(BINARY_NAME)
 
 ## Verification targets
-check: fmt tidy vet lint security gosec gitleaks ## Run all quality and security checks
+check: fmt tidy vet lint security gosec gitleaks semgrep ## Run all quality and security checks
 
 test: ## Run unit tests
 	@echo "Running tests..."
@@ -78,12 +78,21 @@ gitleaks: ## Run gitleaks (installs if missing)
 		gitleaks detect --no-git --source . --verbose; \
 	fi
 
+semgrep: ## Run semgrep (installs if missing)
+	@if ! command -v semgrep > /dev/null; then \
+		echo "Installing semgrep..."; \
+		brew install semgrep; \
+	fi
+	@echo "Running semgrep..."
+	@semgrep scan --config auto --error --quiet
+
 install-tools: ## Manually install all required tools
 	@echo "Checking/Installing tools..."
 	$(call install_if_missing,golangci-lint,curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN))
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@latest)
 	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@latest)
 	@if ! command -v gitleaks > /dev/null; then brew install gitleaks; fi
+	@if ! command -v semgrep > /dev/null; then brew install semgrep; fi
 
 ## Utility targets
 clean: ## Remove build artifacts
