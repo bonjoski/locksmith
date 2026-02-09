@@ -1,19 +1,24 @@
-name: Release
+name: release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # Triggers on version tags (e.g., v1.0.0)
 
-permissions:
-  contents: write
-  id-token: write
-  attestations: write
+# 1. Explicitly set top-level permissions to "read-all" as a safety baseline
+permissions: read-all
 
 jobs:
-  release:
-    name: Build and Release
+  build-and-release:
+    name: Build, Attest, and Release
     runs-on: macos-latest
+    
+    # 2. Grant specific write permissions only to this job
+    permissions:
+      contents: write      # Required to create the GitHub Release and upload assets
+      id-token: write     # Required for signing the Artifact Attestation (OIDC)
+      attestations: write # Required to publish the build provenance to GitHub
+
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -23,69 +28,20 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@3041bf56604102f05352ba2bb202f90aef5a3e77 # v5.2.0
         with:
-          go-version: '1.23'
+          go-version: '1.21'
           cache: true
 
-      - name: Extract version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Build Locksmith
+        run: make build # Assumes your Makefile builds to bin/locksmith
 
-      - name: Build binaries
-        run: |
-          # Build for macOS ARM64
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=${{ steps.version.outputs.VERSION }}" -o locksmith-darwin-arm64 ./cmd/locksmith
-          
-          # Build for macOS AMD64
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=${{ steps.version.outputs.VERSION }}" -o locksmith-darwin-amd64 ./cmd/locksmith
-          
-          # Sign binaries (ad-hoc signature for open source distribution)
-          codesign --force --identifier "com.locksmith" --sign "-" locksmith-darwin-arm64
-          codesign --force --identifier "com.locksmith" --sign "-" locksmith-darwin-amd64
-
-      - name: Generate artifact attestations
-        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # v1.4.3
+      # 3. Create the Attestation (The SLSA "Birth Certificate")
+      - name: Generate Artifact Attestation
+        uses: actions/attest-build-provenance@1c7062403f905e947d7e3a9686036814b304c53d # v1.4.3
         with:
-          subject-path: |
-            locksmith-darwin-arm64
-            locksmith-darwin-amd64
+          subject-path: 'bin/locksmith'
 
-      - name: Create checksums
-        run: |
-          shasum -a 256 locksmith-darwin-arm64 > checksums.txt
-          shasum -a 256 locksmith-darwin-amd64 >> checksums.txt
-
-      - name: Create release
-        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
+      - name: Create Release
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.9
         with:
-          files: |
-            locksmith-darwin-arm64
-            locksmith-darwin-amd64
-            checksums.txt
-          body: |
-            ## Locksmith ${{ steps.version.outputs.VERSION }}
-            
-            ### Installation
-            
-            Download the appropriate binary for your architecture:
-            - **Apple Silicon (M1/M2/M3)**: `locksmith-darwin-arm64`
-            - **Intel Mac**: `locksmith-darwin-amd64`
-            
-            ### Verification
-            
-            This release includes cryptographic attestations. Verify the binary with:
-            
-            ```bash
-            gh attestation verify locksmith-darwin-arm64 --owner bonjoski
-            ```
-            
-            Or verify checksums:
-            
-            ```bash
-            shasum -a 256 -c checksums.txt
-            ```
-            
-            ### Changes
-            
-            See commit history for detailed changes.
-          draft: false
-          prerelease: false
+          files: bin/locksmith
+          generate_release_notes: true
