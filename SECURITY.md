@@ -15,6 +15,10 @@ We release patches for security vulnerabilities for the following versions:
 
 If you discover a security vulnerability in Locksmith, please report it responsibly:
 
+**Preferred Method**: Use GitHub Security Advisories
+- Report at: https://github.com/bonjoski/locksmith/security/advisories/new
+
+**Alternative Method**: Email
 1. **DO NOT** open a public GitHub issue
 2. Email security details to the maintainer (see GitHub profile)
 3. Include:
