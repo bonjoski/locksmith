@@ -3,6 +3,9 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bonjoski/locksmith/badge)](https://scorecard.dev/viewer/?uri=github.com/bonjoski/locksmith)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bonjoski/locksmith)](https://goreportcard.com/report/github.com/bonjoski/locksmith)
 [![SLSA 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub release](https://img.shields.io/github/v/release/bonjoski/locksmith)](https://github.com/bonjoski/locksmith/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS-blue)](https://github.com/bonjoski/locksmith)
 
 **Locksmith** is a secure, biometric-protected keychain vault for macOS. It allows you to store keys, tokens, and passwords in the native macOS Keychain, requiring Touch ID (or your system password) for access.
 
