@@ -86,6 +86,62 @@ summon --provider locksmith -f secrets.yml env | grep AWS
 
 This provides Touch ID authentication for your DevOps workflows, ensuring secrets are never exposed in plaintext.
 
+## Configuration
+
+Locksmith supports optional configuration via `~/.locksmith/config.yml` for customizing expiration notifications:
+
+```yaml
+notifications:
+  expiring_threshold: 7d    # Warn when secrets expire within this duration
+  method: stderr            # Options: stderr, macos, silent
+  show_on_get: true         # Show warnings on 'get' command
+  show_on_list: true        # Show status on 'list' command
+```
+
+### Expiration Notifications
+
+Locksmith can warn you about expiring or expired secrets:
+
+**Get command with warnings:**
+```bash
+$ locksmith get aws/key
+Warning: Secret 'aws/key' expires in 2 days
+AKIAIOSFODNN7EXAMPLE
+```
+
+**JSON output:**
+```bash
+$ locksmith get aws/key --json
+{
+  "key": "aws/key",
+  "value": "AKIAIOSFODNN7EXAMPLE",
+  "created_at": "2026-01-01T12:00:00Z",
+  "expires_at": "2026-02-15T12:00:00Z",
+  "expires_in": "48h0m0s",
+  "is_expired": false,
+  "is_expiring": true
+}
+```
+
+**List command with status:**
+```bash
+$ locksmith list
+KEY                            CREATED              EXPIRES              STATUS
+------------------------------------------------------------------------------------
+aws/access-key                 2026-01-01           2026-02-15           ⚠️  Expiring
+db/password                    2026-01-15           2027-01-15           ✓  Valid
+api/token                      2025-12-01           2026-01-01           ❌ Expired
+```
+
+**Configuration options:**
+- `expiring_threshold`: Duration formats: `7d` (days), `2w` (weeks), `1mo` (months), `1y` (years), `24h` (hours)
+- `method`: 
+  - `stderr` (default): Print warnings to stderr
+  - `macos`: Show macOS notification popup
+  - `silent`: No notifications (useful for automation)
+
+See [config.example.yml](config.example.yml) for a complete example.
+
 Locksmith includes a comprehensive suite of quality and security checks.
 
 ```bash

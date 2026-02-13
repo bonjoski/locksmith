@@ -15,7 +15,7 @@ GOLANGCI_LINT_VERSION=v1.64.2
 GOVULNCHECK_VERSION=v1.1.4
 GOSEC_VERSION=v2.22.11
 
-.PHONY: all build sign clean test lint security gosec gitleaks check fmt tidy vet help updates
+.PHONY: all build sign clean test lint govulncheck gosec gitleaks check fmt tidy vet help updates
 
 # Default target
 all: build sign
@@ -65,7 +65,7 @@ uninstall-summon: ## Uninstall Summon provider
 	@echo "✓ Summon provider uninstalled"
 
 ## Verification targets
-check: fmt tidy verify-deps vet lint security gosec gitleaks semgrep ## Run all quality and security checks
+check: fmt tidy verify-deps vet lint govulncheck gosec gitleaks semgrep ## Run all quality and security checks
 
 test: ## Run unit tests
 	@echo "Running tests..."
@@ -102,7 +102,7 @@ lint: ## Run golangci-lint (installs if missing)
 	@echo "Running golangci-lint..."
 	@$(GOBIN)/golangci-lint run
 
-security: ## Run govulncheck (installs if missing)
+govulncheck: ## Run govulncheck (installs if missing)
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck..."
 	@$(GOBIN)/govulncheck ./...

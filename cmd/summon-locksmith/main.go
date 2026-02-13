@@ -9,8 +9,11 @@ import (
 
 func main() {
 	// Summon provider contract: take secret ID as first argument
+	// Force silent mode for Summon provider (no expiration warnings)
+	_ = os.Setenv("LOCKSMITH_SILENT", "true")
+
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "Error: No secret identifier provided")
+		fmt.Fprintln(os.Stderr, "Usage: summon-locksmith <secret-id>")
 		os.Exit(1)
 	}
 

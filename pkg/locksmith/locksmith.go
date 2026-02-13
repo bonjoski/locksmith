@@ -163,3 +163,69 @@ func (l *Locksmith) Delete(key string) error {
 	prompt := fmt.Sprintf("Authentication required to delete secret '%s'", key)
 	return native.Delete(l.Service, key, true, prompt)
 }
+
+// GetWithMetadata retrieves a secret with its metadata
+func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
+	// Get the value
+	value, err := l.Get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	// Try to get metadata from cache
+	cached, err := l.Cache.Get(key)
+	if err == nil && cached != nil {
+		return &Secret{
+			Value:     value,
+			CreatedAt: cached.CreatedAt,
+			ExpiresAt: cached.ExpiresAt,
+		}, nil
+	}
+
+	// If not in cache, get from keychain
+	prompt := fmt.Sprintf("Authentication required to access '%s'", key)
+	data, err := native.Get(l.Service, key, true, prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	var secret Secret
+	if err := json.Unmarshal(data, &secret); err != nil {
+		return nil, err
+	}
+
+	secret.Value = value
+	return &secret, nil
+}
+
+// ListWithMetadata returns all secrets with their metadata
+func (l *Locksmith) ListWithMetadata() (map[string]*SecretMetadata, error) {
+	prompt := "Authentication required to list secrets"
+	keys, err := native.List(l.Service, true, prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]*SecretMetadata)
+	for _, key := range keys {
+		// Filter out the internal master key
+		if key == MasterKeyAccount {
+			continue
+		}
+
+		// Try to get metadata from cache first
+		cached, _ := l.Cache.Get(key)
+		if cached != nil {
+			result[key] = &SecretMetadata{
+				CreatedAt: cached.CreatedAt,
+				ExpiresAt: cached.ExpiresAt,
+			}
+		} else {
+			// If not in cache, we'd need to read from keychain
+			// For now, return empty metadata
+			result[key] = &SecretMetadata{}
+		}
+	}
+
+	return result, nil
+}
