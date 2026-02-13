@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -107,28 +108,73 @@ func handleAdd(ls *locksmith.Locksmith, args []string) error {
 }
 
 func handleGet(ls *locksmith.Locksmith, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: locksmith get <key>")
+	// Parse flags
+	fs := flag.NewFlagSet("get", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr) // Send flag errors to stderr
+	jsonOutput := fs.Bool("json", false, "Output in JSON format")
+
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
 
-	key := args[0]
-	value, err := ls.Get(key)
+	cmdArgs := fs.Args()
+	if len(cmdArgs) < 1 {
+		return fmt.Errorf("usage: locksmith get <key> [--json]")
+	}
+
+	key := cmdArgs[0]
+
+	// Load config
+	config, err := locksmith.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("error loading config: %w", err)
+	}
+
+	// Get secret with metadata
+	secret, err := ls.GetWithMetadata(key)
 	if err != nil {
 		return fmt.Errorf("error retrieving secret: %w", err)
 	}
-	defer func() {
-		// Zero out the secret after printing
-		for i := range value {
-			value[i] = 0
-		}
-	}()
 
-	fmt.Println(string(value))
+	defer secret.Zero()
+
+	// JSON output
+	if *jsonOutput {
+		return outputJSON(key, secret, config)
+	}
+
+	// Show expiration warning (to stderr)
+	if config.Notifications.ShowOnGet {
+		notifier := locksmith.NewNotifier(config)
+		notifier.NotifyExpiration(key, secret)
+	}
+
+	// Output secret value (to stdout)
+	fmt.Println(string(secret.Value))
 	return nil
 }
 
+func outputJSON(key string, secret *locksmith.Secret, config *locksmith.Config) error {
+	threshold, _ := config.GetExpiringThreshold()
+	status := secret.GetExpirationStatus(threshold)
+
+	output := map[string]interface{}{
+		"key":         key,
+		"value":       string(secret.Value),
+		"created_at":  secret.CreatedAt,
+		"expires_at":  secret.ExpiresAt,
+		"expires_in":  secret.TimeUntilExpiration().String(),
+		"is_expired":  secret.IsExpired(),
+		"is_expiring": status == locksmith.StatusExpiring,
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(output)
+}
+
 func handleList(ls *locksmith.Locksmith, _ []string) error {
-	items, err := ls.List()
+	items, err := ls.ListWithMetadata()
 	if err != nil {
 		return fmt.Errorf("error listing secrets: %w", err)
 	}
@@ -138,12 +184,60 @@ func handleList(ls *locksmith.Locksmith, _ []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-20s %-20s %-20s\n", "KEY", "CREATED", "EXPIRES")
-	fmt.Println(strings.Repeat("-", 62))
-	for key := range items {
-		fmt.Printf("%-20s %-20s %-20s\n", key, "N/A", "N/A")
+	// Load config
+	config, err := locksmith.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("error loading config: %w", err)
 	}
+
+	threshold, _ := config.GetExpiringThreshold()
+
+	// Print header
+	fmt.Printf("%-30s %-20s %-20s %-12s\n", "KEY", "CREATED", "EXPIRES", "STATUS")
+	fmt.Println(strings.Repeat("-", 84))
+
+	// Print each secret
+	for key, metadata := range items {
+		// Skip if metadata is empty (not in cache)
+		if metadata.ExpiresAt.IsZero() {
+			fmt.Printf("%-30s %-20s %-20s %-12s\n",
+				truncate(key, 30), "N/A", "N/A", "Unknown")
+			continue
+		}
+
+		status := getStatusDisplay(metadata, threshold, config.Notifications.ShowOnList)
+		expiresStr := metadata.ExpiresAt.Format("2006-01-02")
+		createdStr := metadata.CreatedAt.Format("2006-01-02")
+
+		fmt.Printf("%-30s %-20s %-20s %s\n",
+			truncate(key, 30), createdStr, expiresStr, status)
+	}
+
 	return nil
+}
+
+func getStatusDisplay(metadata *locksmith.SecretMetadata, threshold time.Duration, showStatus bool) string {
+	if !showStatus {
+		return ""
+	}
+
+	status := metadata.GetExpirationStatus(threshold)
+
+	switch status {
+	case locksmith.StatusExpired:
+		return "❌ Expired"
+	case locksmith.StatusExpiring:
+		return "⚠️  Expiring"
+	default:
+		return "✓  Valid"
+	}
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
 func handleDelete(ls *locksmith.Locksmith, args []string) error {

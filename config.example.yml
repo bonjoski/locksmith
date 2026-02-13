@@ -1,0 +1,27 @@
+# Locksmith Configuration Example
+
+# This is an example configuration file for locksmith.
+# Save this as ~/.locksmith/config.yml to customize notification behavior.
+
+notifications:
+  # Threshold for expiration warnings
+  # Secrets expiring within this duration will trigger warnings
+  # Formats: "7d" (days), "2w" (weeks), "1mo" (months), "1y" (years), "24h" (hours)
+  # Default: 7d
+  expiring_threshold: 7d
+
+  # Notification method
+  # Options:
+  #   - stderr: Print warnings to stderr (default, non-intrusive)
+  #   - macos:  Show macOS notification popup
+  #   - silent: No notifications (useful for automation)
+  # Default: stderr
+  method: stderr
+
+  # Show expiration warnings when using 'locksmith get'
+  # Default: true
+  show_on_get: true
+
+  # Show expiration status when using 'locksmith list'
+  # Default: true
+  show_on_list: true
