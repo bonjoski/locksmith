@@ -47,6 +47,23 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
 	@echo "Release binaries built in $(BUILD_DIR)/"
 
+## Summon provider
+build-summon: ## Build Summon provider binary
+	@echo "Building summon-locksmith provider..."
+	@go build -ldflags "-X main.version=$(VERSION)" -o summon-locksmith ./cmd/summon-locksmith
+
+ install-summon: build-summon ## Install Summon provider
+	@echo "Installing Summon provider..."
+	@mkdir -p /usr/local/lib/summon
+	@cp summon-locksmith /usr/local/lib/summon/locksmith
+	@chmod +x /usr/local/lib/summon/locksmith
+	@echo "✓ Summon provider installed at /usr/local/lib/summon/locksmith"
+
+uninstall-summon: ## Uninstall Summon provider
+	@echo "Uninstalling Summon provider..."
+	@rm -f /usr/local/lib/summon/locksmith
+	@echo "✓ Summon provider uninstalled"
+
 ## Verification targets
 check: fmt tidy verify-deps vet lint security gosec gitleaks semgrep ## Run all quality and security checks
 
@@ -127,6 +144,7 @@ install-tools: ## Manually install all required tools
 clean: ## Remove build artifacts
 	@echo "Cleaning up..."
 	@rm -f $(BINARY_NAME)
+	@rm -f summon-locksmith
 	@rm -rf $(BUILD_DIR)
 
 updates: ## Check for Go module updates

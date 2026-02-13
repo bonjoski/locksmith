@@ -50,7 +50,41 @@ make sign
 ./locksmith list
 ```
 
-## Development
+### Summon Integration
+
+Locksmith can be used as a [Summon](https://cyberark.github.io/summon) provider to inject biometric-protected secrets into processes:
+
+#### Installation
+```bash
+make install-summon
+```
+
+#### Usage
+Create a `secrets.yml` file:
+```yaml
+AWS_ACCESS_KEY_ID: !var aws/access-key
+AWS_SECRET_ACCESS_KEY: !var aws/secret-key
+DATABASE_PASSWORD: !var db/password
+```
+
+Run your command with Summon:
+```bash
+summon --provider locksmith -f secrets.yml <command>
+```
+
+**Examples:**
+```bash
+# Docker with biometric-protected secrets
+summon --provider locksmith -f secrets.yml docker run --env-file @SUMMONENVFILE myapp
+
+# Python script with AWS credentials
+summon --provider locksmith -f secrets.yml python deploy.py
+
+# Any command that reads environment variables
+summon --provider locksmith -f secrets.yml env | grep AWS
+```
+
+This provides Touch ID authentication for your DevOps workflows, ensuring secrets are never exposed in plaintext.
 
 Locksmith includes a comprehensive suite of quality and security checks.
 
