@@ -1,5 +1,6 @@
 # Binaries and build artifacts
 /locksmith
+/summon-locksmith
 bin/
 *.exe
 *.exe~
