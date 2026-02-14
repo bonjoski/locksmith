@@ -20,7 +20,7 @@ jobs:
     steps:
       # Pinning by SHA instead of version tag
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@bd2658d5e736e0da5c3a08bf1b2cff6e5e363b15 # v6.0.2
 
       - name: Setup Go
         uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0

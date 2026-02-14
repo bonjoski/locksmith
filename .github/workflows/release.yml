@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@bd2658d5e736e0da5c3a08bf1b2cff6e5e363b15 # v6.0.2
         with:
           fetch-depth: 0
 
@@ -41,7 +41,7 @@ jobs:
           subject-path: 'bin/locksmith'
 
       - name: Create Release
-        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.9
+        uses: softprops/action-gh-release@5cf7a35e20c72c9b36920651900e79f1bb92ee46 # v2.5.0
         with:
           files: bin/locksmith
           generate_release_notes: true
