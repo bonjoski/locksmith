@@ -161,6 +161,7 @@ Locksmith implements defense-in-depth security:
 - **Biometric authentication**: Touch ID/Face ID required for all operations
 - **Memory zeroing**: Secrets cleared from memory immediately after use
 - **SLSA provenance**: Releases include cryptographic attestations
+- **Continuous Fuzzing**: Daily fuzz testing of critical parsing logic
 - **OpenSSF Scorecard**: Automated security assessment
 
 ### Verifying Releases
