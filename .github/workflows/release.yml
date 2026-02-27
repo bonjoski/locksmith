@@ -28,20 +28,20 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@3041bf56604102f05352ba2bb202f90aef5a3e77 # v5.2.0
         with:
-          go-version: '1.21'
+          go-version: '1.25.4'
           cache: true
 
       - name: Build Locksmith
-        run: make build # Assumes your Makefile builds to bin/locksmith
+        run: make release
 
       # 3. Create the Attestation (The SLSA "Birth Certificate")
       - name: Generate Artifact Attestation
         uses: actions/attest-build-provenance@1c7062403f905e947d7e3a9686036814b304c53d # v1.4.3
         with:
-          subject-path: 'bin/locksmith'
+          subject-path: 'bin/*'
 
       - name: Create Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
-          files: bin/locksmith
+          files: bin/*
           generate_release_notes: true
