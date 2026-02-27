@@ -1,6 +1,6 @@
 module github.com/bonjoski/locksmith
 
-go 1.24
+go 1.25.4
 
 require (
 	github.com/danieljoos/wincred v1.2.3
