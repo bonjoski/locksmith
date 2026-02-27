@@ -98,7 +98,7 @@ define install_if_missing
 endef
 
 lint: ## Run golangci-lint (installs if missing)
-	$(call install_if_missing,golangci-lint,curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VERSION))
+	$(call install_if_missing,golangci-lint,go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
 	@echo "Running golangci-lint..."
 	@$(GOBIN)/golangci-lint run
 
