@@ -5,25 +5,29 @@
 [![SLSA 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/bonjoski/locksmith)](https://github.com/bonjoski/locksmith/releases)
-[![Platform](https://img.shields.io/badge/platform-macOS-blue)](https://github.com/bonjoski/locksmith)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/bonjoski/locksmith)
 
-**Locksmith** is a secure, biometric-protected keychain vault for macOS. It allows you to store keys, tokens, and passwords in the native macOS Keychain, requiring Touch ID (or your system password) for access.
+**Locksmith** is a secure, biometric-protected keychain vault for macOS and Windows. It allows you to store keys, tokens, and passwords in the native system keychain, requiring biometric authentication (Touch ID on macOS, Windows Hello on Windows) for access.
 
 ## Features
 
-- **Biometric Security**: Leverages macOS `LocalAuthentication` for Touch ID protection.
-- **Keychain Integration**: Stores secrets in the secure macOS Keychain Services.
+- **Biometric Security**: Leverages macOS `LocalAuthentication` and **Windows Hello** for biometric protection.
+- **Keychain Integration**: Stores secrets in the secure macOS Keychain Services and **Windows Credential Manager**.
 - **Disk Caching**: Optional encrypted disk cache for fast re-access with configurable TTL.
 - **CLI & Library**: Use it as a standalone command-line tool or import it as a Go package.
 - **Auto-Provisioning**: Built-in `Makefile` that automatically installs its own security and quality tools.
 
 ## Installation
 
-### Prerequisites
+### macOS Prerequisites
 - macOS with Touch ID support.
-- Go 1.21+ installed.
+- Go 1.25.4.
 - Xcode Command Line Tools (`xcode-select --install`).
-- An Apple Developer account (for code signing).
+- An Apple Developer account (for code signing biometric features).
+
+### Windows Prerequisites
+- Windows 10/11 with Windows Hello support.
+- Go 1.25.4.
 
 ### Build from Source
 ```bash
@@ -157,8 +161,8 @@ make help
 
 Locksmith implements defense-in-depth security:
 
-- **Hardware-backed encryption**: Secrets protected by macOS Secure Enclave
-- **Biometric authentication**: Touch ID/Face ID required for all operations
+- **Hardware-backed encryption**: Secrets protected by macOS Secure Enclave and Windows TPM.
+- **Biometric authentication**: Touch ID/Face ID and Windows Hello required for all operations.
 - **Memory zeroing**: Secrets cleared from memory immediately after use
 - **SLSA provenance**: Releases include cryptographic attestations
 - **Continuous Fuzzing**: Daily fuzz testing of critical parsing logic
