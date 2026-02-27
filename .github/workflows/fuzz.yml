@@ -4,8 +4,7 @@ on:
     - cron: '0 1 * * *' # Daily at 01:00 UTC
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: read-all
 
 jobs:
   fuzz:

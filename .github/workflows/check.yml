@@ -6,8 +6,7 @@ on:
   workflow_dispatch:
 
 # Set strict permissions at the top level
-permissions:
-  contents: read
+permissions: read-all
 
 # Cancel in-progress builds when new commits are pushed
 concurrency:

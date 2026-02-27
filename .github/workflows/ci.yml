@@ -1,5 +1,8 @@
 name: CI
 
+# 1. Explicitly set top-level permissions to "read-all" as a safety baseline
+permissions: read-all
+
 on:
   push:
     branches: [ main ]
@@ -10,9 +13,9 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4.2.2
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@3041bf56604102f05352ba2bb202f90aef5a3e77 # v5.2.0
         with:
           go-version: '1.25.4'
       - name: Build
@@ -23,9 +26,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4.2.2
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@3041bf56604102f05352ba2bb202f90aef5a3e77 # v5.2.0
         with:
           go-version: '1.25.4'
       - name: Build

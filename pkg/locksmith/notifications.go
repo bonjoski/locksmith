@@ -57,8 +57,9 @@ func (n *Notifier) notifyStderr(message string) {
 }
 
 func (n *Notifier) notifyMacOS(message string) {
+	// Use %q to safely escape the message for AppleScript, preventing injection
 	cmd := exec.Command("osascript", "-e",
-		fmt.Sprintf(`display notification "%s" with title "Locksmith"`, message))
+		fmt.Sprintf(`display notification %q with title "Locksmith"`, message))
 	_ = cmd.Run() // Ignore errors
 }
 
