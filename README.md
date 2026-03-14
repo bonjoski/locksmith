@@ -2,6 +2,8 @@
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/bonjoski/locksmith/badge)](https://scorecard.dev/viewer/?uri=github.com/bonjoski/locksmith)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bonjoski/locksmith)](https://goreportcard.com/report/github.com/bonjoski/locksmith)
+[![CI](https://github.com/bonjoski/locksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/bonjoski/locksmith/actions/workflows/ci.yml)
+[![Check](https://github.com/bonjoski/locksmith/actions/workflows/check.yml/badge.svg)](https://github.com/bonjoski/locksmith/actions/workflows/check.yml)
 [![SLSA 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/bonjoski/locksmith)](https://github.com/bonjoski/locksmith/releases)
