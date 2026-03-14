@@ -41,7 +41,7 @@ func LoadConfig() (*Config, error) {
 		return cfg, nil // Return defaults
 	}
 
-	configPath := filepath.Join(home, ".locksmith", "config.yml")
+	configPath := filepath.Clean(filepath.Join(home, ".locksmith", "config.yml"))
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return cfg, nil // Return defaults if file doesn't exist

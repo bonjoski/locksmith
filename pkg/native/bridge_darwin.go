@@ -1,9 +1,12 @@
+//go:build darwin
+// +build darwin
+
 package native
 
 /*
 #cgo LDFLAGS: -framework Foundation -framework Security -framework LocalAuthentication
 #include <stdlib.h>
-#include "keychain.h"
+#include "keychain_darwin.h"
 */
 import "C"
 import (

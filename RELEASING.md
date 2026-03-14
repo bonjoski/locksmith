@@ -25,9 +25,9 @@ Releases are automated via GitHub Actions. To create a new release:
    ```
 
 4. The GitHub Actions workflow will automatically:
-   - Build binaries for macOS (ARM64 and AMD64)
-   - Sign the binaries with ad-hoc signatures
-   - Generate cryptographic attestations (SLSA provenance)
+   - Build binaries for macOS (ARM64, AMD64) and Windows (AMD64, ARM64)
+   - Sign the macOS binaries with ad-hoc signatures
+   - Generate cryptographic attestations (SLSA provenance) for all binaries
    - Create a GitHub release with all artifacts
 
 ## Verifying Releases
@@ -37,11 +37,15 @@ Locksmith releases include cryptographic attestations that prove the binaries we
 ### Using GitHub CLI (Recommended)
 
 ```bash
-# Download the binary
+# Download the binary (example for macOS)
 gh release download v1.5.1 -p 'locksmith-darwin-arm64'
 
 # Verify the attestation
 gh attestation verify locksmith-darwin-arm64 --owner bonjoski
+
+# Example for Windows
+gh release download v1.5.1 -p 'locksmith-windows-amd64.exe'
+gh attestation verify locksmith-windows-amd64.exe --owner bonjoski
 ```
 
 This verifies:

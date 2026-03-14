@@ -39,12 +39,18 @@ release: ## Build release binaries for multiple architectures
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/locksmith
 	@echo "Building for darwin/amd64..."
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/locksmith
+	@echo "Building for windows/amd64..."
+	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/locksmith
+	@echo "Building for windows/arm64..."
+	@CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-arm64.exe ./cmd/locksmith
 	@echo "Signing binaries..."
 	@codesign --force --identifier $(IDENTIFIER) --sign "-" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
 	@codesign --force --identifier $(IDENTIFIER) --sign "-" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
 	@echo "Creating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-windows-amd64.exe >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-windows-arm64.exe >> checksums.txt
 	@echo "Release binaries built in $(BUILD_DIR)/"
 
 ## Summon provider
@@ -98,7 +104,7 @@ define install_if_missing
 endef
 
 lint: ## Run golangci-lint (installs if missing)
-	$(call install_if_missing,golangci-lint,curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN) $(GOLANGCI_LINT_VERSION))
+	$(call install_if_missing,golangci-lint,go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
 	@echo "Running golangci-lint..."
 	@$(GOBIN)/golangci-lint run
 

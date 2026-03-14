@@ -33,7 +33,7 @@ func (s *Secret) GetExpirationStatus(threshold time.Duration) ExpirationStatus {
 		return StatusExpired
 	}
 
-	if now.Add(threshold).After(s.ExpiresAt) {
+	if !now.Add(threshold).Before(s.ExpiresAt) {
 		return StatusExpiring
 	}
 

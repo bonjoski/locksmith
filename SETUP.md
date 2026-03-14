@@ -81,3 +81,20 @@ To verify the binary is correctly signed:
 # Verify signature details
 codesign -dvvv locksmith
 ```
+
+## 6. Windows Setup
+
+Windows support uses the native **Windows Credential Manager** and **Windows Hello**.
+
+### Prerequisites
+- Windows 10 or 11.
+- A functional Windows Hello method (PIN, Fingerprint, or Face).
+- Go 1.25.4.
+
+### Building on Windows
+```powershell
+go build -o locksmith.exe ./cmd/locksmith
+```
+
+### Biometric Authentication
+Windows Hello is handled natively via the `winhello-go` library. Unlike macOS, Windows doesn't require explicit code signing for a CLI tool to access the biometric APIs during local development, but it is recommended for distribution.
