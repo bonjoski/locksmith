@@ -17,9 +17,15 @@ type NotificationConfig struct {
 	ShowOnList        bool   `yaml:"show_on_list"`
 }
 
+type AuthConfig struct {
+	RequireBiometrics bool   `yaml:"require_biometrics"`
+	PromptMessage     string `yaml:"prompt_message,omitempty"`
+}
+
 // Config represents the locksmith configuration
 type Config struct {
 	Notifications NotificationConfig `yaml:"notifications"`
+	Auth          AuthConfig         `yaml:"auth"`
 }
 
 // LoadConfig loads configuration from ~/.locksmith/config.yml
@@ -32,6 +38,9 @@ func LoadConfig() (*Config, error) {
 			Method:            "stderr",
 			ShowOnGet:         true,
 			ShowOnList:        true,
+		},
+		Auth: AuthConfig{
+			RequireBiometrics: true, // Fail secure by default
 		},
 	}
 
@@ -69,11 +78,11 @@ func (c *Config) GetExpiringThreshold() (time.Duration, error) {
 	}
 
 	// Parse custom formats (d, w, mo, y)
-	return parseDuration(c.Notifications.ExpiringThreshold)
+	return ParseDuration(c.Notifications.ExpiringThreshold)
 }
 
-// parseDuration parses duration strings like "7d", "2w", "1mo", "1y"
-func parseDuration(s string) (time.Duration, error) {
+// ParseDuration parses duration strings like "7d", "2w", "1mo", "1y"
+func ParseDuration(s string) (time.Duration, error) {
 	if len(s) < 2 {
 		return 0, fmt.Errorf("invalid duration: %s", s)
 	}

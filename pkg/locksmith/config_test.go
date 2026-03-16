@@ -102,14 +102,14 @@ func TestParseDuration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			duration, err := parseDuration(tt.input)
+			duration, err := ParseDuration(tt.input)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("parseDuration(%q) error=%v, wantErr=%v", tt.input, err, tt.wantErr)
+				t.Errorf("ParseDuration(%q) error=%v, wantErr=%v", tt.input, err, tt.wantErr)
 			}
 
 			if !tt.wantErr && duration != tt.expected {
-				t.Errorf("parseDuration(%q) = %v, want %v", tt.input, duration, tt.expected)
+				t.Errorf("ParseDuration(%q) = %v, want %v", tt.input, duration, tt.expected)
 			}
 		})
 	}
