@@ -1,10 +1,8 @@
 package locksmith
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -17,6 +15,24 @@ const (
 	MasterKeyAccount = "locksmith-master-cache-key"
 )
 
+type Options struct {
+	RequireBiometrics bool
+	PromptMessage     string
+}
+
+func (o *Options) getPrompt(defaultPrompt, key string) string {
+	if o.PromptMessage != "" {
+		if key != "" && strings.Contains(o.PromptMessage, "%s") {
+			return fmt.Sprintf(o.PromptMessage, key)
+		}
+		return o.PromptMessage
+	}
+	if key != "" {
+		return fmt.Sprintf(defaultPrompt, key)
+	}
+	return defaultPrompt
+}
+
 type Cache interface {
 	Set(key string, secret Secret, ttl time.Duration) error
 	Get(key string) (*Secret, error)
@@ -27,11 +43,16 @@ type Cache interface {
 type Locksmith struct {
 	Service string
 	Cache   Cache
+	Options Options
 }
 
 func New() (*Locksmith, error) {
-	// 1. Derive Master Key from Hardware UUID
-	// This ensures the cache is device-locked without triggering Keychain prompts
+	// Default to requiring biometrics when invoked without options
+	return NewWithOptions(Options{RequireBiometrics: true})
+}
+
+func NewWithOptions(opts Options) (*Locksmith, error) {
+	// 1. Derive Master Key from platform-specific logic
 	masterKey, err := deriveMasterKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive master key: %w", err)
@@ -41,44 +62,16 @@ func New() (*Locksmith, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewWithCache(cache), nil
-}
-
-func deriveMasterKey() ([]byte, error) {
-	// Get Hardware UUID via ioreg
-	// ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/ {print $(NF-1)}'
-	cmd := exec.Command("ioreg", "-d2", "-c", "IOPlatformExpertDevice")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hardware info: %w", err)
-	}
-
-	// Simple parsing for IOPlatformUUID
-	lines := strings.Split(string(out), "\n")
-	var uuid string
-	for _, line := range lines {
-		if strings.Contains(line, "IOPlatformUUID") {
-			parts := strings.Split(line, "\"")
-			if len(parts) >= 4 {
-				uuid = parts[3]
-				break
-			}
-		}
-	}
-
-	if uuid == "" {
-		return nil, fmt.Errorf("failed to extract IOPlatformUUID")
-	}
-
-	// Hash the UUID to get a 32-byte key
-	hash := sha256.Sum256([]byte(uuid))
-	return hash[:], nil
+	ls := NewWithCache(cache)
+	ls.Options = opts
+	return ls, nil
 }
 
 func NewWithCache(cache Cache) *Locksmith {
 	return &Locksmith{
 		Service: DefaultService,
 		Cache:   cache,
+		Options: Options{RequireBiometrics: true}, // Safe default
 	}
 }
 
@@ -94,8 +87,8 @@ func (l *Locksmith) Set(key string, value []byte, expiresAt time.Time) error {
 		return err
 	}
 
-	// Always require biometrics when storing a new secret in Keychain
-	err = native.Set(l.Service, key, data, true)
+	// Use l.Options.RequireBiometrics
+	err = native.Set(l.Service, key, data, l.Options.RequireBiometrics)
 	if err != nil {
 		return err
 	}
@@ -116,9 +109,9 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 		}
 	}
 
-	// 2. Fallback to Keychain (triggers biometric prompt)
-	prompt := fmt.Sprintf("Authentication required to access '%s'", key)
-	data, err := native.Get(l.Service, key, true, prompt)
+	// 2. Fallback to Keychain (triggers biometric prompt if required)
+	prompt := l.Options.getPrompt("Authentication required to access '%s'", key)
+	data, err := native.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +131,8 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 }
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
-	prompt := "Authentication required to list secrets"
-	keys, err := native.List(l.Service, true, prompt)
+	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
+	keys, err := native.List(l.Service, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -160,8 +153,8 @@ func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 
 func (l *Locksmith) Delete(key string) error {
 	_ = l.Cache.Delete(key)
-	prompt := fmt.Sprintf("Authentication required to delete secret '%s'", key)
-	return native.Delete(l.Service, key, true, prompt)
+	prompt := l.Options.getPrompt("Authentication required to delete secret '%s'", key)
+	return native.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
 }
 
 // GetWithMetadata retrieves a secret with its metadata
@@ -183,8 +176,8 @@ func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
 	}
 
 	// If not in cache, get from keychain
-	prompt := fmt.Sprintf("Authentication required to access '%s'", key)
-	data, err := native.Get(l.Service, key, true, prompt)
+	prompt := l.Options.getPrompt("Authentication required to access '%s'", key)
+	data, err := native.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -200,8 +193,8 @@ func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
 
 // ListWithMetadata returns all secrets with their metadata
 func (l *Locksmith) ListWithMetadata() (map[string]*SecretMetadata, error) {
-	prompt := "Authentication required to list secrets"
-	keys, err := native.List(l.Service, true, prompt)
+	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
+	keys, err := native.List(l.Service, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}

@@ -7,14 +7,14 @@
 [![SLSA 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/bonjoski/locksmith)](https://github.com/bonjoski/locksmith/releases)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/bonjoski/locksmith)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)](https://github.com/bonjoski/locksmith)
 
-**Locksmith** is a secure, biometric-protected keychain vault for macOS and Windows. It allows you to store keys, tokens, and passwords in the native system keychain, requiring biometric authentication (Touch ID on macOS, Windows Hello on Windows) for access.
+**Locksmith** is a secure, biometric-protected keychain vault for macOS, Windows, and Linux. It allows you to store keys, tokens, and passwords in the native system keychain, requiring biometric authentication (Touch ID on macOS, Windows Hello on Windows, Polkit/Secret Service on Linux) for access.
 
 ## Features
 
-- **Biometric Security**: Leverages macOS `LocalAuthentication` and **Windows Hello** for biometric protection.
-- **Keychain Integration**: Stores secrets in the secure macOS Keychain Services and **Windows Credential Manager**.
+- **Biometric Security**: Leverages macOS `LocalAuthentication`, **Windows Hello**, and **Linux Polkit** for biometric and interactive protection.
+- **Keychain Integration**: Stores secrets in the secure macOS Keychain Services, **Windows Credential Manager**, and the **Linux Secret Service DBus**.
 - **Disk Caching**: Optional encrypted disk cache for fast re-access with configurable TTL.
 - **CLI & Library**: Use it as a standalone command-line tool or import it as a Go package.
 - **Auto-Provisioning**: Built-in `Makefile` that automatically installs its own security and quality tools.
@@ -97,6 +97,10 @@ This provides Touch ID authentication for your DevOps workflows, ensuring secret
 Locksmith supports optional configuration via `~/.locksmith/config.yml` for customizing expiration notifications:
 
 ```yaml
+auth:
+  require_biometrics: true  # Enforce Touch ID / Windows Hello
+  prompt_message: "Authenticate to access Locksmith secret '%s'" # Optional custom prompt 
+
 notifications:
   expiring_threshold: 7d    # Warn when secrets expire within this duration
   method: stderr            # Options: stderr, macos, silent

@@ -1,7 +1,18 @@
 # Locksmith Configuration Example
 
 # This is an example configuration file for locksmith.
-# Save this as ~/.locksmith/config.yml to customize notification behavior.
+# Save this as ~/.locksmith/config.yml to customize behavior.
+
+auth:
+  # Enforce biometric authentication
+  # When true, commands requiring keychain access will prompt for Touch ID / Windows Hello
+  # Default: true
+  require_biometrics: true
+
+  # Custom prompt message shown by the OS during biometric request.
+  # Use '%s' to inject the name of the secret being accessed.
+  # Default: "Authentication required to access '%s'"
+  prompt_message: "Authenticate to access Locksmith secret '%s'"
 
 notifications:
   # Threshold for expiration warnings
