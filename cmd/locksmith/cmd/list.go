@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bonjoski/locksmith/pkg/locksmith"
+	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 	"github.com/spf13/cobra"
 )
 

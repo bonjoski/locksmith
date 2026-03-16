@@ -1,4 +1,4 @@
-module github.com/bonjoski/locksmith
+module github.com/bonjoski/locksmith/v2
 
 go 1.25.4
 

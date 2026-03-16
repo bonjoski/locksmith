@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bonjoski/locksmith/pkg/locksmith"
+	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 )
 
 func main() {
