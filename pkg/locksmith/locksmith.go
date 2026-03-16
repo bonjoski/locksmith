@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bonjoski/locksmith/pkg/native"
+	"github.com/bonjoski/locksmith/v2/pkg/native"
 )
 
 const (
