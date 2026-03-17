@@ -40,9 +40,37 @@ type Cache interface {
 	IsExpired(key string, ttl time.Duration) bool
 }
 
+// Backend defines the interface for native secret storage
+type Backend interface {
+	Set(service, account string, data []byte, requireBiometrics bool) error
+	Get(service, account string, useBiometrics bool, prompt string) ([]byte, error)
+	Delete(service, account string, useBiometrics bool, prompt string) error
+	List(service string, useBiometrics bool, prompt string) ([]string, error)
+}
+
+// DefaultBackend implements Backend using the native package
+type DefaultBackend struct{}
+
+func (b *DefaultBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
+	return native.Set(service, account, data, requireBiometrics)
+}
+
+func (b *DefaultBackend) Get(service, account string, useBiometrics bool, prompt string) ([]byte, error) {
+	return native.Get(service, account, useBiometrics, prompt)
+}
+
+func (b *DefaultBackend) Delete(service, account string, useBiometrics bool, prompt string) error {
+	return native.Delete(service, account, useBiometrics, prompt)
+}
+
+func (b *DefaultBackend) List(service string, useBiometrics bool, prompt string) ([]string, error) {
+	return native.List(service, useBiometrics, prompt)
+}
+
 type Locksmith struct {
 	Service string
 	Cache   Cache
+	Backend Backend
 	Options Options
 }
 
@@ -71,6 +99,7 @@ func NewWithCache(cache Cache) *Locksmith {
 	return &Locksmith{
 		Service: DefaultService,
 		Cache:   cache,
+		Backend: &DefaultBackend{},
 		Options: Options{RequireBiometrics: true}, // Safe default
 	}
 }
@@ -88,7 +117,7 @@ func (l *Locksmith) Set(key string, value []byte, expiresAt time.Time) error {
 	}
 
 	// Use l.Options.RequireBiometrics
-	err = native.Set(l.Service, key, data, l.Options.RequireBiometrics)
+	err = l.Backend.Set(l.Service, key, data, l.Options.RequireBiometrics)
 	if err != nil {
 		return err
 	}
@@ -111,7 +140,7 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 
 	// 2. Fallback to Keychain (triggers biometric prompt if required)
 	prompt := l.Options.getPrompt("Authentication required to access '%s'", key)
-	data, err := native.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
+	data, err := l.Backend.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +161,7 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
-	keys, err := native.List(l.Service, l.Options.RequireBiometrics, prompt)
+	keys, err := l.Backend.List(l.Service, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +183,7 @@ func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 func (l *Locksmith) Delete(key string) error {
 	_ = l.Cache.Delete(key)
 	prompt := l.Options.getPrompt("Authentication required to delete secret '%s'", key)
-	return native.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
+	return l.Backend.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
 }
 
 // GetWithMetadata retrieves a secret with its metadata
@@ -177,7 +206,7 @@ func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
 
 	// If not in cache, get from keychain
 	prompt := l.Options.getPrompt("Authentication required to access '%s'", key)
-	data, err := native.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
+	data, err := l.Backend.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +223,7 @@ func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
 // ListWithMetadata returns all secrets with their metadata
 func (l *Locksmith) ListWithMetadata() (map[string]*SecretMetadata, error) {
 	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
-	keys, err := native.List(l.Service, l.Options.RequireBiometrics, prompt)
+	keys, err := l.Backend.List(l.Service, l.Options.RequireBiometrics, prompt)
 	if err != nil {
 		return nil, err
 	}

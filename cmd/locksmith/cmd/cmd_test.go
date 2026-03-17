@@ -40,6 +40,25 @@ func (m *mockCache) IsExpired(key string, ttl time.Duration) bool {
 	return false
 }
 
+// mockBackend for CLI tests to avoid native keyring dependencies
+type mockBackend struct{}
+
+func (m *mockBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
+	return nil
+}
+
+func (m *mockBackend) Get(service, account string, useBiometrics bool, prompt string) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockBackend) Delete(service, account string, useBiometrics bool, prompt string) error {
+	return nil
+}
+
+func (m *mockBackend) List(service string, useBiometrics bool, prompt string) ([]string, error) {
+	return []string{}, nil
+}
+
 func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	outBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
@@ -57,7 +76,7 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 		},
 	}
 
-	// Inject a mock locksmith instance with an empty cache to avoid native calls in basic routing tests
+	// Inject a mock locksmith instance with an empty cache and mock backend
 	mc := &mockCache{secrets: make(map[string]locksmith.Secret)}
 
 	// Pre-seed a test key so it doesn't query the native keychain on a cache miss
@@ -68,6 +87,7 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	}
 
 	ls = locksmith.NewWithCache(mc)
+	ls.Backend = &mockBackend{} // Inject mock backend to avoid native calls
 	ls.Options.RequireBiometrics = false
 
 	rootCmd.SetOut(outBuf)
