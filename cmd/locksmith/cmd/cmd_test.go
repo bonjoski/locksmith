@@ -15,6 +15,10 @@ type mockCache struct {
 }
 
 func (m *mockCache) Set(key string, secret locksmith.Secret, ttl time.Duration) error {
+	// Copy value to avoid zeroing issues in tests
+	val := make([]byte, len(secret.Value))
+	copy(val, secret.Value)
+	secret.Value = val
 	m.secrets[key] = secret
 	return nil
 }
@@ -68,6 +72,7 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 
 	rootCmd.SetOut(outBuf)
 	rootCmd.SetErr(errBuf)
+	rootCmd.SetIn(new(bytes.Buffer)) // Default empty input
 
 	return outBuf, errBuf
 }
@@ -124,5 +129,59 @@ func TestTokenSubcommand(t *testing.T) {
 
 	if !noNewline {
 		t.Error("Expected -n flag to correctly map to noNewline flag under the token subcommand")
+	}
+}
+
+func TestAddCommand(t *testing.T) {
+	outBuf, _ := setupTest()
+
+	// 1. Test adding with 2 arguments (legacy)
+	key := "test-add-arg"
+	secret := "secret-value"
+	rootCmd.SetArgs([]string{"add", key, secret})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("Add command failed: %v", err)
+	}
+
+	// Verify it was saved in the mock cache
+	mc := ls.Cache.(*mockCache)
+	s, ok := mc.secrets[key]
+	if !ok {
+		t.Errorf("Expected secret '%s' to be saved", key)
+	}
+	if string(s.Value) != secret {
+		t.Errorf("Expected secret value '%s', got '%s'", secret, string(s.Value))
+	}
+
+	if !strings.Contains(outBuf.String(), "Successfully saved secret") {
+		t.Errorf("Expected success message, got: %s", outBuf.String())
+	}
+
+	// 2. Test adding with 1 argument (prompting)
+	outBuf, _ = setupTest()
+	promptSecret := "prompted-secret"
+	rootCmd.SetIn(strings.NewReader(promptSecret + "\n"))
+	rootCmd.SetArgs([]string{"add", "prompt-key"})
+
+	err = rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("Add command with prompt failed: %v", err)
+	}
+
+	// Important: setupTest() Re-initializes ls and mc, so we need to get the new mc
+	mc = ls.Cache.(*mockCache)
+
+	s, ok = mc.secrets["prompt-key"]
+	if !ok {
+		t.Error("Expected secret 'prompt-key' to be saved")
+	}
+	if string(s.Value) != promptSecret {
+		t.Errorf("Expected secret value '%s', got '%s'", promptSecret, string(s.Value))
+	}
+
+	if !strings.Contains(outBuf.String(), "Enter secret:") {
+		t.Error("Expected output to contain prompt 'Enter secret:'")
 	}
 }
