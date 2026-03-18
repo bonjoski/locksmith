@@ -28,3 +28,4 @@ logs/
 # Security scan results
 gosec_results.json
 results.json
+*.app/
