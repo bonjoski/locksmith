@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	DefaultService   = "com.locksmith.keychain"
+	DefaultService   = "sh.locksmith.v2"
 	DefaultCacheTTL  = 1 * time.Hour
 	MasterKeyAccount = "locksmith-master-cache-key"
 )
@@ -127,14 +127,22 @@ func (l *Locksmith) Set(key string, value []byte, expiresAt time.Time) error {
 }
 
 func (l *Locksmith) Get(key string) ([]byte, error) {
+	secret, err := l.getSecret(key)
+	if err != nil {
+		return nil, err
+	}
+	// Return a copy to prevent cache modification
+	valueCopy := make([]byte, len(secret.Value))
+	copy(valueCopy, secret.Value)
+	return valueCopy, nil
+}
+
+func (l *Locksmith) getSecret(key string) (*Secret, error) {
 	// 1. Check Cache
 	if !l.Cache.IsExpired(key, DefaultCacheTTL) {
 		secret, err := l.Cache.Get(key)
 		if err == nil && secret != nil {
-			// Return a copy to prevent cache modification
-			valueCopy := make([]byte, len(secret.Value))
-			copy(valueCopy, secret.Value)
-			return valueCopy, nil
+			return secret, nil
 		}
 	}
 
@@ -153,13 +161,11 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 	// 3. Update Cache for subsequent calls
 	_ = l.Cache.Set(key, secret, DefaultCacheTTL)
 
-	// Return a copy to prevent cache modification
-	valueCopy := make([]byte, len(secret.Value))
-	copy(valueCopy, secret.Value)
-	return valueCopy, nil
+	return &secret, nil
 }
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
+// ... existing List implementation ...
 	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
 	keys, err := l.Backend.List(l.Service, l.Options.RequireBiometrics, prompt)
 	if err != nil {
@@ -188,36 +194,7 @@ func (l *Locksmith) Delete(key string) error {
 
 // GetWithMetadata retrieves a secret with its metadata
 func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
-	// Get the value
-	value, err := l.Get(key)
-	if err != nil {
-		return nil, err
-	}
-
-	// Try to get metadata from cache
-	cached, err := l.Cache.Get(key)
-	if err == nil && cached != nil {
-		return &Secret{
-			Value:     value,
-			CreatedAt: cached.CreatedAt,
-			ExpiresAt: cached.ExpiresAt,
-		}, nil
-	}
-
-	// If not in cache, get from keychain
-	prompt := l.Options.getPrompt("Authentication required to access '%s'", key)
-	data, err := l.Backend.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
-	if err != nil {
-		return nil, err
-	}
-
-	var secret Secret
-	if err := json.Unmarshal(data, &secret); err != nil {
-		return nil, err
-	}
-
-	secret.Value = value
-	return &secret, nil
+	return l.getSecret(key)
 }
 
 // ListWithMetadata returns all secrets with their metadata

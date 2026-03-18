@@ -15,16 +15,29 @@ var expiresStr string
 var addCmd = &cobra.Command{
 	Use:   "add <key> [secret]",
 	Short: "Store a secret",
-	Args:  cobra.RangeArgs(1, 2),
+	Args:  cobra.RangeArgs(0, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		key := args[0]
+		var key string
 		var secretBytes []byte
+		var err error
+
+		if len(args) > 0 {
+			key = args[0]
+		} else {
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Enter key name: ")
+			_, err = fmt.Fscanln(cmd.InOrStdin(), &key)
+			if err != nil {
+				return fmt.Errorf("error reading key: %w", err)
+			}
+			if key == "" {
+				return fmt.Errorf("key cannot be empty")
+			}
+		}
 
 		if len(args) == 2 {
 			secretBytes = []byte(args[1])
 		} else {
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Enter secret: ")
-			var err error
 			if f, ok := cmd.InOrStdin().(*os.File); ok && term.IsTerminal(int(f.Fd())) {
 				secretBytes, err = term.ReadPassword(int(f.Fd()))
 				_, _ = fmt.Fprintln(cmd.OutOrStdout())

@@ -24,8 +24,6 @@ all: build sign
 build: ## Compile the binary
 	@echo "Building $(BINARY_NAME) v$(VERSION)..."
 	@go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY_NAME) ./cmd/locksmith
-	@echo "Ad-hoc signing $(BINARY_NAME)..."
-	@codesign --force --identifier $(IDENTIFIER) --sign "-" $(BINARY_NAME)
 
 sign: build ## Sign the binary with developer identity
 	@echo "Signing $(BINARY_NAME)..."
