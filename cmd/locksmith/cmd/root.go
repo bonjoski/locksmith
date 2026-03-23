@@ -11,7 +11,6 @@ import (
 var (
 	ls                  *locksmith.Locksmith
 	cfg                 *locksmith.Config
-	allowNoBiometrics   bool
 	globalBiometricReqs bool
 )
 
@@ -30,11 +29,6 @@ var rootCmd = &cobra.Command{
 		}
 
 		globalBiometricReqs = cfg.Auth.RequireBiometrics
-
-		// Guard rail verification
-		if !globalBiometricReqs && !allowNoBiometrics {
-			return fmt.Errorf("config disables biometrics, but --allow-no-biometrics was not passed")
-		}
 
 		// Initialize Locksmith
 		if ls == nil {
@@ -65,5 +59,4 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&allowNoBiometrics, "allow-no-biometrics", false, "acknowledge the risk when config disables interactive biometric prompts")
 }

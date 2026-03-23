@@ -66,7 +66,6 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	// Reset global state
 	jsonOutput = false
 	noNewline = false
-	allowNoBiometrics = true // satisfy the guard rail since we inject tests with disabled biometrics
 
 	cfg = &locksmith.Config{
 		Auth: locksmith.AuthConfig{RequireBiometrics: false},

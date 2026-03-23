@@ -63,8 +63,9 @@ KeychainResult keychain_get(const char *service, const char *account,
   NSString *accountNS = [NSString stringWithUTF8String:account];
   NSString *promptNS = [NSString stringWithUTF8String:prompt];
 
+  LAContext *context = nil;
   if (use_biometrics || [promptNS length] > 0) {
-    LAContext *context = [[LAContext alloc] init];
+    context = [[LAContext alloc] init];
     context.localizedFallbackTitle = @"";
 
     NSString *reason = promptNS;
@@ -95,6 +96,10 @@ KeychainResult keychain_get(const char *service, const char *account,
   query[(__bridge id)kSecAttrService] = serviceNS;
   query[(__bridge id)kSecAttrAccount] = accountNS;
   query[(__bridge id)kSecReturnData] = @YES;
+
+  if (context != nil) {
+    query[(__bridge id)kSecUseAuthenticationContext] = context;
+  }
 
   CFTypeRef dataTypeRef = NULL;
   OSStatus status =
