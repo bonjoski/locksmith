@@ -55,13 +55,22 @@ var addCmd = &cobra.Command{
 			}
 		}
 
+		var moduleAccess bool
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), "Will this token be accessed via the module? (y/N): ")
+		var resp string
+		_, _ = fmt.Fscanln(cmd.InOrStdin(), &resp)
+		if resp == "y" || resp == "Y" || resp == "yes" {
+			moduleAccess = true
+		}
+
 		duration, err := locksmith.ParseDuration(expiresStr)
 		if err != nil {
 			return fmt.Errorf("invalid expiration duration: %w", err)
 		}
 
 		expiresAt := time.Now().Add(duration)
-		if err := ls.Set(key, secretBytes, expiresAt); err != nil {
+		// Use SetWithBiometrics to override the default requirement if it's for the module
+		if err := ls.SetWithBiometrics(key, secretBytes, expiresAt, !moduleAccess); err != nil {
 			return fmt.Errorf("error saving secret: %w", err)
 		}
 

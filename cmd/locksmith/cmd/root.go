@@ -39,7 +39,7 @@ var rootCmd = &cobra.Command{
 		// Initialize Locksmith
 		if ls == nil {
 			opts := locksmith.Options{
-				RequireBiometrics: globalBiometricReqs,
+				RequireBiometrics: true, // EXE always requires biometrics
 				PromptMessage:     cfg.Auth.PromptMessage,
 			}
 			var err error

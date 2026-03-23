@@ -23,7 +23,7 @@ all: build sign
 ## Build targets
 build: ## Compile the binary
 	@echo "Building $(BINARY_NAME) v$(VERSION)..."
-	@go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY_NAME) ./cmd/locksmith
+	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BINARY_NAME) ./cmd/locksmith
 
 sign: build ## Sign the binary with developer identity
 	@echo "Signing $(BINARY_NAME)..."
@@ -34,23 +34,23 @@ release: ## Build release binaries for multiple architectures
 	@echo "Building release binaries for $(BINARY_NAME) v$(VERSION)..."
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building for darwin/arm64..."
-	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/locksmith
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/locksmith
 	@echo "Building for darwin/amd64..."
-	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/locksmith
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/locksmith
 	@echo "Building for windows/amd64..."
 	@cd cmd/locksmith && \
 		go run github.com/tc-hib/go-winres@latest init > /dev/null && \
 		cp ../../assets/icon.png winres/icon.png && \
 		sips -z 256 256 winres/icon.png > /dev/null && \
 		go run github.com/tc-hib/go-winres@latest make > /dev/null
-	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/locksmith
 	@echo "Building for windows/arm64..."
-	@CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-arm64.exe ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-arm64.exe ./cmd/locksmith
 	@rm -rf cmd/locksmith/winres cmd/locksmith/rsrc_*.syso
 	@echo "Building for linux/amd64..."
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/locksmith
 	@echo "Building for linux/arm64..."
-	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/locksmith
 	@echo "Packaging macOS App Bundles..."
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app
@@ -74,7 +74,7 @@ release: ## Build release binaries for multiple architectures
 ## Summon provider
 build-summon: ## Build Summon provider binary
 	@echo "Building summon-locksmith provider..."
-	@go build -ldflags "-X main.version=$(VERSION)" -o summon-locksmith ./cmd/summon-locksmith
+	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o summon-locksmith ./cmd/summon-locksmith
 
  install-summon: build-summon ## Install Summon provider
 	@echo "Installing Summon provider..."
@@ -93,7 +93,7 @@ check: fmt tidy verify-deps vet lint govulncheck gosec gitleaks semgrep ## Run a
 
 test: ## Run unit tests
 	@echo "Running tests..."
-	@go test ./...
+	@go test -tags locksmith_admin ./...
 
 fmt: ## Format Go code
 	@echo "Formatting code..."
@@ -111,7 +111,7 @@ verify-deps: ## Verify dependencies and check for vulnerabilities
 
 vet: ## Run go vet
 	@echo "Vetting code..."
-	@go vet ./...
+	@go vet -tags locksmith_admin ./...
 
 # Tool checks and installation
 define install_if_missing
@@ -124,17 +124,17 @@ endef
 lint: ## Run golangci-lint (installs if missing)
 	$(call install_if_missing,golangci-lint,go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
 	@echo "Running golangci-lint..."
-	@$(GOBIN)/golangci-lint run
+	@$(GOBIN)/golangci-lint run --build-tags locksmith_admin
 
 govulncheck: ## Run govulncheck (installs if missing)
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck..."
-	@$(GOBIN)/govulncheck ./...
+	@$(GOBIN)/govulncheck -tags locksmith_admin ./...
 
 gosec: ## Run gosec (installs if missing)
 	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION))
 	@echo "Running gosec..."
-	@$(GOBIN)/gosec -severity high -exclude=G115 ./...
+	@$(GOBIN)/gosec -tags locksmith_admin -severity high -exclude=G115 ./...
 
 gitleaks: ## Run gitleaks (installs if missing)
 	@if ! command -v gitleaks > /dev/null; then \

@@ -75,8 +75,8 @@ type Locksmith struct {
 }
 
 func New() (*Locksmith, error) {
-	// Default to requiring biometrics when invoked without options
-	return NewWithOptions(Options{RequireBiometrics: true})
+	// Default to NOT requiring biometrics when invoked without options
+	return NewWithOptions(Options{RequireBiometrics: false})
 }
 
 func NewWithOptions(opts Options) (*Locksmith, error) {
@@ -100,31 +100,11 @@ func NewWithCache(cache Cache) *Locksmith {
 		Service: DefaultService,
 		Cache:   cache,
 		Backend: &DefaultBackend{},
-		Options: Options{RequireBiometrics: true}, // Safe default
+		Options: Options{RequireBiometrics: false}, // Default to read-only friendly behavior
 	}
 }
 
-func (l *Locksmith) Set(key string, value []byte, expiresAt time.Time) error {
-	secret := Secret{
-		Value:     value,
-		CreatedAt: time.Now(),
-		ExpiresAt: expiresAt,
-	}
-
-	data, err := json.Marshal(secret)
-	if err != nil {
-		return err
-	}
-
-	// Use l.Options.RequireBiometrics
-	err = l.Backend.Set(l.Service, key, data, l.Options.RequireBiometrics)
-	if err != nil {
-		return err
-	}
-
-	// Update cache as well
-	return l.Cache.Set(key, secret, DefaultCacheTTL)
-}
+// Set and Delete are implemented in admin.go and require locksmith_admin build tag
 
 func (l *Locksmith) Get(key string) ([]byte, error) {
 	secret, err := l.getSecret(key)
@@ -165,7 +145,7 @@ func (l *Locksmith) getSecret(key string) (*Secret, error) {
 }
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
-// ... existing List implementation ...
+	// ... existing List implementation ...
 	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
 	keys, err := l.Backend.List(l.Service, l.Options.RequireBiometrics, prompt)
 	if err != nil {
@@ -186,11 +166,7 @@ func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 	return result, nil
 }
 
-func (l *Locksmith) Delete(key string) error {
-	_ = l.Cache.Delete(key)
-	prompt := l.Options.getPrompt("Authentication required to delete secret '%s'", key)
-	return l.Backend.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
-}
+// Delete is implemented in admin.go and requires locksmith_admin build tag
 
 // GetWithMetadata retrieves a secret with its metadata
 func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
