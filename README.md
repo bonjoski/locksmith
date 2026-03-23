@@ -19,6 +19,23 @@
 - **CLI & Library**: Use it as a standalone command-line tool or import it as a Go package.
 - **Auto-Provisioning**: Built-in `Makefile` that automatically installs its own security and quality tools.
 
+## Library Usage (Go Module)
+
+The `locksmith` library is **read-only** by default to ensure secure management of secrets. If you need to store or delete secrets programmatically, you must compile your project with the `locksmith_admin` build tag.
+
+```go
+import "github.com/bonjoski/locksmith/v2/pkg/locksmith"
+
+ls, _ := locksmith.New()
+// Standard library use is limited to Get and List
+secret, _ := ls.Get("my-key")
+```
+
+To enable `Set` and `Delete` methods, add the build tag:
+```bash
+go build -tags locksmith_admin ...
+```
+
 ## Installation
 
 ### macOS Prerequisites
