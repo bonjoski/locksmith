@@ -95,6 +95,10 @@ test: ## Run unit tests
 	@echo "Running tests..."
 	@go test -tags locksmith_admin ./...
 
+test-manual: build ## Run manual biometric regression tests (macOS only)
+	@echo "Running manual biometric tests..."
+	@go test -v -tags manual_test ./cmd/locksmith/cmd
+
 fmt: ## Format Go code
 	@echo "Formatting code..."
 	@go fmt ./...
