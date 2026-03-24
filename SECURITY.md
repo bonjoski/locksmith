@@ -35,12 +35,12 @@ If you discover a security vulnerability in Locksmith, please report it responsi
 
 ## Executive Summary
 
-This document provides a comprehensive security audit of Locksmith v2.2.3, covering runtime security, 2026 macOS hardening, and supply chain security.
+This document provides a comprehensive security audit of Locksmith v2.2.4, covering runtime security, 2026 macOS hardening, and supply chain security.
 
 **Overall Assessment**: ✅ **SECURE** - All critical security controls are properly implemented.
 
 **Last Updated**: 2026-03-23  
-**Audited Version**: v2.2.3
+**Audited Version**: v2.2.4
 
 ---
 
