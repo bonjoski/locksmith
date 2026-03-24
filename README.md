@@ -39,10 +39,10 @@ go build -tags locksmith_admin ...
 ## Installation
 
 ### macOS Prerequisites
-- macOS with Touch ID support.
+- macOS with Touch ID or Apple Watch support.
 - Go 1.25.4.
 - Xcode Command Line Tools (`xcode-select --install`).
-- An Apple Developer account (for code signing biometric features).
+- An Apple Developer ID is recommended for persistent trust, but ad-hoc signing (`-`) is supported for local development.
 
 ### Windows Prerequisites
 - Windows 10/11 with Windows Hello support.
@@ -172,9 +172,11 @@ See [config.example.yml](config.example.yml) for a complete example.
 Locksmith includes a comprehensive suite of quality and security checks.
 
 ```bash
-# Run all checks (lint, security, gosec, gitleaks)
-# This will automatically install any missing tools!
+# Run all quality and security checks
 make check
+
+# Run manual biometric regression tests (macOS)
+make test-manual
 
 # View all available commands
 make help
@@ -184,8 +186,8 @@ make help
 
 Locksmith implements defense-in-depth security:
 
-- **Hardware-backed encryption**: Secrets protected by macOS Secure Enclave and Windows TPM.
-- **Biometric authentication**: Touch ID/Face ID and Windows Hello required for all operations.
+- **Hardware-backed security**: Biometric authentication is enforced by the macOS Secure Enclave and Windows TPM.
+- **Biometric protection**: Touch ID/Face ID, Apple Watch, and Windows Hello required for sensitive operations.
 - **Memory zeroing**: Secrets cleared from memory immediately after use
 - **SLSA provenance**: Releases include cryptographic attestations
 - **Continuous Fuzzing**: Daily fuzz testing of critical parsing logic

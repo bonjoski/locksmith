@@ -38,7 +38,10 @@ The `locksmith` code handles biometric authentication manually via `LAContext`, 
 
 ```bash
 # Build the binary
-go build -o locksmith ./cmd/locksmith
+make build
+
+# Sign the binary (using ad-hoc or Developer identity)
+make sign
 ```
 
 ### GPG Commit Signing
