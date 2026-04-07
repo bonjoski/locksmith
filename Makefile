@@ -54,15 +54,18 @@ release: ## Build release binaries for multiple architectures
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/locksmith
 	@echo "Building for linux/arm64..."
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/locksmith
+	@echo "Signing macOS binaries..."
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
 	@echo "Packaging macOS App Bundles..."
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app
+	@echo "Signing .app bundles..."
+	@codesign --force --deep --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
+	@codesign --force --deep --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
 	@echo "Packaging release apps into zips..."
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
-	@echo "Signing binaries..."
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
 	@echo "Creating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
