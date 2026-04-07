@@ -50,8 +50,15 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # 1. Store credentials for notarization
           xcrun notarytool store-credentials "notarytool-profile" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
-          make release
+          
+          # 2. Dynamically find the exact signing identity name
+          CERT_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -n 1 | sed -E 's/.*"(.*)".*/\1/')
+          echo "Using signing identity: $CERT_ID"
+          
+          # 3. Build and release with the discovered identity
+          make release SIGN_ID="$CERT_ID"
           make notarize
           make staple
 
