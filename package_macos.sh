@@ -2,15 +2,16 @@
 # Exit on any error
 set -e
 
-if [ "$#" -ne 3 ]; then
-    echo "Usage: ./package_macos.sh <path_to_icon.png> <path_to_binary> <output_app_path>"
-    echo "Example: ./package_macos.sh assets/icon.png bin/locksmith-darwin-arm64 bin/Locksmith-arm64.app"
+if [ "$#" -ne 4 ]; then
+    echo "Usage: ./package_macos.sh <path_to_icon.png> <path_to_binary> <output_app_path> <version>"
+    echo "Example: ./package_macos.sh assets/icon.png bin/locksmith-darwin-arm64 bin/Locksmith-arm64.app 1.2.3"
     exit 1
 fi
 
 ICON_SRC="$1"
 BINARY_SRC="$2"
 APP_DEST="$3"
+VERSION="$4"
 CONTENTS_DIR="${APP_DEST}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
@@ -51,13 +52,13 @@ cat > "${CONTENTS_DIR}/Info.plist" << EOF
     <key>CFBundleIconFile</key>
     <string>Locksmith</string>
     <key>CFBundleIdentifier</key>
-    <string>com.bonjoski.locksmith</string>
+    <string>io.github.bonjoski.locksmith</string>
     <key>CFBundleName</key>
     <string>Locksmith</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.0</string>
+    <string>${VERSION}</string>
     <key>LSMinimumSystemVersion</key>
     <string>10.12</string>
     <key>LSUIElement</key>

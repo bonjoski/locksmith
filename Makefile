@@ -3,7 +3,7 @@ BINARY_NAME=locksmith
 BUILD_DIR=bin
 PROD_SIGN_ID?="Developer ID Application: Benjamin Skolmoski"
 SIGN_ID?=$(PROD_SIGN_ID)
-IDENTIFIER="com.locksmith"
+IDENTIFIER="io.github.bonjoski.locksmith"
 GPG_KEY_ID=7BB5B44244E586B0
 VERSION=$(shell grep "Version =" pkg/locksmith/version.go | cut -d '"' -f 2)
 
@@ -57,8 +57,8 @@ release: ## Build release binaries for multiple architectures
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
 	@echo "Packaging macOS App Bundles..."
-	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app
-	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app
+	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app $(VERSION)
+	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app $(VERSION)
 	@echo "Signing .app bundles..."
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
