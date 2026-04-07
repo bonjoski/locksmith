@@ -4,7 +4,6 @@ BUILD_DIR=bin
 PROD_SIGN_ID?="Developer ID Application: Benjamin Skolmoski"
 SIGN_ID?=$(PROD_SIGN_ID)
 IDENTIFIER="com.locksmith"
-ENTITLEMENTS=entitlements.plist
 GPG_KEY_ID=7BB5B44244E586B0
 VERSION=$(shell grep "Version =" pkg/locksmith/version.go | cut -d '"' -f 2)
 
@@ -30,7 +29,7 @@ build: ## Compile the binary
 
 sign: build ## Sign the binary with developer identity and hardened runtime
 	@echo "Signing $(BINARY_NAME) with $(SIGN_ID)..."
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BINARY_NAME)
+	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BINARY_NAME)
 	@codesign -dvvv $(BINARY_NAME)
 
 release: ## Build release binaries for multiple architectures
@@ -55,14 +54,14 @@ release: ## Build release binaries for multiple architectures
 	@echo "Building for linux/arm64..."
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/locksmith
 	@echo "Signing macOS binaries..."
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
+	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
+	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
 	@echo "Packaging macOS App Bundles..."
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app
 	@echo "Signing .app bundles..."
-	@codesign --force --deep --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
-	@codesign --force --deep --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
+	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
+	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
 	@echo "Packaging release apps into zips..."
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
