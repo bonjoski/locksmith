@@ -69,6 +69,18 @@ jobs:
           # 4. Build and sign
           make release
 
+      - name: Verify signing before notarization
+        run: |
+          echo "=== Strict codesign verify ==="
+          codesign --verify --strict --verbose=4 bin/Locksmith-darwin-arm64.app
+          codesign --verify --strict --verbose=4 bin/Locksmith-darwin-amd64.app
+          echo "=== Gatekeeper assessment ==="
+          spctl --assess --type execute --verbose bin/Locksmith-darwin-arm64.app || true
+          spctl --assess --type execute --verbose bin/Locksmith-darwin-amd64.app || true
+          echo "=== Dynamic library dependencies ==="
+          otool -L bin/locksmith-darwin-arm64
+          otool -L bin/locksmith-darwin-amd64
+
       - name: Notarize and Staple Locksmith
         run: make notarize && make staple
 
