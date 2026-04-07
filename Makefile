@@ -30,7 +30,7 @@ build: ## Compile the binary
 
 sign: build ## Sign the binary with developer identity and hardened runtime
 	@echo "Signing $(BINARY_NAME) with $(SIGN_ID)..."
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BINARY_NAME)
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BINARY_NAME)
 	@codesign -dvvv $(BINARY_NAME)
 
 release: ## Build release binaries for multiple architectures
@@ -61,8 +61,8 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
 	@echo "Signing binaries..."
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
-	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
 	@echo "Creating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
