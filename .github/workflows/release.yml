@@ -44,6 +44,12 @@ jobs:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
 
+      - name: Install Apple Intermediate Certificate
+        run: |
+          # The Developer ID cert requires the Apple WWDR G3 intermediate CA to be valid
+          curl -fsSL https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer -o /tmp/AppleWWDRCAG3.cer
+          sudo security add-trusted-cert -d -r trustAsRoot -k /Library/Keychains/System.keychain /tmp/AppleWWDRCAG3.cer
+
       - name: Build, Sign, and Notarize Locksmith
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
