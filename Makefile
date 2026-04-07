@@ -80,8 +80,8 @@ release: ## Build release binaries for multiple architectures
 
 notarize: ## Notarize macOS ZIP artifacts
 	@echo "Notarizing macOS artifacts..."
-	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-arm64.zip --keychain-profile "notarytool-profile" --wait
-	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-amd64.zip --keychain-profile "notarytool-profile" --wait
+	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-arm64.zip --keychain-profile "notarytool-profile" --wait --timeout 20m
+	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-amd64.zip --keychain-profile "notarytool-profile" --wait --timeout 20m
 
 staple: ## Staple notarization tickets to .app bundles
 	@echo "Stapling notarization tickets..."

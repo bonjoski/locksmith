@@ -44,7 +44,7 @@ jobs:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
 
-      - name: Build, Sign, and Notarize Locksmith
+      - name: Build and Sign Locksmith
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -66,10 +66,15 @@ jobs:
             exit 1
           fi
 
-          # 4. Build, sign, notarize, and staple
+          # 4. Build and sign
           make release
-          make notarize
-          make staple
+
+      - name: Notarize and Staple Locksmith
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
+        with:
+          timeout_minutes: 25
+          max_attempts: 3
+          command: make notarize && make staple
 
       # 3. Create the Attestation (The SLSA "Birth Certificate")
       - name: Generate Artifact Attestation
