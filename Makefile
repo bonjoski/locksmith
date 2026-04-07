@@ -79,9 +79,22 @@ release: ## Build release binaries for multiple architectures
 	@echo "Release binaries and .app zips built in $(BUILD_DIR)/"
 
 notarize: ## Notarize macOS ZIP artifacts
-	@echo "Notarizing macOS artifacts..."
-	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-arm64.zip --keychain-profile "notarytool-profile" --wait --timeout 20m
-	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-amd64.zip --keychain-profile "notarytool-profile" --wait --timeout 20m
+	@echo "Notarizing arm64..."
+	@ARM64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-arm64.zip \
+		--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
+	echo "arm64 submission ID: $$ARM64_ID"; \
+	xcrun notarytool wait $$ARM64_ID --keychain-profile "notarytool-profile" --timeout 10m || \
+	{ echo "--- Apple notarization log (arm64) ---"; \
+	  xcrun notarytool log $$ARM64_ID --keychain-profile "notarytool-profile"; \
+	  exit 1; }
+	@echo "Notarizing amd64..."
+	@AMD64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-amd64.zip \
+		--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
+	echo "amd64 submission ID: $$AMD64_ID"; \
+	xcrun notarytool wait $$AMD64_ID --keychain-profile "notarytool-profile" --timeout 10m || \
+	{ echo "--- Apple notarization log (amd64) ---"; \
+	  xcrun notarytool log $$AMD64_ID --keychain-profile "notarytool-profile"; \
+	  exit 1; }
 
 staple: ## Staple notarization tickets to .app bundles
 	@echo "Stapling notarization tickets..."

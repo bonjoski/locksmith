@@ -70,11 +70,7 @@ jobs:
           make release
 
       - name: Notarize and Staple Locksmith
-        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
-        with:
-          timeout_minutes: 25
-          max_attempts: 3
-          command: make notarize && make staple
+        run: make notarize && make staple
 
       # 3. Create the Attestation (The SLSA "Birth Certificate")
       - name: Generate Artifact Attestation
