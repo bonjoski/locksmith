@@ -33,13 +33,13 @@ jobs:
           cache: true
 
       - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@cb9bde2e2525e640591693406829203b3c8122c2 # v6.2.0
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v6.2.0
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Import macOS Certificate
-        uses: apple-actions/import-codesign-certs@v6
+        uses: apple-actions/import-codesign-certs@fe74d46e82474f87e1ba79832ad28a4013d0e33a # v6.1.0
         with:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
