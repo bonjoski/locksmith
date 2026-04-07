@@ -52,13 +52,22 @@ jobs:
         run: |
           # 1. Store credentials for notarization
           xcrun notarytool store-credentials "notarytool-profile" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
-          
-          # 2. Dynamically find the exact signing identity name
-          CERT_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -n 1 | sed -E 's/.*"(.*)".*/\1/')
-          echo "Using signing identity: $CERT_ID"
-          
-          # 3. Build and release with the discovered identity
-          make release SIGN_ID="$CERT_ID"
+
+          # 2. List all available signing identities for diagnosis
+          echo "=== Available codesigning identities ==="
+          security find-identity -v -p codesigning
+          echo "========================================"
+
+          # 3. Export SIGN_ID as an env var (preserves quoting with spaces/parens)
+          export SIGN_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -n 1 | sed -E 's/.*"(.*)".*/\1/')
+          echo "Using signing identity: [$SIGN_ID]"
+          if [ -z "$SIGN_ID" ]; then
+            echo "ERROR: No Developer ID Application certificate found in keychain!"
+            exit 1
+          fi
+
+          # 4. Build, sign, notarize, and staple
+          make release
           make notarize
           make staple
 
