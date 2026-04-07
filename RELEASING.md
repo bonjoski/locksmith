@@ -53,14 +53,30 @@ This verifies:
 - The binary hasn't been tampered with since it was built
 - The binary corresponds to the tagged source code
 
-### Using Checksums
-
 ```bash
 # Download checksums
 gh release download v1.5.1 -p 'checksums.txt'
 
 # Verify the checksum
 shasum -a 256 -c checksums.txt
+```
+
+### Using GPG (Traditional Verification)
+
+Before verifying, import the public key included in the repository:
+```bash
+gpg --import public.gpg
+```
+
+Then, verify the detached signature for any binary or the checksum file:
+```bash
+# Verify the checksums file signature
+gh release download v1.5.1 -p 'checksums.txt.asc'
+gpg --verify checksums.txt.asc checksums.txt
+
+# Verify a binary signature
+gh release download v1.5.1 -p 'locksmith-darwin-arm64.asc'
+gpg --verify locksmith-darwin-arm64.asc locksmith-darwin-arm64
 ```
 
 ## Local Release Build (Testing)

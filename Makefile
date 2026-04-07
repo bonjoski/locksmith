@@ -1,8 +1,11 @@
 # Project variables
 BINARY_NAME=locksmith
 BUILD_DIR=bin
-SIGN_ID?="-"
+PROD_SIGN_ID?="Developer ID Application: Benjamin Skolmoski"
+SIGN_ID?=$(PROD_SIGN_ID)
 IDENTIFIER="com.locksmith"
+ENTITLEMENTS=entitlements.plist
+GPG_KEY_ID=7BB5B44244E586B0
 VERSION=$(shell grep "Version =" pkg/locksmith/version.go | cut -d '"' -f 2)
 
 # Path configuration
@@ -25,9 +28,9 @@ build: ## Compile the binary
 	@echo "Building $(BINARY_NAME) v$(VERSION)..."
 	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BINARY_NAME) ./cmd/locksmith
 
-sign: build ## Sign the binary with developer identity
-	@echo "Signing $(BINARY_NAME)..."
-	@codesign --force --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BINARY_NAME)
+sign: build ## Sign the binary with developer identity and hardened runtime
+	@echo "Signing $(BINARY_NAME) with $(SIGN_ID)..."
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BINARY_NAME)
 	@codesign -dvvv $(BINARY_NAME)
 
 release: ## Build release binaries for multiple architectures
@@ -58,8 +61,8 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
 	@echo "Signing binaries..."
-	@codesign --force --identifier $(IDENTIFIER) --sign "-" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
-	@codesign --force --identifier $(IDENTIFIER) --sign "-" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
+	@codesign --force --options runtime --entitlements $(ENTITLEMENTS) --identifier $(IDENTIFIER) --sign $(SIGN_ID) $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
 	@echo "Creating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
@@ -69,7 +72,31 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-windows-arm64.exe >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-linux-amd64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-linux-arm64 >> checksums.txt
+	@make gpg-sign
 	@echo "Release binaries and .app zips built in $(BUILD_DIR)/"
+
+notarize: ## Notarize macOS ZIP artifacts
+	@echo "Notarizing macOS artifacts..."
+	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-arm64.zip --keychain-profile "notarytool-profile" --wait
+	@xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-amd64.zip --keychain-profile "notarytool-profile" --wait
+
+staple: ## Staple notarization tickets to .app bundles
+	@echo "Stapling notarization tickets..."
+	@xcrun stapler staple $(BUILD_DIR)/Locksmith-darwin-arm64.app
+	@xcrun stapler staple $(BUILD_DIR)/Locksmith-darwin-amd64.app
+	@echo "✓ Stapling complete. Re-packaging into ZIPs..."
+	@rm -f $(BUILD_DIR)/Locksmith-darwin-arm64.zip
+	@rm -f $(BUILD_DIR)/Locksmith-darwin-amd64.zip
+	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
+	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
+
+gpg-sign: ## Sign all release artifacts with GPG
+	@echo "Signing release artifacts with GPG (Key: $(GPG_KEY_ID))..."
+	@for file in $(BUILD_DIR)/$(BINARY_NAME)-*; do \
+		gpg --detach-sign --armor --local-user $(GPG_KEY_ID) $$file; \
+	done
+	@gpg --detach-sign --armor --local-user $(GPG_KEY_ID) $(BUILD_DIR)/checksums.txt
+	@echo "✓ GPG signatures created (.asc files)"
 
 ## Summon provider
 build-summon: ## Build Summon provider binary

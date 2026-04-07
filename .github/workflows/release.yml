@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*' # Triggers on version tags (e.g., v1.0.0)
+  workflow_dispatch: # Allows manual trigger from Actions tab for testing
 
 # 1. Explicitly set top-level permissions to "read-all" as a safety baseline
 permissions: read-all
@@ -31,8 +32,28 @@ jobs:
           go-version: '1.25.4'
           cache: true
 
-      - name: Build Locksmith
-        run: make release
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@cb9bde2e2525e640591693406829203b3c8122c2 # v6.2.0
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Import macOS Certificate
+        uses: apple-actions/import-codesign-certs@v6
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+
+      - name: Build, Sign, and Notarize Locksmith
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool store-credentials "notarytool-profile" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD"
+          make release
+          make notarize
+          make staple
 
       # 3. Create the Attestation (The SLSA "Birth Certificate")
       - name: Generate Artifact Attestation
@@ -43,5 +64,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
         with:
-          files: bin/*
+          files: |
+            bin/*
           generate_release_notes: true
