@@ -29,3 +29,6 @@ logs/
 gosec_results.json
 results.json
 *.app/
+
+# Temporary files
+temp*
