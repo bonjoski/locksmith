@@ -4,7 +4,7 @@
 class Locksmith < Formula
   desc "Secure keychain-backed secrets manager with biometric authentication"
   homepage "https://github.com/bonjoski/locksmith"
-  version "2.2.5"
+  version "2.2.6"
 
   on_macos do
     if Hardware::CPU.arm?

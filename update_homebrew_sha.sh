@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-VERSION="2.2.5"
+VERSION="2.2.6"
 REPO="bonjoski/locksmith"
 FORMULA="Formula/locksmith.rb"
 TMPDIR=$(mktemp -d)
