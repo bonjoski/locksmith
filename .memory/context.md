@@ -8,14 +8,18 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - [ ] Implement a system to auto-update context after significant changes (planned).
 
 ## Recent Changes
-- Initialized `.memory/` folder.
-- Added `project-brief.md`, `tech-stack.md`, `workflows.md`.
-- Set "locksmith" as the default project in the current session.
+- Initialized `.memory/` folder with architecture, tech-stack, and guidelines.
+- Added root-level `.cursorrules` for AI context.
+- Implemented **Deep Review Agent** (`scripts/architect-review.sh`) to enforce security and architectural standards.
+- Installed `.git/hooks/pre-commit` to automate `gitleaks` and architectural reviews.
+- Prepared `Formula/locksmith.rb` and `update_homebrew_sha.sh` for v2.2.5 release.
+- Optimized `.gitignore` for Go and macOS development.
 
 ## Important Decisions
-- **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context within the repository.
-- **Admin Build Tag**: Noted that any CLI modifications require the `locksmith_admin` build tag.
+- **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
+- **Review Gating**: Implemented mandatory pre-commit gating for architectural compliance (v2 imports, memory zeroing, build tags).
+- **Environment**: Recognized standard Bash environment for project automation.
 
 ## Open Questions
-- Should we add a CI job to verify that the `.memory` documentation is up-to-date with code changes?
-- Do we need a `CONTRIBUTING.md` that references the `.memory` guidelines?
+- **SHA Generation**: Need to run `make release` and update Homebrew SHAs once binaries are notarized.
+- **PR Agent Extension**: Should we add more "Deep Checks" (e.g., complexity metrics or entropy checks)?

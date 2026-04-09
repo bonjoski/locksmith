@@ -11,6 +11,7 @@ bin/
 # Test coverage
 *.out
 coverage.txt
+profiling/
 
 # Dependency directories (though we use go mod)
 vendor/
@@ -21,14 +22,22 @@ vendor/
 # IDEs
 .idea/
 .vscode/
+*.swp
+*.swo
 
 # Local logs
 logs/
+*.log
 
 # Security scan results
 gosec_results.json
 results.json
 *.app/
+locksmith-notarization-log-*
 
 # Temporary files
 temp*
+dist/
+/pkg/native/rsrc_*
+/cmd/locksmith/rsrc_*
+/cmd/summon-locksmith/rsrc_*

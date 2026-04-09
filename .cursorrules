@@ -1,0 +1,31 @@
+# Cursor/AI Rules for Locksmith 🔐
+
+This file provides context and instructions for AI assistants helping develop the Locksmith project.
+
+## Project Context
+All long-term architectural and contextual knowledge is stored in the `.memory/` directory.
+
+- **Guidelines**: [.memory/guidelines.md](file:///.memory/guidelines.md)
+- **Tech Stack**: [.memory/tech-stack.md](file:///.memory/tech-stack.md)
+- **Architecture**: [.memory/architecture.md](file:///.memory/architecture.md)
+- **Current Context**: [.memory/context.md](file:///.memory/context.md)
+
+## Critical AI Rules
+
+1. **Security First**: 
+   - Sensitive data (secrets, keys) must be zeroed out in memory immediately after use.
+   - Use `defer` or explicit cleanup for any byte slices containing sensitive data.
+   - Biometric authentication must NEVER be bypassed for production operations.
+
+2. **Build Tags**:
+   - Write/Delete operations (Set/Delete methods) are protected by the `locksmith_admin` build tag.
+   - Ensure CLI modifications appropriate use `//go:build locksmith_admin`.
+
+3. **Context Preservation**:
+   - After completing a task, update [.memory/context.md](file:///.memory/context.md) with details of what was changed and any new decisions made.
+
+4. **Internal Package Paths**:
+   - Always use the `/v2` versioned path for internal imports (e.g., `github.com/bonjoski/locksmith/v2/...`).
+
+5. **Tool Usage**:
+   - Always run `make check` and `make test` before declaring a task complete.

@@ -6,6 +6,7 @@
 - **Framework**: `cobra` (CLI)
 - **Platform Support**: macOS, Windows, Linux
 - **Security Validation**: `golangci-lint`, `govulncheck`, `gosec`, `gitleaks`, `semgrep`.
+- **Environment**: Scripts and automation require a Bash-compatible shell (standard on macOS/Linux).
 
 ## Core Libraries
 
@@ -18,6 +19,7 @@
 
 ## Architecture
 
+- **[Detailed Architecture Diagram](file:///.memory/architecture.md)**: Visual overview of components and data flow.
 - **`cmd/`**: CLI entry points for the main app and Summon provider.
 - **`pkg/locksmith/`**: Core logic for secret retrieval, listing, and metadata handling.
 - **`pkg/native/`**: Platform-specific implementations of secret storage and biometrics.
