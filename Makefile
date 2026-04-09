@@ -82,7 +82,7 @@ notarize: ## Notarize macOS ZIP artifacts
 	@ARM64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-arm64.zip \
 		--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
 	echo "arm64 submission ID: $$ARM64_ID"; \
-	xcrun notarytool wait $$ARM64_ID --keychain-profile "notarytool-profile" --timeout 10m || \
+	xcrun notarytool wait $$ARM64_ID --keychain-profile "notarytool-profile" --timeout 30m || \
 	{ echo "--- Apple notarization log (arm64) ---"; \
 	  xcrun notarytool log $$ARM64_ID --keychain-profile "notarytool-profile"; \
 	  exit 1; }
@@ -90,7 +90,7 @@ notarize: ## Notarize macOS ZIP artifacts
 	@AMD64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-amd64.zip \
 		--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
 	echo "amd64 submission ID: $$AMD64_ID"; \
-	xcrun notarytool wait $$AMD64_ID --keychain-profile "notarytool-profile" --timeout 10m || \
+	xcrun notarytool wait $$AMD64_ID --keychain-profile "notarytool-profile" --timeout 30m || \
 	{ echo "--- Apple notarization log (amd64) ---"; \
 	  xcrun notarytool log $$AMD64_ID --keychain-profile "notarytool-profile"; \
 	  exit 1; }
