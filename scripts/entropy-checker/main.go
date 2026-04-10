@@ -30,7 +30,7 @@ func main() {
 	}
 
 	threshold := 4.5 // Default threshold
-	fmt.Sscanf(os.Args[1], "%f", &threshold)
+	_, _ = fmt.Sscanf(os.Args[1], "%f", &threshold)
 
 	found := false
 	for _, arg := range os.Args[2:] {

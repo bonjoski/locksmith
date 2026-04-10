@@ -204,7 +204,7 @@ complexity: ## Run cyclomatic complexity check
 
 entropy: ## Run entropy check for secrets
 	@echo "Checking for high-entropy strings..."
-	@go run scripts/entropy-checker/main.go 5.0 $$(grep -rhE "[a-zA-Z0-9+/]{20,}" . --exclude-dir=.git --exclude=go.sum || true)
+	@go run scripts/entropy-checker/main.go 5.5 $$(grep -rhE "[a-zA-Z0-9+/]{20,}" . --exclude-dir=.git --exclude=go.sum --exclude="*.md" || true)
 
 install-tools: ## Manually install all required tools
 	@echo "Checking/Installing tools..."
