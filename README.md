@@ -38,6 +38,13 @@ go build -tags locksmith_admin ...
 
 ## Installation
 
+### Homebrew (macOS)
+The simplest way to install Locksmith on macOS:
+```bash
+brew install bonjoski/locksmith/locksmith
+```
+
+
 ### macOS Prerequisites
 - macOS with Touch ID or Apple Watch support.
 - Go 1.25.4.
