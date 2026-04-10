@@ -11,7 +11,7 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - Initialized `.memory/` folder with architecture, tech-stack, and guidelines.
 - Added root-level `.cursorrules` for AI context.
 - Implemented **Deep Review Agent** (`scripts/architect-review.sh`) to enforce security and architectural standards.
-- Installed `.git/hooks/pre-commit` to automate `gitleaks` and architectural reviews.
+- Installed `.git/hooks/pre-commit` to automate **TruffleHog** and architectural reviews.
 - Prepared `Formula/locksmith.rb` and `update_homebrew_sha.sh` for v2.2.6 release.
 - Optimized `.gitignore` for Go and macOS development.
 

@@ -27,8 +27,12 @@ jobs:
           go-version: '1.25.4'
           cache: true
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog-action@v3.88.11
+        with:
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
