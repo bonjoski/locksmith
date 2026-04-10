@@ -12,6 +12,25 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}==> [Architect Review Agent] Initializing Deep Analysis...${NC}"
 
+# Section 0: [Documentation Architect] Context Synchronization
+# This ensures that the .memory/ documentation stays in sync with history/code changes.
+# If changes are detected, we automatically stage them for the current commit.
+if [[ -f "scripts/update-context.sh" ]]; then
+    echo -e "${YELLOW}==> [Documentation Architect] Synchronizing AI Context...${NC}"
+    chmod +x scripts/update-context.sh
+    ./scripts/update-context.sh
+    
+    # Check if .memory/ documentation was updated
+    STAGED_DOCS=$(git status --porcelain .memory/ || true)
+    if [[ -n "$STAGED_DOCS" ]]; then
+        echo -e "${YELLOW}==> [Documentation Architect] Staging synchronized documentation...${NC}"
+        git add .memory/
+    fi
+else
+    echo -e "${RED}[Architect Error]${NC} scripts/update-context.sh not found. Skipping documentation sync."
+fi
+
+
 # Define tool paths
 GOBIN=$(/opt/homebrew/bin/go env GOPATH)/bin
 GOCYCLO=$GOBIN/gocyclo
