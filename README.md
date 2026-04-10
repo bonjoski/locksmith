@@ -46,6 +46,12 @@ brew tap bonjoski/locksmith
 brew install locksmith
 ```
 
+#### Troubleshooting `Permission denied (publickey)`
+If you encounter a `publickey` error despite the repository being public, your local Git config is likely forcing SSH for all GitHub connections. You can bypass this for just this command without changing your global configuration:
+```bash
+GIT_CONFIG_GLOBAL=/dev/null brew tap bonjoski/locksmith
+```
+
 
 ### macOS Prerequisites
 - macOS with Touch ID or Apple Watch support.
