@@ -131,7 +131,7 @@ uninstall-summon: ## Uninstall Summon provider
 	@echo "✓ Summon provider uninstalled"
 
 ## Verification targets
-check: fmt tidy verify-deps vet lint govulncheck gosec trufflehog semgrep ## Run all quality and security checks
+check: fmt tidy verify-deps vet lint govulncheck gosec trufflehog semgrep complexity entropy ## Run all quality and security checks
 
 test: ## Run unit tests
 	@echo "Running tests..."
@@ -197,6 +197,14 @@ semgrep: ## Run semgrep (installs if missing)
 	fi
 	@echo "Running semgrep..."
 	@semgrep scan --config auto --error --quiet && echo "No issues found."
+
+complexity: ## Run cyclomatic complexity check
+	@echo "Checking code complexity..."
+	@$(GOBIN)/gocyclo -over 15 .
+
+entropy: ## Run entropy check for secrets
+	@echo "Checking for high-entropy strings..."
+	@go run scripts/entropy-checker/main.go 5.0 $$(grep -rhE "[a-zA-Z0-9+/]{20,}" . --exclude-dir=.git --exclude=go.sum || true)
 
 install-tools: ## Manually install all required tools
 	@echo "Checking/Installing tools..."

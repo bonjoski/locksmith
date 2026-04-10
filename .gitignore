@@ -41,3 +41,6 @@ dist/
 /pkg/native/rsrc_*
 /cmd/locksmith/rsrc_*
 /cmd/summon-locksmith/rsrc_*
+
+# AI Assistant memory and scratch files
+.gemini/

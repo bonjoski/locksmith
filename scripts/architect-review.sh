@@ -12,6 +12,11 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}==> [Architect Review Agent] Initializing Deep Analysis...${NC}"
 
+# Define tool paths
+GOBIN=$(/opt/homebrew/bin/go env GOPATH)/bin
+GOCYCLO=$GOBIN/gocyclo
+ENTROPY_CHECKER="go run scripts/entropy-checker/main.go"
+
 # 1. Project Governance: Go Version consistency
 GO_VERSION_EXPECTED="1.25.4"
 GO_MOD_VERSION=$(grep -E "^go [0-9.]+" go.mod | awk '{print $2}')
@@ -60,12 +65,33 @@ if [[ -n "$STAGED_NATIVE" ]]; then
     done
 fi
 
-# 5. [Deep Agent] Biometric Bypass Check
-# Scans for sensitive calls that might have bypassed the 'useBiometrics' flag
+# 6. [Senior Architect] Cyclomatic Complexity Gate
+if [[ -L "$GOCYCLO" ]] || [[ -f "$GOCYCLO" ]]; then
+    if [[ -n "$STAGED_FILES" ]]; then
+        echo -e "${YELLOW}==> Checking cyclomatic complexity...${NC}"
+        for file in $STAGED_FILES; do
+            if ! $GOCYCLO -over 15 "$file" > /dev/null; then
+                echo -e "${RED}[Architect Error]${NC} $file contains functions with cyclomatic complexity > 15. Simplify the logic."
+                $GOCYCLO -over 15 "$file"
+                exit 1
+            fi
+        done
+    fi
+else
+    echo -e "${YELLOW}[Architect Warning]${NC} gocyclo not found at $GOCYCLO. Skipping complexity gate."
+fi
+
+# 7. [Security Architect] Entropy Gate (Secret Leak Detection)
 if [[ -n "$STAGED_FILES" ]]; then
+    echo -e "${YELLOW}==> Scanning for high-entropy strings...${NC}"
     for file in $STAGED_FILES; do
-        if grep -q "native.Get" "$file" && grep -q "false" "$file" && [[ "$file" == *"pkg/locksmith"* ]]; then
-             echo -e "${YELLOW}[Architect Warning]${NC} $file uses a non-biometric Get() call. Ensure this is NOT for sensitive secret retrieval."
+        # Extract potential tokens (strings of chars > 20) and check entropy
+        SUSPICIOUS_STRINGS=$(grep -oE "[a-zA-Z0-9+/]{20,}" "$file" || true)
+        if [[ -n "$SUSPICIOUS_STRINGS" ]]; then
+            if ! $ENTROPY_CHECKER 4.5 $SUSPICIOUS_STRINGS; then
+                echo -e "${RED}[Security Architect Error]${NC} $file contains high-entropy strings. Possible leaked secret detected."
+                exit 1
+            fi
         fi
     done
 fi
