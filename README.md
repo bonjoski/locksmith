@@ -42,7 +42,8 @@ go build -tags locksmith_admin ...
 ### Homebrew (macOS)
 The simplest way to install Locksmith on macOS:
 ```bash
-brew install bonjoski/locksmith/locksmith
+brew tap bonjoski/locksmith
+brew install locksmith
 ```
 
 
