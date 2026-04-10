@@ -1,6 +1,6 @@
 # Releasing Locksmith
 
-This document describes the release process for Locksmith, including how to create releases and verify their authenticity.
+This document describes the release process for Locksmith, including how to create releases and verify their authenticity. This project adheres to **[Semantic Versioning (SemVer)](https://semver.org/spec/v2.0.0.html)**.
 
 ## Creating a Release
 

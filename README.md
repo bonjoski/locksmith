@@ -7,6 +7,7 @@
 [![Homebrew](https://img.shields.io/github/v/release/bonjoski/locksmith?label=homebrew&color=orange)](https://github.com/bonjoski/locksmith)
 [![SLSA 2](https://slsa.dev/images/gh-badge-level2.svg)](https://slsa.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/NEW_ID/badge)](https://bestpractices.coreinfrastructure.org/projects/NEW_ID)
 [![GitHub release](https://img.shields.io/github/v/release/bonjoski/locksmith)](https://github.com/bonjoski/locksmith/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)](https://github.com/bonjoski/locksmith)
 
