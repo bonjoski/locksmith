@@ -101,6 +101,7 @@ func TestMockCacheOperations(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("Expected secret, got nil")
+		return
 	}
 	if !bytes.Equal(got.Value, []byte("test-value")) {
 		t.Errorf("Expected 'test-value', got %s", got.Value)
@@ -158,6 +159,7 @@ func TestMultipleSecrets(t *testing.T) {
 		}
 		if got == nil {
 			t.Fatalf("Expected secret for %s, got nil", key)
+			continue
 		}
 		if !bytes.Equal(got.Value, []byte(expectedValue)) {
 			t.Errorf("For key %s: expected %s, got %s", key, expectedValue, got.Value)
@@ -181,6 +183,7 @@ func TestEmptySecretValue(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("Expected empty secret, got nil")
+		return
 	}
 	if len(got.Value) != 0 {
 		t.Errorf("Expected empty value, got %d bytes", len(got.Value))
@@ -209,6 +212,7 @@ func TestLargeSecretValue(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("Expected large secret, got nil")
+		return
 	}
 	if !bytes.Equal(got.Value, largeValue) {
 		t.Error("Large secret value mismatch")
@@ -241,6 +245,7 @@ func TestSpecialCharactersInKey(t *testing.T) {
 		}
 		if got == nil {
 			t.Fatalf("Expected secret for key %s, got nil", key)
+			continue
 		}
 	}
 }
