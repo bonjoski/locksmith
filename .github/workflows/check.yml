@@ -7,6 +7,9 @@ on:
 
 permissions: read-all
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -14,28 +17,28 @@ concurrency:
 jobs:
   quality-check:
     name: Code Quality & Security
-    runs-on: macos-latest # Required to correctly lint MacOS bridge files
+    runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6 # Native Node 24 support
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v6 # Native Node 24 support
+        uses: actions/setup-go@3041bf56d941b39bc61799a62951f28085761283 # v5.2.0
         with:
           go-version: '1.25.4'
           cache: true
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog-action@v3.88.11
+        uses: trufflesecurity/trufflehog@86b3cc935706599b51829e2f4749f76a59897fb5 # v3.131.0
         with:
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
-          extra_args: --only-verified
+          extra_args: --only-verified --quiet
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@971e25160daa5df9466eb2e8f1df003716886616 # v6.1.1
         with:
           version: v1.61
 
