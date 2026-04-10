@@ -31,9 +31,8 @@ jobs:
           cache: true
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@4673a75b80ab53d14462e83ed9a6edd53a7d3acb # main@2026-04-09
-        with:
-          extra_args: --only-verified --quiet
+        run: |
+          make trufflehog
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@971e284b6050e8a5849b72094c50ab08da042db8 # v6.1.1
