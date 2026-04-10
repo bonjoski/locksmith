@@ -43,7 +43,7 @@ jobs:
       - name: Verify Context Freshness
         run: |
           chmod +x scripts/update-context.sh
-          ./scripts/update-context.sh
+          ./scripts/update-context.sh --structural-only
           if [[ -n $(git status --porcelain .memory/) ]]; then
             echo "ERROR: .memory/ documentation is out of sync with recent changes."
             echo "Please run ./scripts/update-context.sh locally and commit the changes."
