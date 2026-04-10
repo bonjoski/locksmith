@@ -25,20 +25,20 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@3041bf56d941b39bc61799a62951f28085761283 # v5.2.0
+        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
         with:
           go-version: '1.25.4'
           cache: true
 
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@86b3cc935706599b51829e2f4749f76a59897fb5 # v3.131.0
+        uses: trufflesecurity/trufflehog@4673a75b80ab53d14462e83ed9a6edd53a7d3acb # main@2026-04-09
         with:
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
           extra_args: --only-verified --quiet
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@971e25160daa5df9466eb2e8f1df003716886616 # v6.1.1
+        uses: golangci/golangci-lint-action@971e284b6050e8a5849b72094c50ab08da042db8 # v6.1.1
         with:
           version: v1.61
 
