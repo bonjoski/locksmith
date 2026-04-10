@@ -21,27 +21,11 @@
 - **CLI & Library**: Use it as a standalone command-line tool or import it as a Go package.
 - **Auto-Provisioning**: Built-in `Makefile` that automatically installs its own security and quality tools.
 
-## Library Usage (Go Module)
-
-The `locksmith` library is **read-only** by default to ensure secure management of secrets. If you need to store or delete secrets programmatically, you must compile your project with the `locksmith_admin` build tag.
-
-```go
-import "github.com/bonjoski/locksmith/v2/pkg/locksmith"
-
-ls, _ := locksmith.New()
-// Standard library use is limited to Get and List
-secret, _ := ls.Get("my-key")
-```
-
-To enable `Set` and `Delete` methods, add the build tag:
-```bash
-go build -tags locksmith_admin ...
-```
-
 ## Installation
 
 ### Homebrew (macOS)
-The simplest way to install Locksmith on macOS:
+The **preferred method** for installing Locksmith on macOS. This ensures you receive a pre-signed binary that is compatible with macOS security policies:
+
 ```bash
 brew tap bonjoski/locksmith
 brew install locksmith
@@ -52,6 +36,16 @@ If you encounter a `publickey` error despite the repository being public, your l
 ```bash
 GIT_CONFIG_GLOBAL=/dev/null brew tap bonjoski/locksmith
 ```
+
+## Library Usage (Go Module)
+
+> [!WARNING]
+> While Locksmith can be used as a Go module, the **Homebrew CLI** is the recommended way to interact with the vault on macOS. 
+> Using it as a library requires your host application to have specific signing entitlements to access the macOS Keychain, which can lead to `Permission Denied` errors if not handled correctly.
+
+The `locksmith` library is **read-only** by default...
+
+
 
 
 ### macOS Prerequisites

@@ -8,11 +8,11 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - [ ] Implement a system to auto-update context after significant changes (planned).
 
 ## Recent Changes
+- docs: link official OpenSSF Best Practices badge 12451
 - docs: add OpenSSF badge justification crib sheet
 - docs: finalize OpenSSF Best Practices (CII) compliance
 - fix: remove disallowed CodeQL init from scorecard workflow
 - fix: resolve recursive doc sync with structural-only CI gating
-- feat: integrate context sync into pre-commit hook with path hardening
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
