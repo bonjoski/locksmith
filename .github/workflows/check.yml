@@ -7,9 +7,6 @@ on:
 
 permissions: read-all
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -17,15 +14,15 @@ concurrency:
 jobs:
   quality-check:
     name: Code Quality & Security
-    runs-on: ubuntu-latest
+    runs-on: macos-latest # Required to correctly lint MacOS bridge files
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6 # Native Node 24 support
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6 # Native Node 24 support
         with:
           go-version: '1.25.4'
           cache: true
