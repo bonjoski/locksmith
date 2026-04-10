@@ -9,6 +9,7 @@ permissions: read-all
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NODE_OPTIONS: "--no-deprecation"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -35,9 +36,8 @@ jobs:
           make trufflehog
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@971e284b6050e8a5849b72094c50ab08da042db8 # v6.1.1
-        with:
-          version: v1.61
+        run: |
+          make lint
 
       - name: Run unit tests
         run: |
