@@ -9,6 +9,9 @@ on:
   workflow_dispatch:
 
 # Set strict permissions at the top level
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions: read-all
 
 jobs:
