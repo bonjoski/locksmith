@@ -14,24 +14,24 @@ concurrency:
 jobs:
   quality-check:
     name: Code Quality & Security
-    runs-on: ubuntu-latest  # Linux is faster and more reliable for these tools
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required for Gitleaks to scan history
+          fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@3041bf56d941b39bc61799a62951f28085761283 # v5.2.0
+        uses: actions/setup-go@v5
         with:
           go-version: '1.25.4'
           cache: true
 
       - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@646f2549d47936da51079f8754160a0a54e95d66 # v2.3.8
+        uses: gitleaks/gitleaks-action@v2
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@971e25160daa5df9466eb2e8f1df003716886616 # v6.1.1
+        uses: golangci/golangci-lint-action@v6
         with:
           version: v1.61
 
