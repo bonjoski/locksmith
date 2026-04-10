@@ -5,29 +5,36 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Set strict permissions at the top level
 permissions: read-all
 
-# Cancel in-progress builds when new commits are pushed
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   quality-check:
-    name: Lint and Security
-    runs-on: macos-latest
+    name: Code Quality & Security
+    runs-on: ubuntu-latest  # Linux is faster and more reliable for these tools
     steps:
-      # Pinning by SHA instead of version tag
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # Required for Gitleaks to scan history
 
       - name: Setup Go
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        uses: actions/setup-go@3041bf56d941b39bc61799a62951f28085761283 # v5.2.0
         with:
           go-version: '1.25.4'
           cache: true
 
-      - name: Run quality suite
-        # This calls your Makefile: gosec, gitleaks, and tests
-        run: make check
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@646f2549d47936da51079f8754160a0a54e95d66 # v2.3.8
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@971e25160daa5df9466eb2e8f1df003716886616 # v6.1.1
+        with:
+          version: v1.61
+
+      - name: Run unit tests
+        run: |
+          go test -v ./...
