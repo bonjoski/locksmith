@@ -33,8 +33,6 @@ jobs:
       - name: Run TruffleHog
         uses: trufflesecurity/trufflehog@4673a75b80ab53d14462e83ed9a6edd53a7d3acb # main@2026-04-09
         with:
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
           extra_args: --only-verified --quiet
 
       - name: Run golangci-lint
