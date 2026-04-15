@@ -10,11 +10,11 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - [x] Establish mandatory 100% test coverage policy for new features.
 
 ## Recent Changes
+- deps(deps): bump golang.org/x/sys from 0.42.0 to 0.43.0
+- ci: enable workflows on feature branches
+- docs: automate README and version sync in pre-commit hook
+- feat: integrate MCP server, bump version to 2.3.0, and unify build system
 - docs: prioritize Homebrew as preferred macOS installation method
-- docs: link official OpenSSF Best Practices badge 12451
-- docs: add OpenSSF badge justification crib sheet
-- docs: finalize OpenSSF Best Practices (CII) compliance
-- fix: remove disallowed CodeQL init from scorecard workflow
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

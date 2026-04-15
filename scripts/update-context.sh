@@ -40,9 +40,10 @@ if [[ "$1" == "--structural-only" ]]; then
     echo "Skipping git history update (structural-only mode)..."
 else
     # Always pull recent changes from the main branch history
-    RECENT_COMMITS=$(git log main -n 5 --pretty=format:"- %s" || echo "- No recent commits found on main")
+    export RECENT_COMMITS=$(git log main -n 5 --pretty=format:"- %s" || echo "- No recent commits found on main")
     # Update the "Recent Changes" section in context.md
-    perl -0777 -i -pe 's/(## Recent Changes\n)(.*?\n)(##)/$1 . "'"$RECENT_COMMITS"'" . "\n\n$3"/se' "$CONTEXT"
+    # We use the ENV variable in perl to avoid escaping issues
+    perl -0777 -i -pe 's/(## Recent Changes\n)(.*?\n)(##)/$1 . $ENV{RECENT_COMMITS} . "\n\n$3"/se' "$CONTEXT"
 fi
 
 # 4. Stage synchronization changes
