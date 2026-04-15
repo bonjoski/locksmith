@@ -17,6 +17,11 @@ All long-term architectural and contextual knowledge is stored in the `.memory/`
    - Use `defer` or explicit cleanup for any byte slices containing sensitive data.
    - Biometric authentication must NEVER be bypassed for production operations.
 
+6. **Test Coverage**:
+   - All new features MUST include unit tests.
+   - Aim for 100% coverage of logic in new components.
+   - Mock all native backends (keychain, DB) to ensure hardware-independent testing.
+
 2. **Build Tags**:
    - Write/Delete operations (Set/Delete methods) are protected by the `locksmith_admin` build tag.
    - Ensure CLI modifications appropriate use `//go:build locksmith_admin`.

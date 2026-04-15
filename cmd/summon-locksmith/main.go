@@ -7,7 +7,18 @@ import (
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 )
 
+var version string
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		v := version
+		if v == "" {
+			v = locksmith.Version
+		}
+		fmt.Printf("summon-locksmith version %s\n", v)
+		os.Exit(0)
+	}
+
 	// Summon provider contract: take secret ID as first argument
 	// Force silent mode for Summon provider (no expiration warnings)
 	_ = os.Setenv("LOCKSMITH_SILENT", "true")

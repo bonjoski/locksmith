@@ -51,7 +51,10 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-func Execute() {
+func Execute(v string) {
+	if v != "" {
+		rootCmd.Version = v
+	}
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

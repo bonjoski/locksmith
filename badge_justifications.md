@@ -59,3 +59,13 @@ This document provides the technical justifications for the **Locksmith** OpenSS
 **Met**
 **Justification**: We enforce a mandatory `pre-commit` hook that runs **TruffleHog** and a custom **Entropy Checker** on every file. This prevents any private credentials or high-entropy tokens from being committed to the public repository.
 **Key URL**: https://github.com/bonjoski/locksmith/blob/main/scripts/architect-review.sh
+
+### [static_analysis] Static Code Analysis
+**Met**
+**Justification**: Locksmith enforces multiple FLOSS static code analysis tools on every commit and Pull Request via the `check.yml` workflow. This includes **GolangCI-Lint** (for deep code quality analysis), **Gosec** (for security-specific linting), and **Semgrep** (for architectural pattern enforcement). Any release-candidate must pass all these automated gates before being eligible for tagging.
+**Key URL**: https://github.com/bonjoski/locksmith/blob/main/.github/workflows/check.yml
+
+### [dynamic_analysis] Dynamic Analysis (Fuzzing)
+**Met**
+**Justification**: Locksmith performs dynamic analysis through a daily **Automated Fuzzing** suite (`fuzz.yml`). We use Go's native fuzzing engine (`go test -fuzz`) to continuously stress-test critical data-parsing logic with millions of randomized inputs, identifying potential runtime crashes or memory safety issues before they reach production.
+**Key URL**: https://github.com/bonjoski/locksmith/blob/main/.github/workflows/fuzz.yml

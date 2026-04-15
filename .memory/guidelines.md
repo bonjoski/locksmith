@@ -23,4 +23,9 @@ These guidelines are designed to ensure consistency and security when developing
 ## Project Patterns
 
 - **Provider Pattern**: When adding support for a new OS or backend, follow the existing interface in `pkg/locksmith/locksmith.go` (`Backend` interface).
-- **Summon Integration**: Ensure changes to the core library don't break the `summon-locksmith` provider's silent mode (used for automation).
+## Testing Strategy
+
+- **Mandatory Coverage**: All new features must be accompanied by unit tests.
+- **Mocking**: Use mock implementations for the `Backend` and `Cache` interfaces to ensure tests can run in CI environments without hardware dependencies.
+- **MCP Testing**: Use `mcp.NewInMemoryTransports()` for end-to-end testing of tool handlers without requiring network or file descriptors.
+- **Build Tags**: Remember to include `//go:build locksmith_admin` in test files that test administrative features.

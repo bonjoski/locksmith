@@ -25,12 +25,13 @@ all: build sign
 ## Build targets
 build: ## Compile the binary
 	@echo "Building $(BINARY_NAME) v$(VERSION)..."
-	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BINARY_NAME) ./cmd/locksmith
+	@mkdir -p $(BUILD_DIR)
+	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/locksmith
 
 sign: build ## Sign the binary with developer identity and hardened runtime
 	@echo "Signing $(BINARY_NAME) with $(SIGN_ID)..."
-	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BINARY_NAME)
-	@codesign -dvvv $(BINARY_NAME)
+	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)
+	@codesign -dvvv $(BUILD_DIR)/$(BINARY_NAME)
 
 release: ## Build release binaries for multiple architectures
 	@echo "Building release binaries for $(BINARY_NAME) v$(VERSION)..."
@@ -116,7 +117,8 @@ gpg-sign: ## Sign all release artifacts with GPG
 ## Summon provider
 build-summon: ## Build Summon provider binary
 	@echo "Building summon-locksmith provider..."
-	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o summon-locksmith ./cmd/summon-locksmith
+	@mkdir -p $(BUILD_DIR)
+	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/summon-locksmith ./cmd/summon-locksmith
 
  install-summon: build-summon ## Install Summon provider
 	@echo "Installing Summon provider..."

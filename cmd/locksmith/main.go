@@ -4,6 +4,8 @@ import (
 	"github.com/bonjoski/locksmith/v2/cmd/locksmith/cmd"
 )
 
+var version string
+
 func main() {
-	cmd.Execute()
+	cmd.Execute(version)
 }
