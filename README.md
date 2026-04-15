@@ -16,6 +16,7 @@
 ## Features
 
 - **Biometric Security**: Leverages macOS `LocalAuthentication`, **Windows Hello**, and **Linux Polkit** for biometric and interactive protection.
+- **MCP Server**: Built-in support for the **Model Context Protocol**, allowing AI agents (like Claude or Cursor) to securely access secrets via biometric gates.
 - **Keychain Integration**: Stores secrets in the secure macOS Keychain Services, **Windows Credential Manager**, and the **Linux Secret Service DBus**.
 - **Disk Caching**: Optional encrypted disk cache for fast re-access with configurable TTL.
 - **CLI & Library**: Use it as a standalone command-line tool or import it as a Go package.
@@ -64,24 +65,53 @@ git clone https://github.com/bonjoski/locksmith.git
 cd locksmith
 make build
 make sign
+# Binaries are now located in bin/
 ```
 
 ## Usage
 
 ### Storing a Secret
 ```bash
-./locksmith add my-service my-password --expires 30d
+bin/locksmith add my-service my-password --expires 30d
 ```
 
 ### Retrieving a Secret
 ```bash
-./locksmith get my-service
+bin/locksmith get my-service
 ```
 
 ### Listing Keys
 ```bash
-./locksmith list
+bin/locksmith list
 ```
+
+## AI & Model Context Protocol (MCP)
+
+Locksmith includes a built-in MCP server that allows AI agents to securely interact with your keychain. All tool calls are protected by the same biometric gates as the CLI.
+
+### Configuration
+
+Add Locksmith to your `claude_desktop_config.json` or Cursor MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "locksmith": {
+      "command": "/absolute/path/to/locksmith/bin/locksmith",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Supported Tools
+- `locksmith_get_secret`: Retrieve a secret (requires Touch ID/biometrics).
+- `locksmith_set_secret`: Store a new secret (defaults to 90-day expiry).
+- `locksmith_list_secrets`: List names of stored secrets.
+- `locksmith_delete_secret`: Remove a secret.
+
+> [!IMPORTANT]
+> When an AI agent requests a secret, you will be prompted for biometrics on your hardware. The AI cannot bypass this gate.
 
 ### Summon Integration
 
