@@ -39,9 +39,17 @@ make build
 4.  Update documentation in `.memory/` if architecture or dependencies change (run `./scripts/update-context.sh`).
 5.  Open a PR and ensure all CI checks pass.
 
+## Issues and Feature Requests
+
+We use [GitHub Issues](https://github.com/bonjoski/locksmith/issues) to track bugs and features. Please use the provided templates when opening a new issue:
+- **Bug Reports**: Choose the Bug Report template to provide environment details and reproduction steps.
+- **Feature Requests**: Choose the Feature Request template to describe the value your idea brings.
+
+For security vulnerabilities, please refer to our [Security Policy](SECURITY.md).
+
 ## Code of Conduct
 
-Help us keep Locksmith a welcoming and professional project! We follow standard open-source community guidelines.
+Help us keep Locksmith a welcoming and professional project! We follow the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). All contributors are expected to adhere to its terms.
 
 ## License
 

@@ -1,0 +1,64 @@
+name: Bug Report
+description: Report a bug to help us improve Locksmith
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: input
+    id: version
+    attributes:
+      label: Locksmith Version
+      description: What version of Locksmith are you using? (Run `locksmith version`)
+      placeholder: e.g. v2.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you running Locksmith on?
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows 10/11
+        - Linux (Ubuntu/Debian)
+        - Linux (Fedora/RHEL)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: |
+        When I run 'locksmith get my-secret', it prompts for Touch ID but then fails with...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this behavior?
+      placeholder: |
+        1. Run '...'
+        2. Enter '...'
+        3. See error '...'
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Please provide any relevant logs or error messages.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checkbox
+      options:
+        - label: I have searched the [existing issues](https://github.com/bonjoski/locksmith/issues) and this is not a duplicate.
+          required: true
+        - label: I have verified that this is NOT a security vulnerability (report those via [SECURITY.md](https://github.com/bonjoski/locksmith/blob/main/SECURITY.md)).
+          required: true
