@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-05-16
+
+### Added
+- **Summon Provider Deployment**: Fully integrated the `summon-locksmith` provider into the release pipeline for macOS architectures (`arm64` and `amd64`). The Homebrew formula automatically installs this alongside the core `locksmith` binary.
+- **Config-Driven Biometrics**: Replaced interactive prompts for module access with declarative configuration using `RequireBiometrics` in `~/.locksmith/config.yml`.
+
+### Changed
+- **MCP Security Hardening**: Made the Model Context Protocol (MCP) server strictly read-only by removing the `locksmith_set_secret` and `locksmith_delete_secret` tools. The MCP server now explicitly bypasses the disk cache, enforcing physical Touch ID presence for every secret access by AI assistants.
 ## [2.3.0] - 2026-04-15
 
 ### Added

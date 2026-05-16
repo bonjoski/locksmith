@@ -20,8 +20,6 @@ func TestManualBiometricFlow(t *testing.T) {
 	t.Run("Add Secret with Biometrics", func(t *testing.T) {
 		fmt.Println("\n>>> TEST: Adding secret with biometrics. Please use Touch ID when prompted.")
 		cmd := exec.Command(binary, "add", "manual-key", "manual-secret")
-		// Simulate 'N' for "module access" to ensure require_biometrics=true
-		cmd.Stdin = strings.NewReader("N\n")
 
 		var out, errOut bytes.Buffer
 		cmd.Stdout = &out
