@@ -10,11 +10,11 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - [x] Establish mandatory 100% test coverage policy for new features.
 
 ## Recent Changes
+- Merge branch 'release/v2.4.0' for v2.4.0 release
+- fix: resolve yaml indentation and update mcp tests
+- release: v2.4.0 deploy summon and harden mcp
 - docs: improve community standards with CoC, templates, and support guide
 - ci: fix authentication for automated homebrew updates
-- Merge remote-tracking branch 'origin/dependabot/github_actions/softprops/action-gh-release-3.0.0'
-- Merge remote-tracking branch 'origin/dependabot/github_actions/anchore/sbom-action-0.24.0'
-- Merge remote-tracking branch 'origin/dependabot/github_actions/actions/upload-artifact-7.0.1'
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

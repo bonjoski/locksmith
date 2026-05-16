@@ -10,6 +10,7 @@
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/12451/badge)](https://bestpractices.coreinfrastructure.org/projects/12451)
 [![GitHub release](https://img.shields.io/github/v/release/bonjoski/locksmith)](https://github.com/bonjoski/locksmith/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)](https://github.com/bonjoski/locksmith)
+[![Summon Provider](https://img.shields.io/badge/Integration-Summon-005571.svg)](https://cyberark.github.io/summon)
 
 **Locksmith** is a secure, biometric-protected keychain vault for macOS, Windows, and Linux. It allows you to store keys, tokens, and passwords in the native system keychain, requiring biometric authentication (Touch ID on macOS, Windows Hello on Windows, Polkit/Secret Service on Linux) for access.
 
