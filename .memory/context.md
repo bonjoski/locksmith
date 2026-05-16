@@ -10,11 +10,11 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - [x] Establish mandatory 100% test coverage policy for new features.
 
 ## Recent Changes
+- test: enforce biometric requirement in local summon E2E test
 - test: add local E2E integration test for summon provider
 - ci: automate active version updates in tap README during release
 - chore: bump version to v2.4.2 for Draft Release
 - deps(deps): bump golang.org/x/term from 0.42.0 to 0.43.0
-- chore: bump version to v2.4.1 to trigger fresh release
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
