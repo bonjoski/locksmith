@@ -22,9 +22,9 @@ func TestSummonE2E(t *testing.T) {
 	testSecretID := "test-summon-e2e-secret-key"
 	testSecretVal := "super-secure-local-summon-token-value-123!"
 
-	// 1. Initialize locksmith with biometrics disabled for programmatic access
+	// 1. Initialize locksmith with biometrics enabled for secure E2E access
 	opts := locksmith.Options{
-		RequireBiometrics: false,
+		RequireBiometrics: true,
 		BypassCache:       true,
 	}
 	ls, err := locksmith.NewWithOptions(opts)
@@ -32,12 +32,14 @@ func TestSummonE2E(t *testing.T) {
 		t.Fatalf("Failed to initialize locksmith: %v", err)
 	}
 
+	t.Log("Note: Running E2E test. Biometric authentication (Touch ID / Apple Watch) is required!")
+
 	// Clean up any residual test key from previous runs
 	_ = ls.Delete(testSecretID)
 
-	// 2. Store the test secret without requiring biometrics
+	// 2. Store the test secret requiring biometrics
 	expiresAt := time.Now().Add(1 * time.Hour)
-	err = ls.SetWithBiometrics(testSecretID, []byte(testSecretVal), expiresAt, false)
+	err = ls.SetWithBiometrics(testSecretID, []byte(testSecretVal), expiresAt, true)
 	if err != nil {
 		t.Fatalf("Failed to write test secret to Keychain: %v", err)
 	}
@@ -80,6 +82,6 @@ func TestSummonE2E(t *testing.T) {
 	if retrievedVal != testSecretVal {
 		t.Errorf("E2E Validation Failed!\nExpected: %q\nReceived: %q", testSecretVal, retrievedVal)
 	} else {
-		t.Log("E2E Validation Succeeded! Secret successfully fetched via Keychain without Touch ID prompts.")
+		t.Log("E2E Validation Succeeded! Secret successfully fetched via Keychain after successful biometric authentication.")
 	}
 }

@@ -13,21 +13,21 @@ The architecture follows a layered approach, separating the user interface (CLI)
 ```mermaid
 graph TD
     subgraph "Interface Layer (cmd/)"
-        CLI[locksmith cmd]
-        Summon[summon-locksmith]
+        CLI["locksmith cmd"]
+        Summon["summon-locksmith"]
     end
     
     subgraph "Core Logic (pkg/locksmith)"
-        LS[Locksmith Controller]
-        Cache[Disk Cache (AES-GCM)]
-        Model[Secret/Metadata Models]
+        LS["Locksmith Controller"]
+        Cache["Disk Cache (AES-GCM)"]
+        Model["Secret/Metadata Models"]
     end
     
     subgraph "Native Bridge (pkg/native)"
-        Bridge[Platform Bridge Interface]
-        Darwin[macOS Keychain + LocalAuth]
-        Windows[Windows Credential Manager + Hello]
-        Linux[Linux Secret Service + Polkit]
+        Bridge["Platform Bridge Interface"]
+        Darwin["macOS Keychain + LocalAuth"]
+        Windows["Windows Credential Manager + Hello"]
+        Linux["Linux Secret Service + Polkit"]
     end
     
     CLI --> LS
@@ -38,7 +38,7 @@ graph TD
     Bridge --> Darwin
     Bridge --> Windows
     Bridge --> Linux
-    Cache -.->|Encrypted files| Disk[~/.locksmith/cache/]
+    Cache -.->|Encrypted files| Disk["~/.locksmith/cache/"]
 ```
 
 ### 🌐 Module Relationships
