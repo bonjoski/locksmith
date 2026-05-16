@@ -64,6 +64,14 @@ echo "==> Done. ${FORMULA} updated."
 if [ -d "${TAP_DIR}" ]; then
     echo "==> Syncing to local tap repo: ${TAP_DIR}"
     cp "${FORMULA}" "${TAP_DIR}/Formula/locksmith.rb"
+    
+    # --- README Updates ---
+    TAP_README="${TAP_DIR}/README.md"
+    if [ -f "${TAP_README}" ]; then
+        echo "==> Syncing version reference in ${TAP_README}..."
+        sed -i '' "s/Both should return the active version (e.g., \`v.*\`)/Both should return the active version (e.g., \`v${VERSION}\`)/" "${TAP_README}"
+    fi
+    
     echo "  Success. Run 'git -C ${TAP_DIR} commit -am \"feat: update to v${VERSION}\" && git -C ${TAP_DIR} push' to publish."
 else
     echo "==> Local tap repo not found at ${TAP_DIR}. Skipping sync."
