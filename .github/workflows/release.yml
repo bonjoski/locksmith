@@ -86,8 +86,8 @@ jobs:
           echo "=== Dynamic library dependencies ==="
           otool -L bin/locksmith-darwin-arm64
           otool -L bin/locksmith-darwin-amd64
-          otool -L bin/Summon-darwin-arm64
-          otool -L bin/Summon-darwin-amd64
+          otool -L bin/summon-locksmith-darwin-arm64
+          otool -L bin/summon-locksmith-darwin-amd64
           
       - name: Notarize and Staple Release Apps
         run: make notarize && make staple
