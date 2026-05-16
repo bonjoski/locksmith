@@ -20,26 +20,42 @@ echo "==> Updating to version ${VERSION}..."
 echo "==> Downloading binaries..."
 ARM64_URL="https://github.com/${REPO}/releases/download/v${VERSION}/locksmith-darwin-arm64"
 AMD64_URL="https://github.com/${REPO}/releases/download/v${VERSION}/locksmith-darwin-amd64"
+SUMMON_ARM64_URL="https://github.com/${REPO}/releases/download/v${VERSION}/summon-locksmith-darwin-arm64"
+SUMMON_AMD64_URL="https://github.com/${REPO}/releases/download/v${VERSION}/summon-locksmith-darwin-amd64"
 
 curl -fsSL -o "${TMPDIR}/locksmith-darwin-arm64" "${ARM64_URL}"
 curl -fsSL -o "${TMPDIR}/locksmith-darwin-amd64" "${AMD64_URL}"
+curl -fsSL -o "${TMPDIR}/summon-locksmith-darwin-arm64" "${SUMMON_ARM64_URL}"
+curl -fsSL -o "${TMPDIR}/summon-locksmith-darwin-amd64" "${SUMMON_AMD64_URL}"
 
-ARM64_SHA=$(shasum -a 256 "${TMPDIR}/locksmith-darwin-arm64" | awk '{print $1}')
-AMD64_SHA=$(shasum -a 256 "${TMPDIR}/locksmith-darwin-amd64" | awk '{print $1}')
+LOCKSMITH_ARM64_SHA=$(shasum -a 256 "${TMPDIR}/locksmith-darwin-arm64" | awk '{print $1}')
+LOCKSMITH_AMD64_SHA=$(shasum -a 256 "${TMPDIR}/locksmith-darwin-amd64" | awk '{print $1}')
+SUMMON_ARM64_SHA=$(shasum -a 256 "${TMPDIR}/summon-locksmith-darwin-arm64" | awk '{print $1}')
+SUMMON_AMD64_SHA=$(shasum -a 256 "${TMPDIR}/summon-locksmith-darwin-amd64" | awk '{print $1}')
 
-echo "  arm64 SHA256: ${ARM64_SHA}"
-echo "  amd64 SHA256: ${AMD64_SHA}"
+echo "  Locksmith arm64 SHA256: ${LOCKSMITH_ARM64_SHA}"
+echo "  Locksmith amd64 SHA256: ${LOCKSMITH_AMD64_SHA}"
+echo "  Summon arm64 SHA256: ${SUMMON_ARM64_SHA}"
+echo "  Summon amd64 SHA256: ${SUMMON_AMD64_SHA}"
 
 echo "==> Patching ${FORMULA}..."
 sed -i '' "s/version \".*\"/version \"${VERSION}\"/" "${FORMULA}"
 
-# Update ARM64 block using specific pattern matching
-sed -i '' "/locksmith-darwin-arm64/ { N; s/sha256 \".*\"/sha256 \"${ARM64_SHA}\"/; }" "${FORMULA}"
+# --- ARM64 Updates (locksmith & summon) ---
+# Update hashes
+sed -i '' "/locksmith-darwin-arm64/ { N; s/sha256 \".*\"/sha256 \"${LOCKSMITH_ARM64_SHA}\"/; }" "${FORMULA}"
+sed -i '' "/summon-locksmith-darwin-arm64/ { N; s/sha256 \".*\"/sha256 \"${SUMMON_ARM64_SHA}\"/; }" "${FORMULA}"
+# Update download paths
 sed -i '' "s/download\/v.*\/locksmith-darwin-arm64/download\/v${VERSION}\/locksmith-darwin-arm64/" "${FORMULA}"
+sed -i '' "s/download\/v.*\/summon-locksmith-darwin-arm64/download\/v${VERSION}\/summon-locksmith-darwin-arm64/" "${FORMULA}"
 
-# Update AMD64 block
-sed -i '' "/locksmith-darwin-amd64/ { N; s/sha256 \".*\"/sha256 \"${AMD64_SHA}\"/; }" "${FORMULA}"
+# --- AMD64 Updates (locksmith & summon) ---
+# Update hashes
+sed -i '' "/locksmith-darwin-amd64/ { N; s/sha256 \".*\"/sha256 \"${LOCKSMITH_AMD64_SHA}\"/; }" "${FORMULA}"
+sed -i '' "/summon-locksmith-darwin-amd64/ { N; s/sha256 \".*\"/sha256 \"${SUMMON_AMD64_SHA}\"/; }" "${FORMULA}"
+# Update download paths
 sed -i '' "s/download\/v.*\/locksmith-darwin-amd64/download\/v${VERSION}\/locksmith-darwin-amd64/" "${FORMULA}"
+sed -i '' "s/download\/v.*\/summon-locksmith-darwin-amd64/download\/v${VERSION}\/summon-locksmith-darwin-amd64/" "${FORMULA}"
 
 rm -rf "${TMPDIR}"
 

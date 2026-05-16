@@ -18,6 +18,7 @@ const (
 type Options struct {
 	RequireBiometrics bool
 	PromptMessage     string
+	BypassCache       bool
 }
 
 func (o *Options) getPrompt(defaultPrompt, key string) string {
@@ -118,8 +119,8 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 }
 
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
-	// 1. Check Cache
-	if !l.Cache.IsExpired(key, DefaultCacheTTL) {
+	// 1. Check Cache (skip if BypassCache is true)
+	if !l.Options.BypassCache && !l.Cache.IsExpired(key, DefaultCacheTTL) {
 		secret, err := l.Cache.Get(key)
 		if err == nil && secret != nil {
 			return secret, nil
@@ -132,14 +133,21 @@ func (l *Locksmith) getSecret(key string) (*Secret, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		for i := range data {
+			data[i] = 0
+		}
+	}()
 
 	var secret Secret
 	if err := json.Unmarshal(data, &secret); err != nil {
 		return nil, err
 	}
 
-	// 3. Update Cache for subsequent calls
-	_ = l.Cache.Set(key, secret, DefaultCacheTTL)
+	// 3. Update Cache for subsequent calls (skip if BypassCache is true)
+	if !l.Options.BypassCache {
+		_ = l.Cache.Set(key, secret, DefaultCacheTTL)
+	}
 
 	return &secret, nil
 }
@@ -188,8 +196,11 @@ func (l *Locksmith) ListWithMetadata() (map[string]*SecretMetadata, error) {
 			continue
 		}
 
-		// Try to get metadata from cache first
-		cached, _ := l.Cache.Get(key)
+		// Try to get metadata from cache first (skip if BypassCache is true)
+		var cached *Secret
+		if !l.Options.BypassCache {
+			cached, _ = l.Cache.Get(key)
+		}
 		if cached != nil {
 			result[key] = &SecretMetadata{
 				CreatedAt: cached.CreatedAt,

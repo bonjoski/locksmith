@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -21,6 +20,7 @@ Biometric authentication is strictly enforced for all tool calls.`,
 		opts := locksmith.Options{
 			RequireBiometrics: true,
 			PromptMessage:     "AI is requesting access to '%s'. Touch ID to permit.",
+			BypassCache:       true,
 		}
 		lsMcp, err := locksmith.NewWithOptions(opts)
 		if err != nil {
@@ -62,28 +62,6 @@ func newMCPServer(lsMcp *locksmith.Locksmith) *mcp.Server {
 		return nil, string(val), nil
 	})
 
-	// locksmith_set_secret
-	type SetSecretInput struct {
-		Name    string `json:"name" jsonschema:"The name of the secret"`
-		Value   string `json:"value" jsonschema:"The secret value to store"`
-		TTLDays int    `json:"ttl_days,omitempty" jsonschema:"Time to live in days,default=90"`
-	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "locksmith_set_secret",
-		Description: "Store a new secret or update an existing one. Requires biometric authentication.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in SetSecretInput) (*mcp.CallToolResult, any, error) {
-		ttl := in.TTLDays
-		if ttl == 0 {
-			ttl = 90
-		}
-		expiresAt := time.Now().AddDate(0, 0, ttl)
-		err := lsMcp.Set(in.Name, []byte(in.Value), expiresAt)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, fmt.Sprintf("Successfully saved secret '%s' (expires in %d days)", in.Name, ttl), nil
-	})
-
 	// locksmith_list_secrets
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "locksmith_list_secrets",
@@ -98,21 +76,6 @@ func newMCPServer(lsMcp *locksmith.Locksmith) *mcp.Server {
 			names = append(names, name)
 		}
 		return nil, names, nil
-	})
-
-	// locksmith_delete_secret
-	type DeleteSecretInput struct {
-		Name string `json:"name" jsonschema:"The name of the secret to delete"`
-	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "locksmith_delete_secret",
-		Description: "Delete a secret by its name. Requires biometric authentication.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in DeleteSecretInput) (*mcp.CallToolResult, any, error) {
-		err := lsMcp.Delete(in.Name)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, fmt.Sprintf("Successfully deleted secret '%s'", in.Name), nil
 	})
 
 	return server

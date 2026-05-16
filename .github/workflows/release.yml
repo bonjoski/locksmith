@@ -57,7 +57,7 @@ jobs:
           echo "=== Available codesigning identities ==="
           security find-identity -v -p codesigning
           echo "========================================"
-
+          
           # 3. Export SIGN_ID as an env var (preserves quoting with spaces/parens)
           export SIGN_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -n 1 | sed -E 's/.*"(.*)".*/\1/')
           echo "Using signing identity: [$SIGN_ID]"
@@ -65,43 +65,54 @@ jobs:
             echo "ERROR: No Developer ID Application certificate found in keychain!"
             exit 1
           fi
-
-          # 4. Build and sign
+          
+          # 4. Build all providers
+          make build-summon
+          # 5. Build and sign
           make release
-
+          
       - name: Verify signing before notarization
         run: |
           echo "=== Strict codesign verify ==="
           codesign --verify --strict --verbose=4 bin/Locksmith-darwin-arm64.app
           codesign --verify --strict --verbose=4 bin/Locksmith-darwin-amd64.app
+          codesign --verify --strict --verbose=4 bin/Summon-darwin-arm64.app # Added check
+          codesign --verify --strict --verbose=4 bin/Summon-darwin-amd64.app # Added check
           echo "=== Gatekeeper assessment ==="
           spctl --assess --type execute --verbose bin/Locksmith-darwin-arm64.app || true
           spctl --assess --type execute --verbose bin/Locksmith-darwin-amd64.app || true
+          spctl --assess --type execute --verbose bin/Summon-darwin-arm64.app || true # Added check
+          spctl --assess --type execute --verbose bin/Summon-darwin-amd64.app || true # Added check
           echo "=== Dynamic library dependencies ==="
           otool -L bin/locksmith-darwin-arm64
           otool -L bin/locksmith-darwin-amd64
-
-      - name: Notarize and Staple Locksmith
+          otool -L bin/Summon-darwin-arm64
+          otool -L bin/Summon-darwin-amd64
+          
+- name: Notarize and Staple Locksmith
+- name: Notarize and Staple Summon
         run: make notarize && make staple
-
-      - name: Generate Artifact Attestation
+- name: Generate Artifact Attestation
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-path: 'bin/*'
-
-      - name: Generate SBOM
+          subject-path: |
+            bin/*.app
+            bin/summon*.app # Added summon apps
+          
+- name: Generate SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           format: spdx-json
           output-file: bin/locksmith.spdx.json
           path: .
-
-      - name: Create Release
+          
+- name: Create Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: |
             bin/*
           generate_release_notes: true
+
 
   update-homebrew:
     name: Update Homebrew Formula
@@ -123,25 +134,34 @@ jobs:
           gh repo clone ${TAP_REPO} tap_repo
           
           # Download the new binaries to get their SHAs
-          gh release download v${VERSION} -p 'locksmith-darwin-arm64' -p 'locksmith-darwin-amd64' -D tmp_bin --repo bonjoski/locksmith
+          gh release download v${VERSION} -p 'locksmith-darwin-arm64' -p 'locksmith-darwin-amd64' -p 'summon-locksmith-darwin-arm64' -p 'summon-locksmith-darwin-amd64' -D tmp_bin --repo bonjoski/locksmith
           
-          ARM64_SHA=$(shasum -a 256 tmp_bin/locksmith-darwin-arm64 | awk '{print $1}')
-          AMD64_SHA=$(shasum -a 256 tmp_bin/locksmith-darwin-amd64 | awk '{print $1}')
+          # Get SHAs for both services and both architectures
+          LOCKSMITH_ARM64_SHA=$(shasum -a 256 tmp_bin/locksmith-darwin-arm64 | awk '{print $1}')
+          LOCKSMITH_AMD64_SHA=$(shasum -a 256 tmp_bin/locksmith-darwin-amd64 | awk '{print $1}')
+          SUMMON_ARM64_SHA=$(shasum -a 256 tmp_bin/summon-locksmith-darwin-arm64 | awk '{print $1}')
+          SUMMON_AMD64_SHA=$(shasum -a 256 tmp_bin/summon-locksmith-darwin-amd64 | awk '{print $1}')
           
           FORMULA="tap_repo/Formula/locksmith.rb"
           
           # Update version and SHAs in the formula
-          # Using perl for multi-line or more complex regex if needed, but sed should work for simple replacements
           sed -i "s/version \".*\"/version \"${VERSION}\"/" ${FORMULA}
           
-          # Update ARM64 block
-          # We search for the pattern and replace the next line (very specific to the current formula structure)
-          sed -i "/locksmith-darwin-arm64/ { N; s/sha256 \".*\"/sha256 \"${ARM64_SHA}\"/; }" ${FORMULA}
+          # --- ARM64 Updates (locksmith & summon) ---
+          # Update hashes
+          sed -i "/locksmith-darwin-arm64/ { N; s/sha256 \".*\"/sha256 \"${LOCKSMITH_ARM64_SHA}\"/; }" ${FORMULA}
+          sed -i "/summon-locksmith-darwin-arm64/ { N; s/sha256 \".*\"/sha256 \"${SUMMON_ARM64_SHA}\"/; }" ${FORMULA}
+          # Update download paths
           sed -i "s/download\/v.*\/locksmith-darwin-arm64/download\/v${VERSION}\/locksmith-darwin-arm64/" ${FORMULA}
+          sed -i "s/download\/v.*\/summon-locksmith-darwin-arm64/download\/v${VERSION}\/summon-locksmith-darwin-arm64/" ${FORMULA}
           
-          # Update AMD64 block
-          sed -i "/locksmith-darwin-amd64/ { N; s/sha256 \".*\"/sha256 \"${AMD64_SHA}\"/; }" ${FORMULA}
+          # --- AMD64 Updates (locksmith & summon) ---
+          # Update hashes
+          sed -i "/locksmith-darwin-amd64/ { N; s/sha256 \".*\"/sha256 \"${LOCKSMITH_AMD64_SHA}\"/; }" ${FORMULA}
+          sed -i "/summon-locksmith-darwin-amd64/ { N; s/sha256 \".*\"/sha256 \"${SUMMON_AMD64_SHA}\"/; }" ${FORMULA}
+          # Update download paths
           sed -i "s/download\/v.*\/locksmith-darwin-amd64/download\/v${VERSION}\/locksmith-darwin-amd64/" ${FORMULA}
+          sed -i "s/download\/v.*\/summon-locksmith-darwin-amd64/download\/v${VERSION}\/summon-locksmith-darwin-amd64/" ${FORMULA}
           
           # Commit and push using the token for authentication
           cd tap_repo

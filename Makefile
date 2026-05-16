@@ -38,8 +38,10 @@ release: ## Build release binaries for multiple architectures
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building for darwin/arm64..."
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/locksmith
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/summon-locksmith-darwin-arm64 ./cmd/summon-locksmith
 	@echo "Building for darwin/amd64..."
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/locksmith
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/summon-locksmith-darwin-amd64 ./cmd/summon-locksmith
 	@echo "Building for windows/amd64..."
 	@cd cmd/locksmith && \
 		go run github.com/tc-hib/go-winres@latest init > /dev/null && \
@@ -57,20 +59,32 @@ release: ## Build release binaries for multiple architectures
 	@echo "Signing macOS binaries..."
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
+	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-arm64
+	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-amd64
 	@echo "Packaging macOS App Bundles..."
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app $(VERSION)
 	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app $(VERSION)
+	@./package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-arm64 $(BUILD_DIR)/Summon-darwin-arm64.app $(VERSION)
+	@./package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-amd64 $(BUILD_DIR)/Summon-darwin-amd64.app $(VERSION)
 	@echo "Signing .app bundles..."
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
+	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/Summon-darwin-arm64.app
+	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/Summon-darwin-amd64.app
 	@echo "Packaging release apps into zips..."
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
+	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-arm64.zip Summon-darwin-arm64.app
+	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-amd64.zip Summon-darwin-amd64.app
 	@echo "Creating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-arm64 >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-amd64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-arm64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-amd64.zip >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 Summon-darwin-arm64.zip >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 Summon-darwin-amd64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-windows-amd64.exe >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-windows-arm64.exe >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-linux-amd64 >> checksums.txt
@@ -87,6 +101,13 @@ notarize: ## Notarize macOS ZIP artifacts
 	{ echo "--- Apple notarization log (arm64) ---"; \
 	  xcrun notarytool log $$ARM64_ID --keychain-profile "notarytool-profile"; \
 	  exit 1; }
+	@SUMMON_ARM64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/Summon-darwin-arm64.zip \
+		--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
+	echo "summon arm64 submission ID: $$SUMMON_ARM64_ID"; \
+	xcrun notarytool wait $$SUMMON_ARM64_ID --keychain-profile "notarytool-profile" --timeout 30m || \
+	{ echo "--- Apple notarization log (summon arm64) ---"; \
+	  xcrun notarytool log $$SUMMON_ARM64_ID --keychain-profile "notarytool-profile"; \
+	  exit 1; }
 	@echo "Notarizing amd64..."
 	@AMD64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/Locksmith-darwin-amd64.zip \
 		--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
@@ -95,20 +116,33 @@ notarize: ## Notarize macOS ZIP artifacts
 	{ echo "--- Apple notarization log (amd64) ---"; \
 	  xcrun notarytool log $$AMD64_ID --keychain-profile "notarytool-profile"; \
 	  exit 1; }
+	@SUMMON_AMD64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/Summon-darwin-amd64.zip \
+		--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
+	echo "summon amd64 submission ID: $$SUMMON_AMD64_ID"; \
+	xcrun notarytool wait $$SUMMON_AMD64_ID --keychain-profile "notarytool-profile" --timeout 30m || \
+	{ echo "--- Apple notarization log (summon amd64) ---"; \
+	  xcrun notarytool log $$SUMMON_AMD64_ID --keychain-profile "notarytool-profile"; \
+	  exit 1; }
 
 staple: ## Staple notarization tickets to .app bundles
 	@echo "Stapling notarization tickets..."
 	@xcrun stapler staple $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@xcrun stapler staple $(BUILD_DIR)/Locksmith-darwin-amd64.app
+	@xcrun stapler staple $(BUILD_DIR)/Summon-darwin-arm64.app
+	@xcrun stapler staple $(BUILD_DIR)/Summon-darwin-amd64.app
 	@echo "✓ Stapling complete. Re-packaging into ZIPs..."
 	@rm -f $(BUILD_DIR)/Locksmith-darwin-arm64.zip
 	@rm -f $(BUILD_DIR)/Locksmith-darwin-amd64.zip
+	@rm -f $(BUILD_DIR)/Summon-darwin-arm64.zip
+	@rm -f $(BUILD_DIR)/Summon-darwin-amd64.zip
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
+	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-arm64.zip Summon-darwin-arm64.app
+	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-amd64.zip Summon-darwin-amd64.app
 
 gpg-sign: ## Sign all release artifacts with GPG
 	@echo "Signing release artifacts with GPG (Key: $(GPG_KEY_ID))..."
-	@for file in $(BUILD_DIR)/$(BINARY_NAME)-*; do \
+	@for file in $(BUILD_DIR)/$(BINARY_NAME)-* $(BUILD_DIR)/summon-locksmith-darwin-*; do \
 		gpg --detach-sign --armor --local-user $(GPG_KEY_ID) $$file; \
 	done
 	@gpg --detach-sign --armor --local-user $(GPG_KEY_ID) $(BUILD_DIR)/checksums.txt
