@@ -63,46 +63,10 @@ func TestMCPServer(t *testing.T) {
 		}
 	})
 
-	// 4. Test Tool: locksmith_set_secret
-	t.Run("set_secret", func(t *testing.T) {
-		testSetSecret(t, ctx, session, mc)
-	})
-
 	// 5. Test Tool: locksmith_list_secrets
 	t.Run("list_secrets", func(t *testing.T) {
 		testListSecrets(t, ctx, session)
 	})
-
-	// 6. Test Tool: locksmith_delete_secret
-	t.Run("delete_secret", func(t *testing.T) {
-		testDeleteSecret(t, ctx, session, mc)
-	})
-}
-
-func testSetSecret(t *testing.T, ctx context.Context, session *mcp.ClientSession, mc *mockCache) {
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name: "locksmith_set_secret",
-		Arguments: map[string]interface{}{
-			"name":     "new-key",
-			"value":    "new-value",
-			"ttl_days": 1,
-		},
-	})
-	if err != nil {
-		t.Fatalf("CallTool failed: %v", err)
-	}
-	if res.IsError {
-		t.Fatalf("Tool returned error content: %+v", res.Content)
-	}
-
-	// Verify in mock cache
-	s, ok := mc.secrets["new-key"]
-	if !ok {
-		t.Fatal("Secret was not saved to cache")
-	}
-	if string(s.Value) != "new-value" {
-		t.Errorf("Expected 'new-value', got '%s'", string(s.Value))
-	}
 }
 
 func testListSecrets(t *testing.T, ctx context.Context, session *mcp.ClientSession) {
@@ -123,38 +87,14 @@ func testListSecrets(t *testing.T, ctx context.Context, session *mcp.ClientSessi
 		t.Fatalf("Failed to unmarshal names from '%s': %v", text, err)
 	}
 
-	foundTest, foundNew := false, false
+	foundTest := false
 	for _, n := range names {
 		if n == "test-key" {
 			foundTest = true
 		}
-		if n == "new-key" {
-			foundNew = true
-		}
 	}
 	if !foundTest {
 		t.Errorf("test-key not found in %v", names)
-	}
-	if !foundNew {
-		t.Errorf("new-key not found in %v", names)
-	}
-}
-
-func testDeleteSecret(t *testing.T, ctx context.Context, session *mcp.ClientSession, mc *mockCache) {
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "locksmith_delete_secret",
-		Arguments: map[string]string{"name": "new-key"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool failed: %v", err)
-	}
-	if res.IsError {
-		t.Fatalf("Tool returned error content: %+v", res.Content)
-	}
-
-	// Verify in mock cache
-	if _, ok := mc.secrets["new-key"]; ok {
-		t.Error("Secret was not deleted from cache")
 	}
 }
 

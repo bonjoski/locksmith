@@ -89,24 +89,23 @@ jobs:
           otool -L bin/Summon-darwin-arm64
           otool -L bin/Summon-darwin-amd64
           
-- name: Notarize and Staple Locksmith
-- name: Notarize and Staple Summon
+      - name: Notarize and Staple Release Apps
         run: make notarize && make staple
-- name: Generate Artifact Attestation
+      - name: Generate Artifact Attestation
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
             bin/*.app
             bin/summon*.app # Added summon apps
           
-- name: Generate SBOM
+      - name: Generate SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           format: spdx-json
           output-file: bin/locksmith.spdx.json
           path: .
           
-- name: Create Release
+      - name: Create Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           files: |
