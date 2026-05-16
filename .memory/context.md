@@ -10,11 +10,11 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - [x] Establish mandatory 100% test coverage policy for new features.
 
 ## Recent Changes
+- ci: attest all release binaries/ZIPs and correct attestation verification command in documentation
 - ci: fix summon binary name in otool verification step
 - docs: add summon provider integration badge to readme
 - ci(deps): bump github/codeql-action from 4.35.1 to 4.35.5 (#43)
 - deps(deps): bump golang.org/x/sys from 0.43.0 to 0.44.0 (#41)
-- deps(deps): bump github.com/modelcontextprotocol/go-sdk (#39)
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
