@@ -239,7 +239,7 @@ Locksmith implements defense-in-depth security:
 All releases include cryptographic attestations. Verify a binary:
 
 ```bash
-gh attestation verify locksmith-darwin-arm64 --owner bonjoski
+gh attestation verify locksmith-darwin-arm64 --repo bonjoski/locksmith
 ```
 
 See [RELEASING.md](RELEASING.md) for details.

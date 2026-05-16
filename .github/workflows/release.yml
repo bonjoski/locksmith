@@ -95,6 +95,10 @@ jobs:
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
+            bin/locksmith-*
+            bin/summon-locksmith-*
+            bin/Locksmith-*.zip
+            bin/Summon-*.zip
             bin/*.app
             bin/summon*.app # Added summon apps
           

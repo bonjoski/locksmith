@@ -41,11 +41,11 @@ Locksmith releases include cryptographic attestations that prove the binaries we
 gh release download v1.5.1 -p 'locksmith-darwin-arm64'
 
 # Verify the attestation
-gh attestation verify locksmith-darwin-arm64 --owner bonjoski
+gh attestation verify locksmith-darwin-arm64 --repo bonjoski/locksmith
 
 # Example for Windows
 gh release download v1.5.1 -p 'locksmith-windows-amd64.exe'
-gh attestation verify locksmith-windows-amd64.exe --owner bonjoski
+gh attestation verify locksmith-windows-amd64.exe --repo bonjoski/locksmith
 ```
 
 This verifies:
