@@ -5,7 +5,7 @@ go 1.25.4
 require (
 	github.com/danieljoos/wincred v1.2.3
 	github.com/julian-bruyers/winhello-go v1.1.0
-	github.com/modelcontextprotocol/go-sdk v1.6.0
+	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.44.0
