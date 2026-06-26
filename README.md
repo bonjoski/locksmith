@@ -86,6 +86,31 @@ bin/locksmith get my-service
 bin/locksmith list
 ```
 
+### Running Commands with Environment Injection (`run`)
+Execute any command with biometric-protected secrets injected directly into its environment. Secrets can be specified as environment variables or in an env file (`--env-file`):
+
+* **Using `LOCKSMITH_SECRET_` prefix**:
+  ```bash
+  LOCKSMITH_SECRET_DATABASE_URL=db/password bin/locksmith run -- npm run dev
+  ```
+  This will fetch the secret for `db/password` and inject it as `DATABASE_URL` for the child process.
+
+* **Using `locksmith://` scheme**:
+  ```bash
+  DATABASE_URL=locksmith://db/password bin/locksmith run -- npm run dev
+  ```
+
+* **Using an environment file**:
+  Given a `.env` file:
+  ```env
+  DATABASE_URL=locksmith://db/password
+  STRIPE_KEY=locksmith://stripe/api_key
+  ```
+  Run with:
+  ```bash
+  bin/locksmith run --env-file .env -- npm run dev
+  ```
+
 ## AI & Model Context Protocol (MCP)
 
 Locksmith includes a built-in MCP server that allows AI agents to securely interact with your keychain. All tool calls are protected by the same biometric gates as the CLI.

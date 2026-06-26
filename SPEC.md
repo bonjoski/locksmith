@@ -76,6 +76,7 @@ graph TD
 | `locksmith get <key>` | `GET` | Retrieves a secret value. | `<key>`. | Raw secret value (bytes). Prints expiration warnings to `stderr`. | Requires Biometrics. |
 | `locksmith list` | `GET` | Lists all stored secret keys and their metadata. | None. | Table format listing key, creation date, expiration date, and status (Valid/Expiring/Expired). | May require Biometrics (for enumeration). |
 | `locksmith delete <key>` | `DELETE` | Deletes a secret key entirely. | `<key>`. | Success status. | Requires Biometrics. |
+| `locksmith run [--env-file <path>] [--] <command> [args...]` | `CLI/Tool` | Execute a command with secrets injected into its environment. | `<command>` (and its arguments), `--env-file` (optional path). | Process stdout/stderr and propagated exit code. | Requires Biometrics. |
 | `locksmith mcp` | `CLI/Tool` | Starts the Model Context Protocol server endpoint (used by AI agents). | None. | Listens on a local port, exposing specific secured tool endpoints. | Biometrics enforce access. |
 
 ### B. Go Library API (`*Locksmith`)
@@ -88,6 +89,8 @@ The core logic is exposed via the `Locksmith` struct methods.
 | `Get(key string)` | `key` (string) - The secret identifier. | `([]byte, error)` | Retrieves the secret value after checking cache and performing secure fallback. |
 | `ListWithMetadata()` | None. | `(map[string]*SecretMetadata, error)` | Retrieves metadata (creation/expiry dates) for all managed keys. |
 | `Set(key, secret, ttl)` | `key`, `Secret` struct, `time.Duration`. | `error` | Writes a new secret, updating both the cache and the native keychain. |
+| `Run(args, envFile)` | `args []string`, `envFile string` | `(int, error)` | Spawns a child process with resolved environment variables, forwarding signals and exit code. |
+| `ResolveEnvironment(hostEnv, envFileVars)` | `hostEnv []string`, `envFileVars map[string]string` | `([]string, error)` | Parses and resolves environment variables using `locksmith://` and `LOCKSMITH_SECRET_` prefixes. |
 
 ### C. Input/Output Specifications
 
