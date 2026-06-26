@@ -65,6 +65,12 @@ func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
 		return fmt.Errorf("failed to encrypt cache item: %w", err)
 	}
 
+	// Create parent directories in case the key contains slashes
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create cache subdirectory: %w", err)
+	}
+
 	return os.WriteFile(path, encrypted, 0600)
 }
 
