@@ -59,11 +59,21 @@ func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		for i := range data {
+			data[i] = 0
+		}
+	}()
 
 	encrypted, err := c.encrypt(data)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt cache item: %w", err)
 	}
+	defer func() {
+		for i := range encrypted {
+			encrypted[i] = 0
+		}
+	}()
 
 	// Create parent directories in case the key contains slashes
 	dir := filepath.Dir(path)
@@ -87,22 +97,26 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 		}
 		return nil, err
 	}
+	defer func() {
+		for i := range encrypted {
+			encrypted[i] = 0
+		}
+	}()
 
 	data, err := c.decrypt(encrypted)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt cache item: %w", err)
 	}
+	defer func() {
+		for i := range data {
+			data[i] = 0
+		}
+	}()
 
 	_, err = os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
-
-	// We'll use file modification time to check against TTL if needed,
-	// but the implementation plan suggests the Secret object itself might
-	// be enough for logic. However, let's stick to the 0600 file check.
-	// For now, simpler: if it exists and is readable, we return it.
-	// The caller (Locksmith) will handle TTL logic or we can do it here.
 
 	var secret Secret
 	if err := json.Unmarshal(data, &secret); err != nil {

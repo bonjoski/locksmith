@@ -12,9 +12,16 @@ The architecture follows a layered approach, separating the user interface (CLI)
 
 ```mermaid
 graph TD
+    subgraph "Clients"
+        Git["Git / SSH Client"]
+        GPG["GPG / git commit"]
+    end
+
     subgraph "Interface Layer (cmd/)"
         CLI["locksmith cmd"]
         Summon["summon-locksmith"]
+        Agent["locksmith agent (SSH)"]
+        Pinentry["locksmith pinentry (GPG)"]
     end
     
     subgraph "Core Logic (pkg/locksmith)"
@@ -30,8 +37,12 @@ graph TD
         Linux["Linux Secret Service + Polkit"]
     end
     
+    Git -->|UNIX Socket| Agent
+    GPG -->|Assuan Protocol| Pinentry
     CLI --> LS
     Summon --> LS
+    Agent --> LS
+    Pinentry --> LS
     LS --> Cache
     LS --> Model
     LS --> Bridge
@@ -77,6 +88,9 @@ graph TD
 | `locksmith list` | `GET` | Lists all stored secret keys and their metadata. | None. | Table format listing key, creation date, expiration date, and status (Valid/Expiring/Expired). | May require Biometrics (for enumeration). |
 | `locksmith delete <key>` | `DELETE` | Deletes a secret key entirely. | `<key>`. | Success status. | Requires Biometrics. |
 | `locksmith run [--env-file <path>] [--] <command> [args...]` | `CLI/Tool` | Execute a command with secrets injected into its environment. | `<command>` (and its arguments), `--env-file` (optional path). | Process stdout/stderr and propagated exit code. | Requires Biometrics. |
+| `locksmith agent start` | `CLI/Daemon` | Starts the Locksmith SSH agent listening on a UNIX socket/pipe. | None. | Starts listener daemon and prints socket path. | None (serves connections). |
+| `locksmith agent add <keyname> <path>` | `CLI/Tool` | Stores an SSH private key in Locksmith and indexes its public key. | `<keyname>`, `<path>` (path to private key). | Success status. | Requires Biometrics. |
+| `locksmith pinentry` | `CLI/Tool` | Serves the GPG Assuan Pinentry protocol to unlock GPG secret keys. | Stdin (Assuan commands). | Stdout (passphrase response). | Requires Biometrics (for GETPIN). |
 | `locksmith mcp` | `CLI/Tool` | Starts the Model Context Protocol server endpoint (used by AI agents). | None. | Listens on a local port, exposing specific secured tool endpoints. | Biometrics enforce access. |
 
 ### B. Go Library API (`*Locksmith`)

@@ -175,6 +175,40 @@ summon --provider locksmith -f secrets.yml env | grep AWS
 
 This provides Touch ID authentication for your DevOps workflows, ensuring secrets are never exposed in plaintext.
 
+### SSH & GPG Agent
+
+Locksmith can act as a secure, biometric-protected SSH Agent and GPG Pinentry program to safeguard developer keys and passphrases.
+
+#### SSH Agent
+1. **Start the Agent Daemon**:
+   ```bash
+   bin/locksmith agent start
+   ```
+2. **Configure your shell**:
+   ```bash
+   export SSH_AUTH_SOCK=~/.locksmith/ssh-agent.sock
+   ```
+3. **Add an SSH key to Locksmith**:
+   ```bash
+   bin/locksmith agent add id_ed25519 ~/.ssh/id_ed25519
+   ```
+   *Any future SSH/Git signature request will prompt for Touch ID/Windows Hello/Polkit authentication.*
+
+#### GPG Pinentry Integration
+1. **Store your GPG passphrase**:
+   ```bash
+   bin/locksmith add gpg/passphrase
+   ```
+2. **Configure `gpg-agent.conf`**:
+   Add this line to `~/.gnupg/gpg-agent.conf`:
+   ```text
+   pinentry-program /absolute/path/to/locksmith/bin/locksmith pinentry
+   ```
+3. **Reload GPG Agent**:
+   ```bash
+   gpgconf --kill gpg-agent
+   ```
+
 ## Configuration
 
 Locksmith supports optional configuration via `~/.locksmith/config.yml` for customizing expiration notifications:

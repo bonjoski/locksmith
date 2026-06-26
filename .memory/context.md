@@ -1,7 +1,7 @@
 # Project Context: Locksmith 🔐
 
 ## Current Focus
-Implementing roadmap features (starting with Environment Injection `run` command).
+Implementing roadmap features (currently working on SSH & GPG agent).
 
 ## Active Tasks
 - [x] Create `.memory` directory and populate with initial documentation.
@@ -9,6 +9,7 @@ Implementing roadmap features (starting with Environment Injection `run` command
 - [x] Integrate Model Context Protocol (MCP) server with 100% biometric enforcement.
 - [x] Establish mandatory 100% test coverage policy for new features.
 - [x] Implement in-memory environment injection (`run` command) with full tests.
+- [x] Implement biometric-protected SSH & GPG agent (Feature #2) with full tests.
 
 ## Recent Changes
 - feat: implement in-memory environment injection (run command) (#54)

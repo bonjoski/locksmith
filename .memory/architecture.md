@@ -8,9 +8,16 @@ The following diagram illustrates the relationship between the CLI entry points,
 
 ```mermaid
 graph TD
+    subgraph "Clients"
+        Git[Git / SSH Client]
+        GPG[GPG / git commit]
+    end
+
     subgraph "Interface Layer (cmd/)"
         CLI[locksmith cmd]
         Summon[summon-locksmith]
+        Agent[locksmith agent SSH]
+        Pinentry[locksmith pinentry GPG]
     end
 
     subgraph "Core Logic (pkg/locksmith)"
@@ -26,8 +33,12 @@ graph TD
         Linux[Linux Secret Service + Polkit]
     end
 
+    Git -->|UNIX Socket| Agent
+    GPG -->|Assuan Protocol| Pinentry
     CLI --> LS
     Summon --> LS
+    Agent --> LS
+    Pinentry --> LS
     LS --> Cache
     LS --> Model
     LS --> Bridge
