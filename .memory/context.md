@@ -10,11 +10,11 @@ Initial setup of the `.memory` context system to enhance AI-assisted development
 - [x] Establish mandatory 100% test coverage policy for new features.
 
 ## Recent Changes
-- docs: fix Mermaid diagram syntax by quoting node labels in SPEC.md
-- test: enforce biometric requirement in local summon E2E test
-- test: add local E2E integration test for summon provider
-- ci: automate active version updates in tap README during release
-- chore: bump version to v2.4.2 for Draft Release
+- deps(deps): bump golang.org/x/sys from 0.44.0 to 0.46.0 (#49)
+- ci(deps): bump github/codeql-action from 4.35.5 to 4.36.2 (#51)
+- ci(deps): bump softprops/action-gh-release from 3.0.0 to 3.0.1 (#52)
+- ci(deps): bump actions/checkout from 6.0.2 to 7.0.0 (#53)
+- Fix broken spec diagram
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
