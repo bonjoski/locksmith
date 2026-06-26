@@ -12,11 +12,11 @@ Implementing roadmap features (currently working on SSH & GPG agent).
 - [x] Implement biometric-protected SSH & GPG agent (Feature #2) with full tests.
 
 ## Recent Changes
+- feat: implement biometric-protected SSH & GPG agent (#55)
 - feat: implement in-memory environment injection (run command) (#54)
 - deps(deps): bump golang.org/x/term to v0.44.0 and github.com/modelcontextprotocol/go-sdk to v1.6.1
 - deps(deps): bump golang.org/x/sys from 0.44.0 to 0.46.0 (#49)
 - ci(deps): bump github/codeql-action from 4.35.5 to 4.36.2 (#51)
-- ci(deps): bump softprops/action-gh-release from 3.0.0 to 3.0.1 (#52)
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
