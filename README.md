@@ -131,13 +131,10 @@ Add Locksmith to your `claude_desktop_config.json` or Cursor MCP settings:
 ```
 
 ### Supported Tools
-- `locksmith_get_secret`: Retrieve a secret (requires Touch ID/biometrics).
-- `locksmith_set_secret`: Store a new secret (defaults to 90-day expiry).
-- `locksmith_list_secrets`: List names of stored secrets.
-- `locksmith_delete_secret`: Remove a secret.
+- `locksmith_list_secrets`: List names of stored secrets. Requires biometric authentication.
 
 > [!IMPORTANT]
-> When an AI agent requests a secret, you will be prompted for biometrics on your hardware. The AI cannot bypass this gate.
+> To comply with security best practices, the Locksmith MCP server does not expose any tools that return plaintext secret values to the AI. Secrets are never directly exposed to the AI context. Instead, the AI can help you manage and orchestrate your environment using the `locksmith run` execution wrapper or the `summon` provider.
 
 ### Summon Integration
 
