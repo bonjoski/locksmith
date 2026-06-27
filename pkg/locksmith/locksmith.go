@@ -173,6 +173,9 @@ func (l *Locksmith) checkAccessControl(key string) error {
 	}
 
 	if matchedRule == nil {
+		if strings.ToLower(cfg.Auth.DefaultPolicy) == "deny" {
+			return fmt.Errorf("security: access denied. Zero-Trust policy (default_policy: deny) is active and no whitelist rule matches the secret '%s'", key)
+		}
 		return nil
 	}
 
@@ -182,29 +185,33 @@ func (l *Locksmith) checkAccessControl(key string) error {
 	}
 
 	for _, app := range matchedRule.AllowedApps {
-		if app.Path != "" {
-			cleanAppPath := filepath.Clean(app.Path)
-			cleanCallerPath := filepath.Clean(caller.Path)
-			if strings.EqualFold(cleanAppPath, cleanCallerPath) {
-				return nil
-			}
-		}
-
-		if app.Identifier != "" && caller.Identifier != "" {
-			if app.Identifier == caller.Identifier {
-				return nil
-			}
-		}
-
-		if app.TeamID != "" && caller.TeamID != "" {
-			if app.TeamID == caller.TeamID {
-				return nil
-			}
+		if matchAllowedApp(app, caller) {
+			return nil
 		}
 	}
 
 	return fmt.Errorf("security: access denied for calling process '%s' (Identifier: '%s', TeamID: '%s')",
 		caller.Path, caller.Identifier, caller.TeamID)
+}
+
+func matchAllowedApp(app AllowedApp, caller *native.ProcessInfo) bool {
+	if app.Path != "" {
+		cleanAppPath := filepath.Clean(app.Path)
+		cleanCallerPath := filepath.Clean(caller.Path)
+		if strings.EqualFold(cleanAppPath, cleanCallerPath) {
+			return true
+		}
+	}
+
+	if app.Identifier != "" && caller.Identifier != "" && app.Identifier == caller.Identifier {
+		return true
+	}
+
+	if app.TeamID != "" && caller.TeamID != "" && app.TeamID == caller.TeamID {
+		return true
+	}
+
+	return false
 }
 
 func matchSecretPattern(pattern, secret string) bool {

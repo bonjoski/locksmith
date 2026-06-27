@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -20,6 +21,7 @@ type NotificationConfig struct {
 type AuthConfig struct {
 	RequireBiometrics bool   `yaml:"require_biometrics"`
 	PromptMessage     string `yaml:"prompt_message,omitempty"`
+	DefaultPolicy     string `yaml:"default_policy,omitempty"` // allow or deny
 }
 
 type AllowedApp struct {
@@ -52,7 +54,8 @@ func LoadConfig() (*Config, error) {
 			ShowOnList:        true,
 		},
 		Auth: AuthConfig{
-			RequireBiometrics: true, // Fail secure by default
+			RequireBiometrics: true,    // Fail secure by default
+			DefaultPolicy:     "allow", // Backwards-compatible default
 		},
 	}
 
@@ -63,6 +66,22 @@ func LoadConfig() (*Config, error) {
 	}
 
 	configPath := filepath.Clean(filepath.Join(home, ".locksmith", "config.yml"))
+	info, err := os.Lstat(configPath)
+	if err != nil {
+		return cfg, nil // Return defaults if file doesn't exist
+	}
+
+	// Enforce strict file permissions on non-Windows platforms
+	if runtime.GOOS != "windows" {
+		mode := info.Mode()
+		if mode&0077 != 0 {
+			fmt.Fprintf(os.Stderr, "WARNING: Insecure permissions detected on %s (%04o). Auto-repairing to 0600...\n", configPath, mode.Perm())
+			if err := os.Chmod(configPath, 0600); err != nil {
+				return nil, fmt.Errorf("security error: insecure file permissions on %s (%04o) and auto-repair failed: %w", configPath, mode.Perm(), err)
+			}
+		}
+	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return cfg, nil // Return defaults if file doesn't exist
@@ -70,6 +89,11 @@ func LoadConfig() (*Config, error) {
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
+	}
+
+	// Normalize default policy
+	if cfg.Auth.DefaultPolicy == "" {
+		cfg.Auth.DefaultPolicy = "allow"
 	}
 
 	// Check for LOCKSMITH_SILENT environment variable (used by Summon provider)
