@@ -45,24 +45,6 @@ func TestMCPServer(t *testing.T) {
 	}
 	defer session.Close()
 
-	// 3. Test Tool: locksmith_get_secret
-	t.Run("get_secret", func(t *testing.T) {
-		res, err := session.CallTool(ctx, &mcp.CallToolParams{
-			Name:      "locksmith_get_secret",
-			Arguments: map[string]string{"name": "test-key"},
-		})
-		if err != nil {
-			t.Fatalf("CallTool failed: %v", err)
-		}
-		if res.IsError {
-			t.Fatalf("Tool returned error content: %+v", res.Content)
-		}
-		text := res.Content[0].(*mcp.TextContent).Text
-		if text != "\"test-value\"" {
-			t.Errorf("Expected '\"test-value\"', got '%s'", text)
-		}
-	})
-
 	// 5. Test Tool: locksmith_list_secrets
 	t.Run("list_secrets", func(t *testing.T) {
 		testListSecrets(t, ctx, session)

@@ -13,9 +13,9 @@ import (
 var expiresStr string
 
 var addCmd = &cobra.Command{
-	Use:   "add <key> [secret]",
+	Use:   "add <key>",
 	Short: "Store a secret",
-	Args:  cobra.RangeArgs(0, 2),
+	Args:  cobra.RangeArgs(0, 1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var key string
 		var secretBytes []byte
@@ -34,25 +34,21 @@ var addCmd = &cobra.Command{
 			}
 		}
 
-		if len(args) == 2 {
-			secretBytes = []byte(args[1])
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), "Enter secret: ")
+		if f, ok := cmd.InOrStdin().(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+			secretBytes, err = term.ReadPassword(int(f.Fd()))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout())
 		} else {
-			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Enter secret: ")
-			if f, ok := cmd.InOrStdin().(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-				secretBytes, err = term.ReadPassword(int(f.Fd()))
-				_, _ = fmt.Fprintln(cmd.OutOrStdout())
-			} else {
-				// Fallback for non-terminal input (e.g. tests or piped input)
-				var secretStr string
-				_, err = fmt.Fscanln(cmd.InOrStdin(), &secretStr)
-				secretBytes = []byte(secretStr)
-			}
-			if err != nil {
-				return fmt.Errorf("error reading secret: %w", err)
-			}
-			if len(secretBytes) == 0 {
-				return fmt.Errorf("secret cannot be empty")
-			}
+			// Fallback for non-terminal input (e.g. tests or piped input)
+			var secretStr string
+			_, err = fmt.Fscanln(cmd.InOrStdin(), &secretStr)
+			secretBytes = []byte(secretStr)
+		}
+		if err != nil {
+			return fmt.Errorf("error reading secret: %w", err)
+		}
+		if len(secretBytes) == 0 {
+			return fmt.Errorf("secret cannot be empty")
 		}
 
 		duration, err := locksmith.ParseDuration(expiresStr)

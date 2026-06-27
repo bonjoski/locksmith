@@ -152,34 +152,20 @@ func TestTokenSubcommand(t *testing.T) {
 }
 
 func TestAddCommand(t *testing.T) {
-	outBuf, _ := setupTest()
+	_, _ = setupTest()
 
-	// 1. Test adding with 2 arguments (legacy)
+	// 1. Test adding with 2 arguments fails (no secrets on command line)
 	key := "test-add-arg"
 	secret := "secret-value"
 	rootCmd.SetArgs([]string{"add", key, secret})
 
 	err := rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("Add command failed: %v", err)
-	}
-
-	// Verify it was saved in the mock cache
-	mc := ls.Cache.(*mockCache)
-	s, ok := mc.secrets[key]
-	if !ok {
-		t.Errorf("Expected secret '%s' to be saved", key)
-	}
-	if string(s.Value) != secret {
-		t.Errorf("Expected secret value '%s', got '%s'", secret, string(s.Value))
-	}
-
-	if !strings.Contains(outBuf.String(), "Successfully saved secret") {
-		t.Errorf("Expected success message, got: %s", outBuf.String())
+	if err == nil {
+		t.Fatal("Expected error when passing 2 arguments to add command, but got none")
 	}
 
 	// 2. Test adding with 1 argument (prompting)
-	outBuf, _ = setupTest()
+	outBuf, _ := setupTest()
 	promptSecret := "prompted-secret"
 	rootCmd.SetIn(strings.NewReader(promptSecret + "\n"))
 	rootCmd.SetArgs([]string{"add", "prompt-key"})
@@ -190,9 +176,9 @@ func TestAddCommand(t *testing.T) {
 	}
 
 	// Important: setupTest() Re-initializes ls and mc, so we need to get the new mc
-	mc = ls.Cache.(*mockCache)
+	mc := ls.Cache.(*mockCache)
 
-	s, ok = mc.secrets["prompt-key"]
+	s, ok := mc.secrets["prompt-key"]
 	if !ok {
 		t.Error("Expected secret 'prompt-key' to be saved")
 	}

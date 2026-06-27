@@ -47,21 +47,6 @@ func newMCPServer(lsMcp *locksmith.Locksmith) *mcp.Server {
 
 	// Register Tools (prefixed with locksmith_)
 
-	// locksmith_get_secret
-	type GetSecretInput struct {
-		Name string `json:"name" jsonschema:"The name of the secret to retrieve"`
-	}
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "locksmith_get_secret",
-		Description: "Retrieve a secret by its name. Requires biometric authentication.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, in GetSecretInput) (*mcp.CallToolResult, any, error) {
-		val, err := lsMcp.Get(in.Name)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, string(val), nil
-	})
-
 	// locksmith_list_secrets
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "locksmith_list_secrets",
