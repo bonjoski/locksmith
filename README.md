@@ -281,14 +281,16 @@ make help
 
 ## Security Features
 
-Locksmith implements defense-in-depth security:
+Locksmith implements defense-in-depth security to protect credentials from local compromise, supply chain attacks, and leakage:
 
-- **Hardware-backed security**: Biometric authentication is enforced by the macOS Secure Enclave and Windows TPM.
-- **Biometric protection**: Touch ID/Face ID, Apple Watch, and Windows Hello required for sensitive operations.
-- **Memory zeroing**: Secrets cleared from memory immediately after use
-- **SLSA provenance**: Releases include cryptographic attestations
-- **Continuous Fuzzing**: Daily fuzz testing of critical parsing logic
-- **OpenSSF Scorecard**: Automated security assessment
+- **Application-Level Access Control (Binary Whitelisting)**: Restricts secret retrieval to specific whitelisted applications matching paths, identifiers, or codesign team IDs. It traverses the parent process tree (skipping common shell wrappers) to verify the actual calling application, preventing compromised third-party dependencies, malicious background scripts, or rogue local processes from silently harvesting credentials.
+- **Command-Line History Protection**: Enforces interactive entry (`term.ReadPassword`) or stdin piping for all secret additions. Plaintext passwords never appear as command line arguments, preventing them from being stored in cleartext shell history files (like `.zsh_history`) where they could be scraped.
+- **AI Context Isolation (MCP)**: Limits AI assistants (such as Cursor or Claude) to credential metadata and key discovery (`locksmith_list_secrets`). Raw secret values are never directly returned to the AI, preventing secret exposure to LLM providers or extraction via prompt injection.
+- **Hardware-Backed Security**: Biometric challenge enforcement is backed by the macOS Secure Enclave and Windows TPM.
+- **Memory Hardening**: Explicit memory zeroing (`defer` overlays) clears all raw secret slices and cached bytes immediately after use, preventing memory-scraping attacks.
+- **SLSA Provenance & Release Verification**: Releases include cryptographic attestations proving binaries correspond directly to tagged source code.
+- **Continuous Fuzzing**: Automated daily fuzz testing of critical configuration and parsing modules.
+- **OpenSSF Scorecard**: High-confidence automated security assessments.
 
 ### Verifying Releases
 
