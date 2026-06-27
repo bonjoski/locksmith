@@ -3,6 +3,7 @@ package locksmith
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -119,6 +120,11 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 }
 
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
+	// Access Control check
+	if err := l.checkAccessControl(key); err != nil {
+		return nil, err
+	}
+
 	// 1. Check Cache (skip if BypassCache is true)
 	if !l.Options.BypassCache && !l.Cache.IsExpired(key, DefaultCacheTTL) {
 		secret, err := l.Cache.Get(key)
@@ -150,6 +156,62 @@ func (l *Locksmith) getSecret(key string) (*Secret, error) {
 	}
 
 	return &secret, nil
+}
+
+func (l *Locksmith) checkAccessControl(key string) error {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return fmt.Errorf("security: failed to load configuration for access control: %w", err)
+	}
+
+	var matchedRule *AccessRule
+	for _, rule := range cfg.AccessControl {
+		if matchSecretPattern(rule.Secret, key) {
+			matchedRule = &rule
+			break
+		}
+	}
+
+	if matchedRule == nil {
+		return nil
+	}
+
+	caller, err := native.GetCallingProcessInfo()
+	if err != nil {
+		return fmt.Errorf("security: failed to identify calling process: %w", err)
+	}
+
+	for _, app := range matchedRule.AllowedApps {
+		if app.Path != "" {
+			cleanAppPath := filepath.Clean(app.Path)
+			cleanCallerPath := filepath.Clean(caller.Path)
+			if strings.EqualFold(cleanAppPath, cleanCallerPath) {
+				return nil
+			}
+		}
+
+		if app.Identifier != "" && caller.Identifier != "" {
+			if app.Identifier == caller.Identifier {
+				return nil
+			}
+		}
+
+		if app.TeamID != "" && caller.TeamID != "" {
+			if app.TeamID == caller.TeamID {
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("security: access denied for calling process '%s' (Identifier: '%s', TeamID: '%s')",
+		caller.Path, caller.Identifier, caller.TeamID)
+}
+
+func matchSecretPattern(pattern, secret string) bool {
+	pattern = strings.ReplaceAll(pattern, "\\", "/")
+	secret = strings.ReplaceAll(secret, "\\", "/")
+	matched, err := filepath.Match(pattern, secret)
+	return err == nil && matched
 }
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {

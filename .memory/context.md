@@ -1,7 +1,7 @@
 # Project Context: Locksmith 🔐
 
 ## Current Focus
-Implementing roadmap features (next: Application-Level Access Control / Binary Whitelisting).
+Implementing roadmap features (next: Secure Cross-Device Sync).
 
 ## Active Tasks
 - [x] Create `.memory` directory and populate with initial documentation.
@@ -10,7 +10,8 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [x] Establish mandatory 100% test coverage policy for new features.
 - [x] Implement in-memory environment injection (`run` command) with full tests.
 - [x] Implement biometric-protected SSH & GPG agent (Feature #2) with full tests.
-- [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
+- [x] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
+- [ ] Implement Secure Cross-Device Sync (Feature #4).
 
 ## Recent Changes
 - docs: update memory context for Feature #3 roadmap focus

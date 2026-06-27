@@ -22,10 +22,22 @@ type AuthConfig struct {
 	PromptMessage     string `yaml:"prompt_message,omitempty"`
 }
 
+type AllowedApp struct {
+	Path       string `yaml:"path,omitempty"`
+	Identifier string `yaml:"identifier,omitempty"`
+	TeamID     string `yaml:"team_id,omitempty"`
+}
+
+type AccessRule struct {
+	Secret      string       `yaml:"secret"`
+	AllowedApps []AllowedApp `yaml:"allowed_apps"`
+}
+
 // Config represents the locksmith configuration
 type Config struct {
 	Notifications NotificationConfig `yaml:"notifications"`
 	Auth          AuthConfig         `yaml:"auth"`
+	AccessControl []AccessRule       `yaml:"access_control,omitempty"`
 }
 
 // LoadConfig loads configuration from ~/.locksmith/config.yml
