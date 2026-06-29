@@ -120,6 +120,9 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 }
 
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
+	if err := l.VerifyAccess(key); err != nil {
+		return nil, err
+	}
 	l.checkLazyRotation(key)
 	return l.getSecretNoRotate(key)
 }

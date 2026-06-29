@@ -29,11 +29,22 @@ type RotationRule struct {
 	Timeout    string `yaml:"timeout"`     // optional, e.g. "30s"
 }
 
+type AccessControlRule struct {
+	Secret          string   `yaml:"secret"`           // Glob pattern, e.g. "db/*"
+	AllowedBinaries []string `yaml:"allowed_binaries"` // Absolute executable paths
+}
+
+type AccessControlConfig struct {
+	Enabled bool                `yaml:"enabled"`
+	Rules   []AccessControlRule `yaml:"rules"`
+}
+
 // Config represents the locksmith configuration
 type Config struct {
-	Notifications NotificationConfig `yaml:"notifications"`
-	Auth          AuthConfig         `yaml:"auth"`
-	Rotation      []RotationRule     `yaml:"rotation"` // Rotation rules
+	Notifications NotificationConfig  `yaml:"notifications"`
+	Auth          AuthConfig          `yaml:"auth"`
+	Rotation      []RotationRule      `yaml:"rotation"`       // Rotation rules
+	AccessControl AccessControlConfig `yaml:"access_control"` // Binary whitelisting
 }
 
 // LoadConfig loads configuration from ~/.locksmith/config.yml
