@@ -73,6 +73,7 @@ type Locksmith struct {
 	Cache   Cache
 	Backend Backend
 	Options Options
+	Config  *Config // Loaded system configuration
 }
 
 func New() (*Locksmith, error) {
@@ -119,6 +120,11 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 }
 
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
+	l.checkLazyRotation(key)
+	return l.getSecretNoRotate(key)
+}
+
+func (l *Locksmith) getSecretNoRotate(key string) (*Secret, error) {
 	// 1. Check Cache (skip if BypassCache is true)
 	if !l.Options.BypassCache && !l.Cache.IsExpired(key, DefaultCacheTTL) {
 		secret, err := l.Cache.Get(key)

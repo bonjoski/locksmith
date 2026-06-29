@@ -41,10 +41,12 @@ var rootCmd = &cobra.Command{
 			if err != nil {
 				return fmt.Errorf("error initializing locksmith: %w", err)
 			}
+			ls.Config = cfg
 		} else {
 			// Apply config to injected test double
 			ls.Options.RequireBiometrics = globalBiometricReqs
 			ls.Options.PromptMessage = cfg.Auth.PromptMessage
+			ls.Config = cfg
 		}
 
 		return nil
