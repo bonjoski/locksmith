@@ -187,7 +187,7 @@ func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 			}
 			if !allowed {
 				return nil, fmt.Errorf("binary %s is not in allowed list", execPath)
-				}
+			}
 		}
 	}
 

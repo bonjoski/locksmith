@@ -1,10 +1,14 @@
-// admin_stub.go - provides stub admin methods when the build tag 'locksmith_admin' is not enabled
 package locksmith
 
 import (
-	"fmt"
-	"time"
+    "fmt"
+    "time"
 )
+
+//go:build !locksmith_admin
+// +build !locksmith_admin
+
+// admin_stub.go - provides stub admin methods when the build tag 'locksmith_admin' is not enabled
 
 // SetWithBiometrics stores a secret with an explicit biometric requirement.
 // This stub returns an error indicating admin features are unavailable.
@@ -24,7 +28,7 @@ func (l *Locksmith) Delete(key string) error {
 }
 
 // RotateSecret rotates a single secret's expiration.
-func (l *Locksmith) RotateSecret(name string, newExpiry string) error {
+func (l *Locksmith) RotateSecret(key string) error {
     return fmt.Errorf("admin features not enabled; RotateSecret unavailable")
 }
 
