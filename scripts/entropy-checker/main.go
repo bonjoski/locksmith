@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strings"
 	"regexp"
+	"strings"
 )
 
 // calculateEntropy computes the Shannon entropy of a string.
@@ -35,6 +35,7 @@ func main() {
 	_, _ = fmt.Sscanf(os.Args[1], "%f", &threshold)
 
 	found := false
+	alphaRegex := regexp.MustCompile(`^[A-Za-z]+$`)
 	for _, arg := range os.Args[2:] {
 		// Only check strings longer than 16 chars (heuristic for tokens/keys)
 		if len(arg) < 16 {
@@ -45,7 +46,7 @@ func main() {
 			continue
 		}
 		// Skip pure alphabetic identifiers (e.g., constant names) which are unlikely to be secrets
-		if matched, _ := regexp.MatchString(`^[A-Za-z]+$`, arg); matched {
+		if alphaRegex.MatchString(arg) {
 			continue
 		}
 		// Skip strings marked with gosec ignore comment (//#nosec) if present in the same line – not directly available here, but this placeholder shows intent

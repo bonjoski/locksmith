@@ -46,7 +46,11 @@ func TestSetGetAndList(t *testing.T) {
 	key := "testkey"
 	value := []byte("secretvalue")
 	// Ensure we zero the secret value after the test to avoid lingering plaintext
-	defer func() { for i := range value { value[i] = 0 } }()
+	defer func() {
+		for i := range value {
+			value[i] = 0
+		}
+	}()
 	expires := time.Now().Add(1 * time.Hour)
 
 	// Set secret
@@ -60,7 +64,11 @@ func TestSetGetAndList(t *testing.T) {
 		t.Fatalf("Get failed: %v", err)
 	}
 	// Zero the returned slice after comparison
-	defer func() { for i := range got { got[i] = 0 } }()
+	defer func() {
+		for i := range got {
+			got[i] = 0
+		}
+	}()
 	if !bytes.Equal(got, value) {
 		t.Fatalf("Get returned %s, want %s", string(got), string(value))
 	}

@@ -9,7 +9,7 @@ import (
 
 func TestEntropyCheckerLow(t *testing.T) {
 	// Provide a low‑entropy string; expect the program to exit with a non‑zero status.
-	cmd := exec.Command("go", "run", "main.go", "4.0", "aaaaaaaaaaaaaaaa")
+	cmd := exec.Command("go", "run", "main.go", "4.0", "aaaaaaaaaaaaaaa1")
 	output, err := cmd.CombinedOutput()
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		if exitErr.ExitCode() == 0 {

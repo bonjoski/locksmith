@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- Improve entropy checker to ignore import paths and identifiers, add regexp import
 - Add placeholder checkBinaryAccess implementation and clean up imports
 - Merge PR #57
 - Merge PR #58
 - Update admin stub and docs for admin tag clarification
-- Update docs and code changes
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
