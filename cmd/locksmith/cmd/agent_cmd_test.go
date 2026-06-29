@@ -23,8 +23,13 @@ func TestAgentAddCommand(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", origHome)
+	os.Setenv("USERPROFILE", tmpDir)
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
+	}()
 
 	// 1. Generate an SSH keypair and write private key to file
 	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)

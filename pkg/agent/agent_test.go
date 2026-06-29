@@ -42,7 +42,9 @@ func setupAgentTestEnv(t *testing.T, privateKeyBytes []byte, pubKeyStr string) (
 	}
 
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", tmpDir)
+	os.Setenv("USERPROFILE", tmpDir)
 
 	record := SSHKeyRecord{
 		Name:      "test-key",
@@ -68,6 +70,7 @@ func setupAgentTestEnv(t *testing.T, privateKeyBytes []byte, pubKeyStr string) (
 
 	cleanup := func() {
 		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
 		os.RemoveAll(tmpDir)
 	}
 
