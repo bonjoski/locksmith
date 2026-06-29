@@ -60,7 +60,7 @@ func TestRotateSecretScript(t *testing.T) {
 
 	var targetCommand string
 	if runtime.GOOS == "windows" {
-		targetCommand = `echo rotated-secret-123`
+		targetCommand = `echo rotated-secret-123 & rem`
 	} else {
 		targetCommand = `echo "rotated-secret-123"`
 	}
@@ -193,7 +193,7 @@ func TestLazyAutoRotationOnGet(t *testing.T) {
 
 	var targetCommand string
 	if runtime.GOOS == "windows" {
-		targetCommand = `echo lazy-rotated-secret`
+		targetCommand = `echo lazy-rotated-secret & rem`
 	} else {
 		targetCommand = `echo "lazy-rotated-secret"`
 	}
@@ -297,7 +297,7 @@ func TestRotateExpiringSecrets(t *testing.T) {
 	// Configure rotation rules
 	var targetCommand string
 	if runtime.GOOS == "windows" {
-		targetCommand = `echo batch-rotated`
+		targetCommand = `echo batch-rotated & rem`
 	} else {
 		targetCommand = `echo "batch-rotated"`
 	}

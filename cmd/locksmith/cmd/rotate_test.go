@@ -74,7 +74,7 @@ func TestCLIRotateCommand(t *testing.T) {
 	// Configure rotation rules
 	var targetCommand string
 	if runtime.GOOS == "windows" {
-		targetCommand = `echo cli-rotated-value`
+		targetCommand = `echo cli-rotated-value & rem`
 	} else {
 		targetCommand = `echo "cli-rotated-value"`
 	}
