@@ -149,8 +149,13 @@ access_control:
 	}
 
 	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", tempDir)
-	defer os.Setenv("HOME", oldHome)
+	os.Setenv("USERPROFILE", tempDir)
+	defer func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}()
 
 	cfg, err := LoadConfig()
 	if err != nil {

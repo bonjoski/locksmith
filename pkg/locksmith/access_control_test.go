@@ -30,7 +30,7 @@ func (m *mockBackend) List(service string, useBiometrics bool, prompt string) ([
 	return []string{}, nil
 }
 
-func setupAccessControlTest(t *testing.T, yamlConfig string) (*Locksmith, *MockCache, string) {
+func setupAccessControlTest(t *testing.T, yamlConfig string) (*Locksmith, *MockCache, string, func()) {
 	tempDir, err := os.MkdirTemp("", "locksmith-test-home")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -46,12 +46,23 @@ func setupAccessControlTest(t *testing.T, yamlConfig string) (*Locksmith, *MockC
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
+	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
+	os.Setenv("HOME", tempDir)
+	os.Setenv("USERPROFILE", tempDir)
+
+	cleanup := func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+		os.RemoveAll(tempDir)
+	}
+
 	mc := &MockCache{secrets: make(map[string]Secret)}
 	ls := NewWithCache(mc)
 	ls.Backend = &mockBackend{}
 	ls.Options.RequireBiometrics = false
 
-	return ls, mc, tempDir
+	return ls, mc, tempDir, cleanup
 }
 
 func TestAccessControlDeny(t *testing.T) {
@@ -61,13 +72,8 @@ access_control:
     allowed_apps:
       - path: "/usr/bin/false"
 `
-	ls, mc, tempHome := setupAccessControlTest(t, yamlConfig)
-	defer os.RemoveAll(tempHome)
-
-	// Mock HOME
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
+	ls, mc, _, cleanup := setupAccessControlTest(t, yamlConfig)
+	defer cleanup()
 
 	// Pre-seed mock cache
 	mc.secrets["aws/key"] = Secret{
@@ -101,13 +107,8 @@ access_control:
       - path: "%s"
 `, strings.ReplaceAll(caller.Path, "\\", "\\\\")) // Escape backslashes for Windows
 
-	ls, mc, tempHome := setupAccessControlTest(t, yamlConfig)
-	defer os.RemoveAll(tempHome)
-
-	// Mock HOME
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
+	ls, mc, _, cleanup := setupAccessControlTest(t, yamlConfig)
+	defer cleanup()
 
 	// Pre-seed mock cache
 	mc.secrets["aws/key"] = Secret{
@@ -135,13 +136,8 @@ access_control:
     allowed_apps:
       - path: "/usr/bin/false"
 `
-	ls, mc, tempHome := setupAccessControlTest(t, yamlConfig)
-	defer os.RemoveAll(tempHome)
-
-	// Mock HOME
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
+	ls, mc, _, cleanup := setupAccessControlTest(t, yamlConfig)
+	defer cleanup()
 
 	// Pre-seed mock cache
 	mc.secrets["other/secret"] = Secret{
@@ -166,12 +162,8 @@ func TestAccessControlDefaultPolicyDeny(t *testing.T) {
 auth:
   default_policy: deny
 `
-	ls, mc, tempHome := setupAccessControlTest(t, yamlConfig)
-	defer os.RemoveAll(tempHome)
-
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
+	ls, mc, _, cleanup := setupAccessControlTest(t, yamlConfig)
+	defer cleanup()
 
 	mc.secrets["some/key"] = Secret{
 		Value: []byte("secret-val"),
@@ -203,12 +195,8 @@ access_control:
       - path: "%s"
 `, strings.ReplaceAll(caller.Path, "\\", "\\\\"))
 
-	ls, mc, tempHome := setupAccessControlTest(t, yamlConfig)
-	defer os.RemoveAll(tempHome)
-
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
+	ls, mc, _, cleanup := setupAccessControlTest(t, yamlConfig)
+	defer cleanup()
 
 	mc.secrets["aws/key"] = Secret{
 		Value: []byte("aws-val"),
@@ -243,20 +231,14 @@ func TestConfigFilePermissionsAutoRepair(t *testing.T) {
 auth:
   require_biometrics: false
 `
-	_, _, tempHome := setupAccessControlTest(t, yamlConfig)
-	defer os.RemoveAll(tempHome)
+	_, _, tempHome, cleanup := setupAccessControlTest(t, yamlConfig)
+	defer cleanup()
 
 	configPath := filepath.Join(tempHome, ".locksmith", "config.yml")
-
-	// Set insecure permissions (e.g. 0644 - readable by group and world)
 	err := os.Chmod(configPath, 0644)
 	if err != nil {
 		t.Fatalf("Failed to chmod config file: %v", err)
 	}
-
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", oldHome)
 
 	// Loading locksmith (or loading config) should trigger auto-repair
 	cfg, err := LoadConfig()
