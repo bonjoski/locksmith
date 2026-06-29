@@ -24,6 +24,11 @@ func (l *Locksmith) SetWithBiometrics(key string, value []byte, expiresAt time.T
 	if err != nil {
 		return err
 	}
+	defer func() {
+		for i := range data {
+			data[i] = 0
+		}
+	}()
 
 	err = l.Backend.Set(l.Service, key, data, requireBiometrics)
 	if err != nil {
@@ -39,4 +44,24 @@ func (l *Locksmith) Delete(key string) error {
 	_ = l.Cache.Delete(key)
 	prompt := l.Options.getPrompt("Authentication required to delete secret '%s'", key)
 	return l.Backend.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
+}
+
+// ImportSecret stores a secret directly, preserving its original metadata (CreatedAt, ExpiresAt)
+func (l *Locksmith) ImportSecret(key string, secret Secret, requireBiometrics bool) error {
+	data, err := json.Marshal(secret)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		for i := range data {
+			data[i] = 0
+		}
+	}()
+
+	err = l.Backend.Set(l.Service, key, data, requireBiometrics)
+	if err != nil {
+		return err
+	}
+
+	return l.Cache.Set(key, secret, DefaultCacheTTL)
 }

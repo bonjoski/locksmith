@@ -143,6 +143,13 @@ The core logic is exposed via the `Locksmith` struct methods.
     *   The `PersistentPreRunE` function ensures that system configuration (`Config`) is loaded, and crucially, it initializes the `Locksmith` controller using the proper `Options`, making the system ready for execution before any command runs.
 3.  **Authorization Gate (Biometrics)**:
     *   Implementation is delegated to the `Backend` interface. If `Options.RequireBiometrics` is `true`, the `Backend.Get()` call **will fail** without a successful OS-level biometric challenge handled by the native bridge.
+4.  **Application-Level Access Control (Binary Whitelisting)**:
+    *   Before retrieving any secret value (both from cache and native keychain), `Locksmith` invokes the process tracking resolver.
+    *   It walks up the parent PID hierarchy (skipping common terminal shells like `bash` and `zsh` up to 5 levels) to identify the caller binary.
+    *   It checks the caller's absolute path, macOS Bundle Identifier, or codesign Team ID against the rules configured for that key. If unauthorized, access is denied immediately before any biometrics are triggered.
+5.  **Secure Cross-Device Sync (Zero-Knowledge)**:
+    *   **Export**: Resolves all secret keys, fetches value/metadata payloads, serializes them to JSON, and encrypts the payload using AES-256-GCM. The key is derived from a user-provided passphrase using **Argon2id**. Writes the binary format `[Salt (16)][Nonce (12)][Ciphertext]` to disk.
+    *   **Import**: Decrypts the binary payload, validates the checksum, and merges secrets into the local OS keychain applying merge policies like `latest-wins` (evaluating `CreatedAt` timestamps), `overwrite`, or `keep-local`.
 
 ---
 
@@ -177,10 +184,20 @@ Saves configuration details, primarily for fine-tuning security behavior:
 auth:
   require_biometrics: true  # Forces biometrics on all operations
   prompt_message: "Authenticate to access Locksmith secret '%s'" # Custom prompt
+  default_policy: allow     # allow or deny (Zero-Trust)
 notifications:
   expiring_threshold: 7d    # Warning given 7 days before expiration
   method: macos              # Display using OS native notification
   show_on_get: true
+access_control:
+  - secret: "aws/*"
+    allowed_apps:
+      - path: "/usr/local/bin/aws"
+      - identifier: "com.microsoft.VSCode"
+        team_id: "UBF8T346G9"
+  - secret: "db/password"
+    allowed_apps:
+      - path: "/Applications/Postgres.app"
 ```
 
 ### 🚀 Usage Guidelines
