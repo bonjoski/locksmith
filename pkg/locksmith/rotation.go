@@ -73,17 +73,20 @@ func (l *Locksmith) RotateSecret(key string) error {
 }
 
 func (l *Locksmith) findRotationRule(key string) (*RotationRule, error) {
-	if l.Config == nil || len(l.Config.Rotation) == 0 {
-		return nil, fmt.Errorf("no rotation rules configured")
+	if l.Config == nil {
+		return nil, fmt.Errorf("no matching rotation rule found for key '%s'", key)
 	}
-
 	for _, rule := range l.Config.Rotation {
 		matched, err := filepath.Match(rule.Secret, key)
-		if err == nil && matched {
-			return &rule, nil
+		if err != nil {
+			continue // ignore malformed pattern
+		}
+		if matched {
+			// return pointer to rule copy to avoid returning address of loop variable
+			r := rule
+			return &r, nil
 		}
 	}
-
 	return nil, fmt.Errorf("no matching rotation rule found for key '%s'", key)
 }
 

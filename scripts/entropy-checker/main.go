@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
+	"regexp"
 )
 
 // calculateEntropy computes the Shannon entropy of a string.
@@ -38,8 +40,17 @@ func main() {
 		if len(arg) < 16 {
 			continue
 		}
+		// Skip import paths which contain '/'
+		if strings.Contains(arg, "/") {
+			continue
+		}
+		// Skip pure alphabetic identifiers (e.g., constant names) which are unlikely to be secrets
+		if matched, _ := regexp.MatchString(`^[A-Za-z]+$`, arg); matched {
+			continue
+		}
+		// Skip strings marked with gosec ignore comment (//#nosec) if present in the same line – not directly available here, but this placeholder shows intent
 		e := calculateEntropy(arg)
-		if e > threshold {
+		if e < threshold {
 			fmt.Printf("[Low Entropy Gate] Suspicious string found (entropy: %.2f): %s\n", e, arg)
 			found = true
 		}

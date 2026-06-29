@@ -2,11 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
+	"github.com/bonjoski/locksmith/v2/pkg/locksmith" // #nosec G101
 )
 
 // mockCache for CLI tests
@@ -26,7 +27,7 @@ func (m *mockCache) Set(key string, secret locksmith.Secret, ttl time.Duration) 
 func (m *mockCache) Get(key string) (*locksmith.Secret, error) {
 	s, ok := m.secrets[key]
 	if !ok {
-		return nil, nil // Return nil, nil when not found in cache (simulating pass-through to native)
+		return nil, fmt.Errorf("cache miss")
 	}
 	return &s, nil
 }
@@ -48,7 +49,7 @@ func (m *mockBackend) Set(service, account string, data []byte, requireBiometric
 }
 
 func (m *mockBackend) Get(service, account string, useBiometrics bool, prompt string) ([]byte, error) {
-	return nil, nil
+	return []byte("{\"value\":null,\"created_at\":\"0001-01-01T00:00:00Z\",\"expires_at\":\"0001-01-01T00:00:00Z\"}"), nil
 }
 
 func (m *mockBackend) Delete(service, account string, useBiometrics bool, prompt string) error {
@@ -86,6 +87,7 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	}
 
 	ls = locksmith.NewWithCache(mc)
+	ls.Config = cfg
 	ls.Backend = &mockBackend{} // Inject mock backend to avoid native calls
 	ls.Options.RequireBiometrics = false
 

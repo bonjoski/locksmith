@@ -42,3 +42,12 @@ access_control:
     - "/usr/local/bin/allowed_app"
   deny_binaries:
     - "/usr/bin/forbidden_app"
+rotation:
+  - secret: "github/*"
+    hook_type: "script"
+    hook_target: "./scripts/github_rotate.sh"
+    ttl: "24h"
+  - secret: "atlassian/*"
+    hook_type: "script"
+    hook_target: "./scripts/atlassian_rotate.sh"
+    ttl: "24h"

@@ -20,6 +20,9 @@ type Options struct {
 	RequireBiometrics bool
 	PromptMessage     string
 	BypassCache       bool
+	// Binary access control
+	AllowBinaries []string
+	DenyBinaries  []string
 }
 
 func (o *Options) getPrompt(defaultPrompt, key string) string {
@@ -95,6 +98,14 @@ func NewWithOptions(opts Options) (*Locksmith, error) {
 	}
 	ls := NewWithCache(cache)
 	ls.Options = opts
+
+	// Load configuration and populate AccessControl
+	cfg, cfgErr := LoadConfig()
+	if cfgErr == nil && cfg != nil {
+		ls.Config = cfg
+		ls.Options.AllowBinaries = cfg.AccessControl.AllowBinaries
+		ls.Options.DenyBinaries = cfg.AccessControl.DenyBinaries
+	}
 	return ls, nil
 }
 

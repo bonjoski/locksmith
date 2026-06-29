@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- Add placeholder checkBinaryAccess implementation and clean up imports
 - Merge PR #57
 - Merge PR #58
 - Update admin stub and docs for admin tag clarification
 - Update docs and code changes
-- docs: Add Feature 5 to memory context active tasks
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
