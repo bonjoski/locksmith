@@ -3,6 +3,7 @@ package locksmith
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -133,6 +134,11 @@ func (l *Locksmith) getSecretNoRotate(key string) (*Secret, error) {
 		}
 	}
 
+	// 1b. Binary whitelisting enforcement (moved to helper)
+	if err := l.checkBinaryAccess(); err != nil {
+		return nil, err
+	}
+
 	// 2. Fallback to Keychain (triggers biometric prompt if required)
 	prompt := l.Options.getPrompt("Authentication required to access '%s'", key)
 	data, err := l.Backend.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
@@ -160,6 +166,31 @@ func (l *Locksmith) getSecretNoRotate(key string) (*Secret, error) {
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 	// ... existing List implementation ...
+	// Binary whitelisting enforcement before listing
+	if l.Config != nil {
+		execPath, _ := os.Executable()
+		ac := l.Config.AccessControl
+		if len(ac.DenyBinaries) > 0 {
+			for _, d := range ac.DenyBinaries {
+				if execPath == d {
+					return nil, fmt.Errorf("binary %s is explicitly denied by access control", execPath)
+				}
+			}
+		}
+		if len(ac.AllowBinaries) > 0 {
+			allowed := false
+			for _, a := range ac.AllowBinaries {
+				if execPath == a {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return nil, fmt.Errorf("binary %s is not in allowed list", execPath)
+				}
+		}
+	}
+
 	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
 	keys, err := l.Backend.List(l.Service, l.Options.RequireBiometrics, prompt)
 	if err != nil {

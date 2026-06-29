@@ -1,7 +1,6 @@
 # Locksmith Configuration Example
 
-# This is an example configuration file for locksmith.
-# Save this as ~/.locksmith/config.yml to customize behavior.
+# This is an example configuration file for locksmith. Save this as ~/.locksmith/config.yml to customize behavior.
 
 auth:
   # Enforce biometric authentication
@@ -36,3 +35,10 @@ notifications:
   # Show expiration status when using 'locksmith list'
   # Default: true
   show_on_list: true
+
+access_control:
+  # Binary whitelisting – restrict which executables may access secrets via the library
+  allow_binaries:
+    - "/usr/local/bin/allowed_app"
+  deny_binaries:
+    - "/usr/bin/forbidden_app"

@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- docs: Add Feature 5 to memory context active tasks
 - chore: Bump version to v2.6.0
 - chore: Bump version to v2.5.0 in version.go
 - chore: Bump version to v2.5.0
 - Merge pull request #60 from bonjoski/feature/rotation
-- test: Isolate HOME and USERPROFILE in agent CLI tests on Windows
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

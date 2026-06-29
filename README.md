@@ -19,6 +19,7 @@
 - **Biometric Security**: Leverages macOS `LocalAuthentication`, **Windows Hello**, and **Linux Polkit** for biometric and interactive protection.
 - **MCP Server**: Built-in support for the **Model Context Protocol**, allowing AI agents (like Claude or Cursor) to securely access secrets via biometric gates.
 - **Keychain Integration**: Stores secrets in the secure macOS Keychain Services, **Windows Credential Manager**, and the **Linux Secret Service DBus**.
+- **Binary Whitelisting**: Restricts secret access to cryptographically verified or path-authorized binaries to prevent unauthorized exfiltration.
 - **Disk Caching**: Optional encrypted disk cache for fast re-access with configurable TTL.
 - **CLI & Library**: Use it as a standalone command-line tool or import it as a Go package.
 - **Auto-Provisioning**: Built-in `Makefile` that automatically installs its own security and quality tools.
@@ -132,9 +133,7 @@ Add Locksmith to your `claude_desktop_config.json` or Cursor MCP settings:
 
 ### Supported Tools
 - `locksmith_get_secret`: Retrieve a secret (requires Touch ID/biometrics).
-- `locksmith_set_secret`: Store a new secret (defaults to 90-day expiry).
 - `locksmith_list_secrets`: List names of stored secrets.
-- `locksmith_delete_secret`: Remove a secret.
 
 > [!IMPORTANT]
 > When an AI agent requests a secret, you will be prompted for biometrics on your hardware. The AI cannot bypass this gate.
@@ -216,13 +215,19 @@ Locksmith supports optional configuration via `~/.locksmith/config.yml` for cust
 ```yaml
 auth:
   require_biometrics: true  # Enforce Touch ID / Windows Hello
-  prompt_message: "Authenticate to access Locksmith secret '%s'" # Optional custom prompt 
+  prompt_message: "Authenticate to Locksmith secret '%s'" # Optional custom prompt 
 
 notifications:
   expiring_threshold: 7d    # Warn when secrets expire within this duration
   method: stderr            # Options: stderr, macos, silent
   show_on_get: true         # Show warnings on 'get' command
   show_on_list: true        # Show status on 'list' command
+
+access_control:
+  allow_binaries:
+    - "/usr/local/bin/allowed_app"
+  deny_binaries:
+    - "/usr/bin/forbidden_app"
 ```
 
 ### Expiration Notifications
