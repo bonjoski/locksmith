@@ -22,10 +22,18 @@ type AuthConfig struct {
 	PromptMessage     string `yaml:"prompt_message,omitempty"`
 }
 
+type RotationRule struct {
+	Secret     string `yaml:"secret"`      // Glob pattern, e.g. "aws/*"
+	HookType   string `yaml:"hook_type"`   // "script" or "webhook"
+	HookTarget string `yaml:"hook_target"` // Script file path or URL
+	Timeout    string `yaml:"timeout"`     // optional, e.g. "30s"
+}
+
 // Config represents the locksmith configuration
 type Config struct {
 	Notifications NotificationConfig `yaml:"notifications"`
 	Auth          AuthConfig         `yaml:"auth"`
+	Rotation      []RotationRule     `yaml:"rotation"` // Rotation rules
 }
 
 // LoadConfig loads configuration from ~/.locksmith/config.yml

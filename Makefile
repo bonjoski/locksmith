@@ -1,8 +1,10 @@
 # Project variables
 BINARY_NAME=locksmith
 BUILD_DIR=bin
-PROD_SIGN_ID?="Developer ID Application: Benjamin Skolmoski"
-SIGN_ID?=$(PROD_SIGN_ID)
+PROD_SIGN_ID="Developer ID Application: Benjamin Skolmoski"
+# Auto-detect available signing identity, fallback to ad-hoc signing (-) if none found
+DETECTED_SIGN_ID=$(shell security find-identity -v -p codesigning 2>/dev/null | grep -q $(PROD_SIGN_ID) && echo $(PROD_SIGN_ID) || (security find-identity -v -p codesigning 2>/dev/null | grep -E "Apple Development|Mac Developer" | head -n 1 | cut -d '"' -f 2 | xargs echo || echo "-"))
+SIGN_ID?=$(DETECTED_SIGN_ID)
 IDENTIFIER="io.github.bonjoski.locksmith"
 GPG_KEY_ID=7BB5B44244E586B0
 VERSION=$(shell grep "Version =" pkg/locksmith/version.go | cut -d '"' -f 2)
