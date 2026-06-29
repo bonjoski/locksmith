@@ -10,14 +10,15 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [x] Establish mandatory 100% test coverage policy for new features.
 - [x] Implement in-memory environment injection (`run` command) with full tests.
 - [x] Implement biometric-protected SSH & GPG agent (Feature #2) with full tests.
+- [x] Implement Rotation Hooks & Auto-Rotation (Feature #5) with full tests.
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore: Bump version to v2.6.0
 - chore: Bump version to v2.5.0 in version.go
 - chore: Bump version to v2.5.0
 - Merge pull request #60 from bonjoski/feature/rotation
 - test: Isolate HOME and USERPROFILE in agent CLI tests on Windows
-- test: Fix Windows command execution argument appending in tests
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
