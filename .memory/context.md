@@ -13,11 +13,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore: Bump version to v2.5.0
 - Merge pull request #60 from bonjoski/feature/rotation
 - test: Isolate HOME and USERPROFILE in agent CLI tests on Windows
 - test: Fix Windows command execution argument appending in tests
 - feat: Implement rotation hooks and auto-rotation (Feature 5)
-- docs: update memory context for Feature #3 roadmap focus
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

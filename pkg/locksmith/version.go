@@ -1,3 +1,3 @@
 package locksmith
 
-const Version = "2.4.2"
+const Version = "2.5.0"
