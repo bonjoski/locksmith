@@ -40,6 +40,10 @@ jobs:
         run: |
           go test -v -tags locksmith_admin ./...
 
+      - name: Run govulncheck policy guard
+        run: |
+          make govulncheck-ci
+
       - name: Verify Context Freshness
         run: |
           chmod +x scripts/update-context.sh
