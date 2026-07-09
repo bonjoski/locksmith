@@ -23,13 +23,13 @@ type AuthConfig struct {
 }
 
 type RotationRule struct {
-	Secret           string     `yaml:"secret"`                      // Glob pattern, e.g. "aws/*"
-	Rotator          string     `yaml:"rotator,omitempty"`           // Optional explicit handler ID, e.g. "url-json"
-	SecretType       SecretType `yaml:"secret_type,omitempty"`       // e.g. "password", "api_key", "oauth_token"
-	OwnerApplication string     `yaml:"owner_application,omitempty"` // e.g. "github", "postgres", "stripe"
-	SourceURL        string     `yaml:"source_url,omitempty"`        // URL used by compatible handlers
-	Metadata         map[string]string `yaml:"metadata,omitempty"`   // Optional handler metadata (supports locksmith://key refs)
-	Timeout          string     `yaml:"timeout"`                     // optional, e.g. "30s"
+	Secret           string            `yaml:"secret"`                      // Glob pattern, e.g. "aws/*"
+	Rotator          string            `yaml:"rotator,omitempty"`           // Optional explicit handler ID, e.g. "url-json"
+	SecretType       SecretType        `yaml:"secret_type,omitempty"`       // e.g. "password", "api_key", "oauth_token"
+	OwnerApplication string            `yaml:"owner_application,omitempty"` // e.g. "github", "postgres", "stripe"
+	SourceURL        string            `yaml:"source_url,omitempty"`        // URL used by compatible handlers
+	Metadata         map[string]string `yaml:"metadata,omitempty"`          // Optional handler metadata (supports locksmith://key refs)
+	Timeout          string            `yaml:"timeout"`                     // optional, e.g. "30s"
 
 	// Legacy fields retained for migration diagnostics.
 	HookType   string `yaml:"hook_type,omitempty"`

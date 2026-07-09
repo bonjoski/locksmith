@@ -458,7 +458,7 @@ func TestRotateSecretResolvesMetadataSecretRefs(t *testing.T) {
 				SourceURL:        "https://api.github.com/app/installations/67890/access_tokens",
 				Timeout:          "5s",
 				Metadata: map[string]string{
-					"github_app_id":         "locksmith://github/app/id",
+					"github_app_id":          "locksmith://github/app/id",
 					"github_installation_id": "locksmith://github/app/installation-id",
 					"github_app_private_key": "locksmith://github/app/private-key",
 				},
