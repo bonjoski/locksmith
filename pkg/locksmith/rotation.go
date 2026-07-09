@@ -3,23 +3,23 @@
 package locksmith
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/rotator"
 )
 
-// RotateSecret executes the configured rotation hook for the given key and updates the vault
+// RotateSecret executes the configured in-process Go rotator for the given key and updates the vault.
 func (l *Locksmith) RotateSecret(key string) error {
-	matchedRule, err := l.findRotationRule(key)
+	currentSecret, err := l.getSecretNoRotate(key)
+	if err != nil {
+		return fmt.Errorf("failed to load secret '%s' before rotation: %w", key, err)
+	}
+
+	matchedRule, selector, err := l.findRotationRule(key, currentSecret)
 	if err != nil {
 		return err
 	}
@@ -35,17 +35,22 @@ func (l *Locksmith) RotateSecret(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	var newValue []byte
-	var newTTL time.Duration
-
-	switch matchedRule.HookType {
-	case "script":
-		newValue, err = l.executeScriptRotation(ctx, matchedRule, key)
-	case "webhook":
-		newValue, newTTL, err = l.executeWebhookRotation(ctx, matchedRule, key, timeout)
-	default:
-		return fmt.Errorf("unsupported rotation hook type: %s", matchedRule.HookType)
+	handler, err := l.resolveRotationHandler(matchedRule, selector)
+	if err != nil {
+		return err
 	}
+
+	selector, err = l.resolveSelectorMetadata(selector)
+	if err != nil {
+		return err
+	}
+
+	result, err := handler.Rotate(ctx, rotator.RotationInput{
+		Key:          key,
+		CurrentValue: currentSecret.Value,
+		Selector:     selector,
+		Timeout:      timeout,
+	})
 
 	if err != nil {
 		return err
@@ -53,18 +58,25 @@ func (l *Locksmith) RotateSecret(key string) error {
 
 	defer func() {
 		// Zero out local new value buffer
-		for i := range newValue {
-			newValue[i] = 0
+		for i := range result.NewValue {
+			result.NewValue[i] = 0
 		}
 	}()
 
-	expiresAt := l.calculateRotationExpiration(key, newTTL)
+	expiresAt := l.calculateRotationExpiration(currentSecret, result.TTL)
 
-	// Update vault (uses same biometric settings from options)
-	// Create a copy so we can safely zero out the local newValue buffer
-	valCopy := make([]byte, len(newValue))
-	copy(valCopy, newValue)
-	err = l.Set(key, valCopy, expiresAt)
+	valCopy := make([]byte, len(result.NewValue))
+	copy(valCopy, result.NewValue)
+	err = l.SetWithContext(
+		key,
+		valCopy,
+		expiresAt,
+		l.Options.RequireBiometrics,
+		ParseSecretType(selector.SecretType),
+		selector.OwnerApplication,
+		selector.SourceURL,
+		selector.Metadata,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to write rotated secret back to vault: %w", err)
 	}
@@ -72,31 +84,140 @@ func (l *Locksmith) RotateSecret(key string) error {
 	return nil
 }
 
-func (l *Locksmith) findRotationRule(key string) (*RotationRule, error) {
+func (l *Locksmith) findRotationRule(key string, secret *Secret) (*RotationRule, rotator.RotationSelector, error) {
 	if l.Config == nil {
-		return nil, fmt.Errorf("no matching rotation rule found for key '%s'", key)
+		return nil, rotator.RotationSelector{}, fmt.Errorf("no matching rotation rule found for key '%s'", key)
 	}
 	for _, rule := range l.Config.Rotation {
 		matched, err := filepath.Match(rule.Secret, key)
 		if err != nil {
 			continue // ignore malformed pattern
 		}
-		if matched {
-			// return pointer to rule copy to avoid returning address of loop variable
-			r := rule
-			return &r, nil
+		if !matched {
+			continue
 		}
+
+		selector := l.buildRotationSelector(key, secret, &rule)
+		if !ruleSupportsSelector(&rule, selector) {
+			continue
+		}
+
+		r := rule
+		return &r, selector, nil
 	}
-	return nil, fmt.Errorf("no matching rotation rule found for key '%s'", key)
+	return nil, rotator.RotationSelector{}, fmt.Errorf("no matching rotation rule found for key '%s'", key)
 }
 
-func (l *Locksmith) calculateRotationExpiration(key string, newTTL time.Duration) time.Time {
+func (l *Locksmith) buildRotationSelector(key string, secret *Secret, rule *RotationRule) rotator.RotationSelector {
+	sel := rotator.RotationSelector{Key: key}
+	if secret != nil {
+		sel.SecretType = string(secret.SecretType)
+		sel.OwnerApplication = secret.OwnerApplication
+		sel.SourceURL = secret.SourceURL
+		sel.Metadata = secret.Metadata
+	}
+	if sel.SecretType == "" {
+		sel.SecretType = string(rule.SecretType)
+	}
+	if sel.OwnerApplication == "" {
+		sel.OwnerApplication = rule.OwnerApplication
+	}
+	if sel.SourceURL == "" {
+		sel.SourceURL = rule.SourceURL
+	}
+	if sel.Metadata == nil {
+		sel.Metadata = make(map[string]string)
+	}
+	for mk, mv := range rule.Metadata {
+		sel.Metadata[mk] = mv
+	}
+	return sel
+}
+
+func (l *Locksmith) resolveSelectorMetadata(selector rotator.RotationSelector) (rotator.RotationSelector, error) {
+	if len(selector.Metadata) == 0 {
+		return selector, nil
+	}
+
+	resolved := make(map[string]string, len(selector.Metadata))
+	for k, v := range selector.Metadata {
+		resolvedVal, err := l.resolveMetadataValue(v)
+		if err != nil {
+			return selector, fmt.Errorf("failed to resolve metadata '%s': %w", k, err)
+		}
+		resolved[k] = resolvedVal
+	}
+	selector.Metadata = resolved
+	return selector, nil
+}
+
+func (l *Locksmith) resolveMetadataValue(v string) (string, error) {
+	s := strings.TrimSpace(v)
+	if !strings.HasPrefix(s, "locksmith://") {
+		return v, nil
+	}
+
+	secretKey := strings.TrimPrefix(s, "locksmith://")
+	secretKey = strings.TrimSpace(secretKey)
+	if secretKey == "" {
+		return "", fmt.Errorf("empty locksmith metadata reference")
+	}
+
+	sec, err := l.getSecretNoRotate(secretKey)
+	if err != nil {
+		return "", fmt.Errorf("unable to load referenced secret '%s': %w", secretKey, err)
+	}
+
+	return string(sec.Value), nil
+}
+
+func ruleSupportsSelector(rule *RotationRule, selector rotator.RotationSelector) bool {
+	if rule.SecretType != SecretTypeUnspecified && selector.SecretType != string(rule.SecretType) {
+		return false
+	}
+	if rule.OwnerApplication != "" && selector.OwnerApplication != rule.OwnerApplication {
+		return false
+	}
+	if rule.SourceURL != "" && selector.SourceURL != rule.SourceURL {
+		return false
+	}
+	return true
+}
+
+func (l *Locksmith) resolveRotationHandler(rule *RotationRule, selector rotator.RotationSelector) (rotator.Handler, error) {
+	if rule.HookType != "" || rule.HookTarget != "" {
+		return nil, fmt.Errorf("legacy hook_type/hook_target is no longer supported; use rotator and source_url")
+	}
+	if l.Rotators == nil {
+		return nil, fmt.Errorf("no rotator registry configured")
+	}
+
+	if rule.Rotator != "" {
+		h, ok := l.Rotators.ResolveByID(rule.Rotator)
+		if !ok {
+			return nil, fmt.Errorf("no rotator registered with id '%s'", rule.Rotator)
+		}
+		if !h.Supports(selector) {
+			return nil, fmt.Errorf("rotator '%s' does not support selector for key '%s'", rule.Rotator, selector.Key)
+		}
+		return h, nil
+	}
+
+	h, ok := l.Rotators.Resolve(selector)
+	if !ok {
+		return nil, fmt.Errorf("no compatible rotator found for key '%s' (type='%s', owner='%s', source_url='%s')", selector.Key, selector.SecretType, selector.OwnerApplication, selector.SourceURL)
+	}
+
+	return h, nil
+}
+
+func (l *Locksmith) calculateRotationExpiration(existing *Secret, newTTL time.Duration) time.Time {
 	expiresAt := time.Now().Add(30 * 24 * time.Hour) // default 30 days
 	if newTTL > 0 {
 		return time.Now().Add(newTTL)
 	}
 
-	if existing, err := l.getSecretNoRotate(key); err == nil && existing != nil {
+	if existing != nil {
 		originalTTL := existing.ExpiresAt.Sub(existing.CreatedAt)
 		if originalTTL > 0 {
 			expiresAt = time.Now().Add(originalTTL)
@@ -104,136 +225,6 @@ func (l *Locksmith) calculateRotationExpiration(key string, newTTL time.Duration
 	}
 
 	return expiresAt
-}
-
-func (l *Locksmith) executeScriptRotation(ctx context.Context, rule *RotationRule, key string) ([]byte, error) {
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/c", rule.HookTarget, key) // #nosec G204 // nosem
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", rule.HookTarget, key) // #nosec G204 // nosem
-	}
-
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("LOCKSMITH_KEY=%s", key),
-		"LOCKSMITH_ACTION=rotate",
-	)
-
-	var stdoutBytes, stderrBytes bytes.Buffer
-	cmd.Stdout = &stdoutBytes
-	cmd.Stderr = &stderrBytes
-
-	err := cmd.Run()
-	defer func() {
-		// Zero out raw stdout buffer
-		b := stdoutBytes.Bytes()
-		for i := range b {
-			b[i] = 0
-		}
-	}()
-
-	if err != nil {
-		return nil, fmt.Errorf("rotation script failed: %w (stderr: %s)", err, strings.TrimSpace(stderrBytes.String()))
-	}
-
-	stdoutStr := strings.TrimSpace(stdoutBytes.String())
-	if stdoutStr == "" {
-		return nil, fmt.Errorf("rotation script returned an empty value")
-	}
-	return []byte(stdoutStr), nil
-}
-
-func (l *Locksmith) executeWebhookRotation(ctx context.Context, rule *RotationRule, key string, timeout time.Duration) ([]byte, time.Duration, error) {
-	client := &http.Client{Timeout: timeout}
-	payloadBytes, err := json.Marshal(map[string]string{
-		"key":    key,
-		"action": "rotate",
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", rule.HookTarget, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return nil, 0, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("webhook request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, 0, fmt.Errorf("webhook returned status %d", resp.StatusCode)
-	}
-
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() {
-		for i := range respBytes {
-			respBytes[i] = 0
-		}
-	}()
-
-	var respData struct {
-		Value     string `json:"value"`
-		ExpiresIn string `json:"expires_in"`
-	}
-	if err := json.Unmarshal(respBytes, &respData); err != nil {
-		return nil, 0, fmt.Errorf("failed to decode webhook response: %w", err)
-	}
-
-	if respData.Value == "" {
-		return nil, 0, fmt.Errorf("webhook returned empty secret value")
-	}
-
-	var newTTL time.Duration
-	if respData.ExpiresIn != "" {
-		if d, err := parseDurationFlex(respData.ExpiresIn); err == nil {
-			newTTL = d
-		}
-	}
-
-	return []byte(respData.Value), newTTL, nil
-}
-
-// AutoRotateIfExpiring triggers rotation if the secret has reached its warning threshold
-func (l *Locksmith) AutoRotateIfExpiring(key string) (bool, error) {
-	if l.Config == nil {
-		return false, nil
-	}
-
-	secret, err := l.getSecretNoRotate(key)
-	if err != nil || secret == nil {
-		return false, nil // Secret doesn't exist
-	}
-
-	threshold, err := l.Config.GetExpiringThreshold()
-	if err != nil {
-		threshold = 7 * 24 * time.Hour // default fallback
-	}
-
-	status := secret.GetExpirationStatus(threshold)
-	if status == StatusValid {
-		return false, nil // Secret is still valid and not expiring
-	}
-
-	// Perform rotation
-	err = l.RotateSecret(key)
-	if err != nil {
-		return false, fmt.Errorf("auto-rotation failed for key '%s': %w", key, err)
-	}
-
-	return true, nil
-}
-
-// checkLazyRotation triggers auto-rotation if the secret is expiring
-func (l *Locksmith) checkLazyRotation(key string) {
-	_, _ = l.AutoRotateIfExpiring(key)
 }
 
 // parseDurationFlex parses standard Go durations and custom locksmith durations (d, w, mo, y)
@@ -251,7 +242,7 @@ func (l *Locksmith) RotateExpiringSecrets() (rotated []string, skipped []string,
 		return nil, nil, nil, err
 	}
 
-	threshold := 7 * 24 * time.Hour // default fallback
+	threshold := 10 * 24 * time.Hour // default fallback
 	if l.Config != nil {
 		if t, err := l.Config.GetExpiringThreshold(); err == nil {
 			threshold = t

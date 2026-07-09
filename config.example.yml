@@ -17,8 +17,8 @@ notifications:
   # Threshold for expiration warnings
   # Secrets expiring within this duration will trigger warnings
   # Formats: "7d" (days), "2w" (weeks), "1mo" (months), "1y" (years), "24h" (hours)
-  # Default: 7d
-  expiring_threshold: 7d
+  # Default: 10d
+  expiring_threshold: 10d
 
   # Notification method
   # Options:
@@ -44,10 +44,46 @@ access_control:
     - "/usr/bin/forbidden_app"
 rotation:
   - secret: "github/*"
-    hook_type: "script"
-    hook_target: "./scripts/github_rotate.sh"
-    ttl: "24h"
+    rotator: "github-app-installation-token"
+    secret_type: "token"
+    owner_application: "github"
+    # Endpoint format: /app/installations/<installation_id>/access_tokens
+    source_url: "https://api.github.com/app/installations/<installation_id>/access_tokens"
+    # Prefer storing app credentials in Locksmith and referencing them here.
+    metadata:
+      github_app_client_id: "locksmith://github/app/clientid"
+      # Optional: explicit installation id. If omitted, Locksmith will query /app/installations.
+      github_installation_id: "locksmith://github/app/installation-id"
+      # Optional selector when app has multiple installations.
+      # github_installation_account: "bonjoski"
+      github_app_private_key: "locksmith://github/app/private-key"
+    # Env vars are still supported as fallback:
+    #   GITHUB_APP_CLIENT_ID (preferred), GITHUB_APP_ID (fallback),
+    #   GITHUB_APP_INSTALLATION_ID, GITHUB_APP_PRIVATE_KEY
+    timeout: "24h"
+  - secret: "github/pat/*"
+    rotator: "github-fgpat-replace"
+    secret_type: "api_key"
+    owner_application: "github"
+    # Transitional broker endpoint for PAT replacement if needed.
+    source_url: "https://rotation.example.internal/github/fgpat/replace"
+    timeout: "24h"
+  - secret: "github/oauth/*"
+    rotator: "github-oauth-reset"
+    secret_type: "oauth_token"
+    owner_application: "github"
+    source_url: "https://api.github.com/applications/<github_client_id>/token"
+    # client_secret is read from GITHUB_CLIENT_SECRET (or secret metadata key github_client_secret)
+    timeout: "24h"
   - secret: "atlassian/*"
-    hook_type: "script"
-    hook_target: "./scripts/atlassian_rotate.sh"
-    ttl: "24h"
+    rotator: "url-json"
+    secret_type: "api_key"
+    owner_application: "atlassian"
+    source_url: "https://rotation.example.internal/atlassian"
+    timeout: "24h"
+  - secret: "gitlab/*"
+    rotator: "gitlab-pat-self-rotate"
+    secret_type: "api_key"
+    owner_application: "gitlab"
+    source_url: "https://gitlab.example.com"
+    timeout: "24h"

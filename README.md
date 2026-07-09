@@ -42,11 +42,15 @@ GIT_CONFIG_GLOBAL=/dev/null brew tap bonjoski/locksmith
 
 ## Library Usage (Go Module)
 
+Locksmith ships one fully functional release profile. Official release binaries include full secret lifecycle functionality (read, write, delete, rotate).
+
+The `locksmith_admin` build tag is an internal compile-time mechanism used in source builds and tests. It is not a separate product edition.
+
 > [!WARNING]
 > While Locksmith can be used as a Go module, the **Homebrew CLI** is the recommended way to interact with the vault on macOS. 
 > Using it as a library requires your host application to have specific signing entitlements to access the macOS Keychain, which can lead to `Permission Denied` errors if not handled correctly.
 
-The `locksmith` library is **read-only** by default...
+When importing as a Go module, your build profile determines which compile-time guarded methods are included.
 
 
 
@@ -74,8 +78,19 @@ make sign
 
 ### Storing a Secret
 ```bash
-bin/locksmith add my-service my-password --expires 30d
+bin/locksmith add my-service my-password
 ```
+
+To support rotator auto-loading, you can store secret context metadata:
+
+```bash
+bin/locksmith add github/token my-token \
+  --type oauth_token \
+  --owner-app github \
+  --source-url https://rotation.example.internal/github
+```
+
+Rotation uses in-process Go rotators, not shell scripts.
 
 ### Retrieving a Secret
 ```bash
@@ -89,6 +104,10 @@ bin/locksmith list
 
 ### Running Commands with Environment Injection (`run`)
 Execute any command with biometric-protected secrets injected directly into its environment. Secrets can be specified as environment variables or in an env file (`--env-file`):
+
+Environment syntax supported by `run`:
+- `LOCKSMITH_SECRET_<ENV_NAME>=<secret_key>` maps a secret key to an env var name.
+- `<ENV_NAME>=locksmith://<secret_key>` resolves a secret URI into that env var.
 
 * **Using `LOCKSMITH_SECRET_` prefix**:
   ```bash
@@ -111,6 +130,68 @@ Execute any command with biometric-protected secrets injected directly into its 
   ```bash
   bin/locksmith run --env-file .env -- npm run dev
   ```
+
+### GitHub App Rotation Quick Start
+
+Use this pattern for GitHub token rotation to avoid long-lived PAT bootstrap credentials.
+
+1. Create and install a GitHub App.
+   - Organization Settings -> Developer settings -> GitHub Apps -> New GitHub App
+   - Grant only minimum required permissions.
+   - Install the app on required repositories.
+2. Generate an app private key in GitHub App settings and store it securely.
+3. Store app credentials directly in Locksmith:
+```bash
+bin/locksmith add github/app/clientid "Iv1.xxxxx" --type token --owner-app github
+bin/locksmith add github/app/installation-id "987654" --type token --owner-app github
+bin/locksmith add github/app/private-key "$(cat /secure/path/github-app-private-key.pem)" --type token --owner-app github
+```
+
+4. Add a rotation rule:
+```yaml
+rotation:
+  - secret: "github/*"
+    rotator: "github-app-installation-token"
+    secret_type: "token"
+    owner_application: "github"
+    source_url: "https://api.github.com/app/installations/<installation_id>/access_tokens"
+    metadata:
+      github_app_client_id: "locksmith://github/app/clientid"
+      # Optional: explicit installation id. If omitted, Locksmith discovers it via /app/installations.
+      github_installation_id: "locksmith://github/app/installation-id"
+      # Optional when app has multiple installations:
+      # github_installation_account: "bonjoski"
+      github_app_private_key: "locksmith://github/app/private-key"
+    timeout: "24h"
+```
+
+5. Store token secrets with selector context so matching is deterministic:
+```bash
+bin/locksmith add github/ci-token placeholder \
+  --type token \
+  --owner-app github \
+  --source-url https://api.github.com/app/installations/987654/access_tokens
+```
+
+6. Rotate without exporting GitHub App credentials to shell env:
+```bash
+bin/locksmith rotate github/ci-token
+```
+
+#### GitHub App Troubleshooting
+- `401 Unauthorized` or `403 Forbidden` during rotation:
+  - Verify app client ID and installation ID are from the same app.
+  - Confirm the app is installed on the target repository/organization.
+  - Check app permissions match token usage.
+- Multiple installations found error:
+  - Set `metadata.github_installation_id` explicitly, or
+  - Set `metadata.github_installation_account` to the org/user login to select the right installation.
+- Invalid private key or JWT signing errors:
+  - Ensure `github/app/private-key` contains the full PEM (including BEGIN/END lines).
+- Rule not matching your secret:
+  - Confirm secret context matches rule selector (`--type token`, `--owner-app github`, correct `--source-url`).
+- Missing metadata reference secret:
+  - Confirm each `locksmith://...` key exists in your vault and is readable by Locksmith.
 
 ## AI & Model Context Protocol (MCP)
 
@@ -179,34 +260,61 @@ This provides Touch ID authentication for your DevOps workflows, ensuring secret
 Locksmith can act as a secure, biometric-protected SSH Agent and GPG Pinentry program to safeguard developer keys and passphrases.
 
 #### SSH Agent
-1. **Start the Agent Daemon**:
-   ```bash
-   bin/locksmith agent start
-   ```
-2. **Configure your shell**:
-   ```bash
-   export SSH_AUTH_SOCK=~/.locksmith/ssh-agent.sock
-   ```
-3. **Add an SSH key to Locksmith**:
-   ```bash
-   bin/locksmith agent add id_ed25519 ~/.ssh/id_ed25519
-   ```
-   *Any future SSH/Git signature request will prompt for Touch ID/Windows Hello/Polkit authentication.*
+- Start the agent:
+  ```bash
+  bin/locksmith agent start
+  ```
+- Set your shell environment:
+  ```bash
+  export SSH_AUTH_SOCK=~/.locksmith/ssh-agent.sock
+  ```
+  Add this export to `~/.zshrc` or `~/.bashrc` for persistence.
+- Load a key into Locksmith:
+  ```bash
+  bin/locksmith agent add id_ed25519 ~/.ssh/id_ed25519
+  ```
+- Use SSH/Git normally:
+  ```bash
+  ssh -T git@github.com
+  git fetch
+  ```
+  Auth and signature operations will prompt for Touch ID/Windows Hello/Polkit.
 
 #### GPG Pinentry Integration
-1. **Store your GPG passphrase**:
-   ```bash
-   bin/locksmith add gpg/passphrase
-   ```
-2. **Configure `gpg-agent.conf`**:
-   Add this line to `~/.gnupg/gpg-agent.conf`:
-   ```text
-   pinentry-program /absolute/path/to/locksmith/bin/locksmith pinentry
-   ```
-3. **Reload GPG Agent**:
-   ```bash
-   gpgconf --kill gpg-agent
-   ```
+- Store your GPG passphrase:
+  ```bash
+  bin/locksmith add gpg/passphrase "<your-passphrase>"
+  ```
+- Configure gpg-agent in `~/.gnupg/gpg-agent.conf`:
+  ```text
+  pinentry-program /absolute/path/to/locksmith/bin/pinentry-locksmith
+  ```
+- Set terminal environment for GPG:
+  ```bash
+  export GPG_TTY=$(tty)
+  ```
+  Add this export to `~/.zshrc` or `~/.bashrc` for persistence.
+- Reload gpg-agent:
+  ```bash
+  gpgconf --kill gpg-agent
+  ```
+- Test Git signing:
+  ```bash
+  git commit -S -m "signed commit"
+  ```
+  Pinentry prompts are routed through Locksmith.
+
+#### SSH/GPG Troubleshooting
+- SSH auth still bypasses Locksmith:
+  - Run `echo "$SSH_AUTH_SOCK"` and confirm it is `~/.locksmith/ssh-agent.sock`.
+  - Ensure the agent is running: `bin/locksmith agent start`.
+- GPG pinentry does not use Locksmith:
+  - Verify `~/.gnupg/gpg-agent.conf` contains exactly:
+    `pinentry-program /absolute/path/to/locksmith/bin/pinentry-locksmith`
+  - Reload agent: `gpgconf --kill gpg-agent`.
+- Terminal signing prompts fail:
+  - Set terminal binding: `export GPG_TTY=$(tty)`.
+  - Add it to your shell profile for persistence.
 
 ## Configuration
 
@@ -218,7 +326,7 @@ auth:
   prompt_message: "Authenticate to Locksmith secret '%s'" # Optional custom prompt 
 
 notifications:
-  expiring_threshold: 7d    # Warn when secrets expire within this duration
+  expiring_threshold: 10d   # Warn when secrets expire within this duration
   method: stderr            # Options: stderr, macos, silent
   show_on_get: true         # Show warnings on 'get' command
   show_on_list: true        # Show status on 'list' command
@@ -266,7 +374,7 @@ api/token                      2025-12-01           2026-01-01           ❌ Exp
 ```
 
 **Configuration options:**
-- `expiring_threshold`: Duration formats: `7d` (days), `2w` (weeks), `1mo` (months), `1y` (years), `24h` (hours)
+- `expiring_threshold`: Duration formats: `10d` (days), `2w` (weeks), `1mo` (months), `1y` (years), `24h` (hours)
 - `method`: 
   - `stderr` (default): Print warnings to stderr
   - `macos`: Show macOS notification popup

@@ -10,16 +10,34 @@ import (
 )
 
 // SetWithBiometrics stores a secret with an explicit biometric requirement.
-// In non-admin builds, we store the secret without enforcing biometrics.
+// In builds without the locksmith_admin tag, we store the secret without enforcing biometrics.
 func (l *Locksmith) SetWithBiometrics(key string, value []byte, expiresAt time.Time, requireBiometrics bool) error {
+	return l.SetWithContext(key, value, expiresAt, requireBiometrics, SecretTypeUnspecified, "", "", nil)
+}
+
+// SetWithContext stores a secret with explicit context used for rotator auto-loading.
+func (l *Locksmith) SetWithContext(
+	key string,
+	value []byte,
+	expiresAt time.Time,
+	requireBiometrics bool,
+	secretType SecretType,
+	ownerApplication string,
+	sourceURL string,
+	metadata map[string]string,
+) error {
 	// Copy the value to avoid zeroing affecting cache storage
 	valCopy := make([]byte, len(value))
 	copy(valCopy, value)
 	// Prepare secret struct with copied value
 	secret := Secret{
-		Value:     valCopy,
-		CreatedAt: time.Now(),
-		ExpiresAt: expiresAt,
+		Value:            valCopy,
+		CreatedAt:        time.Now(),
+		ExpiresAt:        expiresAt,
+		SecretType:       NormalizeSecretType(secretType),
+		OwnerApplication: ownerApplication,
+		SourceURL:        sourceURL,
+		Metadata:         metadata,
 	}
 	// Marshal secret to JSON
 	data, err := json.Marshal(secret)
@@ -52,12 +70,12 @@ func (l *Locksmith) Delete(key string) error {
 	return l.Backend.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
 }
 
-// RotateSecret remains unavailable in non-admin builds.
+// RotateSecret is unavailable when compiled without the locksmith_admin tag.
 func (l *Locksmith) RotateSecret(key string) error {
-	return fmt.Errorf("admin features not enabled; RotateSecret unavailable")
+	return fmt.Errorf("rotation unavailable in this compile profile; rebuild with -tags locksmith_admin")
 }
 
-// RotateExpiringSecrets remains unavailable in non-admin builds.
+// RotateExpiringSecrets is unavailable when compiled without the locksmith_admin tag.
 func (l *Locksmith) RotateExpiringSecrets() (rotated []string, skipped []string, failed map[string]error, err error) {
-	return nil, nil, nil, fmt.Errorf("admin features not enabled; RotateExpiringSecrets unavailable")
+	return nil, nil, nil, fmt.Errorf("rotation unavailable in this compile profile; rebuild with -tags locksmith_admin")
 }

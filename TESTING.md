@@ -10,7 +10,7 @@ Our unit tests cover the core logic in `pkg/locksmith`, including config parsing
 # Run all unit tests
 make test
 
-# Run tests with the admin build tag (for Set/Delete logic)
+# Run tests with the project build tag used by release binaries and guarded methods
 go test -v -tags locksmith_admin ./...
 ```
 

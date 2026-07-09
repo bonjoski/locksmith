@@ -10,7 +10,7 @@ var rotateAll bool
 
 var rotateCmd = &cobra.Command{
 	Use:   "rotate [key]",
-	Short: "Rotate secrets automatically using configured hooks",
+	Short: "Rotate secrets using configured Go rotators (user-triggered)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 && !rotateAll {

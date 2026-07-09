@@ -3,13 +3,15 @@
 package locksmith
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"testing"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/rotator"
 )
 
 type testRotationBackend struct {
@@ -42,7 +44,14 @@ func (t *testRotationBackend) List(service string, useBiometrics bool, prompt st
 	return keys, nil
 }
 
-func TestRotateSecretScript(t *testing.T) {
+func TestRotateSecretURLRotator(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"value":"rotated-secret-123"}`))
+	}))
+	defer server.Close()
+
 	mc := &MockCache{secrets: make(map[string]Secret)}
 	mb := &testRotationBackend{secrets: make(map[string][]byte)}
 	ls := NewWithCache(mc)
@@ -58,24 +67,24 @@ func TestRotateSecretScript(t *testing.T) {
 	mb.secrets["db/password"] = secretData
 	_ = mc.Set("db/password", oldSecret, time.Hour)
 
-	var targetCommand string
-	if runtime.GOOS == "windows" {
-		targetCommand = `echo rotated-secret-123 & rem`
-	} else {
-		targetCommand = `echo "rotated-secret-123"`
-	}
-
 	ls.Config = &Config{
 		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
 		Rotation: []RotationRule{
 			{
-				Secret:     "db/*",
-				HookType:   "script",
-				HookTarget: targetCommand,
-				Timeout:    "5s",
+				Secret:           "db/*",
+				SecretType:       "password",
+				OwnerApplication: "db",
+				SourceURL:        server.URL,
+				Timeout:          "5s",
 			},
 		},
 	}
+
+	oldSecret.SecretType = "password"
+	oldSecret.OwnerApplication = "db"
+	oldSecret.SourceURL = server.URL
+	secretData, _ = json.Marshal(oldSecret)
+	mb.secrets["db/password"] = secretData
 
 	err := ls.RotateSecret("db/password")
 	if err != nil {
@@ -102,7 +111,7 @@ func TestRotateSecretScript(t *testing.T) {
 	}
 }
 
-func TestRotateSecretWebhook(t *testing.T) {
+func TestRotateSecretWithExplicitRotatorID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("Expected POST request, got %s", r.Method)
@@ -120,7 +129,7 @@ func TestRotateSecretWebhook(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"value":"webhook-rotated-xyz","expires_in":"2h"}`))
+		_, _ = w.Write([]byte(`{"value":"url-json-rotated-xyz","expires_in":"2h"}`))
 	}))
 	defer server.Close()
 
@@ -142,10 +151,12 @@ func TestRotateSecretWebhook(t *testing.T) {
 		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
 		Rotation: []RotationRule{
 			{
-				Secret:     "api/*",
-				HookType:   "webhook",
-				HookTarget: server.URL,
-				Timeout:    "5s",
+				Secret:           "api/*",
+				Rotator:          "url-json",
+				SecretType:       "api_key",
+				OwnerApplication: "api-service",
+				SourceURL:        server.URL,
+				Timeout:          "5s",
 			},
 		},
 	}
@@ -160,8 +171,8 @@ func TestRotateSecretWebhook(t *testing.T) {
 		t.Fatalf("Get failed: %v", err)
 	}
 
-	if string(rotated) != "webhook-rotated-xyz" {
-		t.Errorf("Expected value 'webhook-rotated-xyz', got '%s'", rotated)
+	if string(rotated) != "url-json-rotated-xyz" {
+		t.Errorf("Expected value 'url-json-rotated-xyz', got '%s'", rotated)
 	}
 
 	meta, err := ls.GetWithMetadata("api/key")
@@ -175,7 +186,7 @@ func TestRotateSecretWebhook(t *testing.T) {
 	}
 }
 
-func TestLazyAutoRotationOnGet(t *testing.T) {
+func TestGetDoesNotAutoRotateOnGet(t *testing.T) {
 	mc := &MockCache{secrets: make(map[string]Secret)}
 	mb := &testRotationBackend{secrets: make(map[string][]byte)}
 	ls := NewWithCache(mc)
@@ -191,23 +202,9 @@ func TestLazyAutoRotationOnGet(t *testing.T) {
 	mb.secrets["service/token"] = secretData
 	_ = mc.Set("service/token", oldSecret, time.Hour)
 
-	var targetCommand string
-	if runtime.GOOS == "windows" {
-		targetCommand = `echo lazy-rotated-secret & rem`
-	} else {
-		targetCommand = `echo "lazy-rotated-secret"`
-	}
-
 	ls.Config = &Config{
 		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
-		Rotation: []RotationRule{
-			{
-				Secret:     "service/*",
-				HookType:   "script",
-				HookTarget: targetCommand,
-				Timeout:    "5s",
-			},
-		},
+		Rotation:      []RotationRule{{Secret: "service/*", Timeout: "5s"}},
 	}
 
 	val, err := ls.Get("service/token")
@@ -215,16 +212,16 @@ func TestLazyAutoRotationOnGet(t *testing.T) {
 		t.Fatalf("Get failed: %v", err)
 	}
 
-	if string(val) != "lazy-rotated-secret" {
-		t.Errorf("Expected auto-rotated value 'lazy-rotated-secret', got '%s'", val)
+	if string(val) != "expired-val" {
+		t.Errorf("Expected secret to remain unchanged on get, got '%s'", val)
 	}
 
 	cached, err := ls.Cache.Get("service/token")
 	if err != nil || cached == nil {
 		t.Fatalf("Failed to retrieve from cache: %v", err)
 	}
-	if string(cached.Value) != "lazy-rotated-secret" {
-		t.Errorf("Expected cache to contain 'lazy-rotated-secret', got '%s'", cached.Value)
+	if string(cached.Value) != "expired-val" {
+		t.Errorf("Expected cache to remain unchanged on get, got '%s'", cached.Value)
 	}
 }
 
@@ -243,24 +240,32 @@ func TestRotateSecretTimeout(t *testing.T) {
 	mb.secrets["db/password"] = secretData
 	_ = mc.Set("db/password", oldSecret, time.Hour)
 
-	var targetCommand string
-	if runtime.GOOS == "windows" {
-		targetCommand = `ping 127.0.0.1 -n 6 > nul`
-	} else {
-		targetCommand = `sleep 5`
-	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"value":"too-late"}`))
+	}))
+	defer server.Close()
 
 	ls.Config = &Config{
 		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
 		Rotation: []RotationRule{
 			{
-				Secret:     "db/*",
-				HookType:   "script",
-				HookTarget: targetCommand,
-				Timeout:    "100ms",
+				Secret:           "db/*",
+				SecretType:       "password",
+				OwnerApplication: "db",
+				SourceURL:        server.URL,
+				Timeout:          "100ms",
 			},
 		},
 	}
+
+	oldSecret.SecretType = "password"
+	oldSecret.OwnerApplication = "db"
+	oldSecret.SourceURL = server.URL
+	secretData, _ = json.Marshal(oldSecret)
+	mb.secrets["db/password"] = secretData
 
 	err := ls.RotateSecret("db/password")
 	if err == nil {
@@ -294,31 +299,47 @@ func TestRotateExpiringSecrets(t *testing.T) {
 	_ = mc.Set("expiring/secret-no-rule", expiringSecretNoRule, time.Hour)
 	_ = mc.Set("valid/secret-1", validSecretRule, time.Hour)
 
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"value":"batch-rotated"}`))
+	}))
+	defer server.Close()
+
 	// Configure rotation rules
-	var targetCommand string
-	if runtime.GOOS == "windows" {
-		targetCommand = `echo batch-rotated & rem`
-	} else {
-		targetCommand = `echo "batch-rotated"`
-	}
 
 	ls.Config = &Config{
 		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
 		Rotation: []RotationRule{
 			{
-				Secret:     "expiring/secret-1",
-				HookType:   "script",
-				HookTarget: targetCommand,
-				Timeout:    "5s",
+				Secret:           "expiring/secret-1",
+				SecretType:       "token",
+				OwnerApplication: "batch",
+				SourceURL:        server.URL,
+				Timeout:          "5s",
 			},
 			{
-				Secret:     "valid/secret-1",
-				HookType:   "script",
-				HookTarget: targetCommand,
-				Timeout:    "5s",
+				Secret:           "valid/secret-1",
+				SecretType:       "token",
+				OwnerApplication: "batch",
+				SourceURL:        server.URL,
+				Timeout:          "5s",
 			},
 		},
 	}
+
+	setContext := func(key string) {
+		var s Secret
+		_ = json.Unmarshal(mb.secrets[key], &s)
+		s.SecretType = "token"
+		s.OwnerApplication = "batch"
+		s.SourceURL = server.URL
+		mb.secrets[key] = marshalSecret(s)
+		_ = mc.Set(key, s, time.Hour)
+	}
+	setContext("expiring/secret-1")
+	setContext("expiring/secret-no-rule")
+	setContext("valid/secret-1")
 
 	// 2. Run batch rotation
 	rotated, skipped, failed, err := ls.RotateExpiringSecrets()
@@ -373,4 +394,90 @@ func contains(list []string, item string) bool {
 func marshalSecret(s Secret) []byte {
 	d, _ := json.Marshal(s)
 	return d
+}
+
+type captureMetadataRotator struct {
+	captured map[string]string
+}
+
+func (r *captureMetadataRotator) ID() string { return "capture-metadata" }
+
+func (r *captureMetadataRotator) Supports(_ rotator.RotationSelector) bool {
+	return true
+}
+
+func (r *captureMetadataRotator) Rotate(_ context.Context, input rotator.RotationInput) (rotator.RotationOutput, error) {
+	for k, v := range input.Selector.Metadata {
+		r.captured[k] = v
+	}
+	return rotator.RotationOutput{NewValue: []byte("rotated"), TTL: time.Hour}, nil
+}
+
+func TestRotateSecretResolvesMetadataSecretRefs(t *testing.T) {
+	mc := &MockCache{secrets: make(map[string]Secret)}
+	mb := &testRotationBackend{secrets: make(map[string][]byte)}
+	ls := NewWithCache(mc)
+	ls.Backend = mb
+
+	appIDRef := "github/app/id"
+	installationIDRef := "github/app/installation-id"
+	privateKeyRef := "github/app/private-key"
+
+	if err := ls.Set(appIDRef, []byte("12345"), time.Now().Add(365*24*time.Hour)); err != nil {
+		t.Fatalf("failed to seed app id secret: %v", err)
+	}
+	if err := ls.Set(installationIDRef, []byte("67890"), time.Now().Add(365*24*time.Hour)); err != nil {
+		t.Fatalf("failed to seed installation id secret: %v", err)
+	}
+	if err := ls.Set(privateKeyRef, []byte("-----BEGIN RSA PRIVATE KEY-----\nX\n-----END RSA PRIVATE KEY-----"), time.Now().Add(365*24*time.Hour)); err != nil {
+		t.Fatalf("failed to seed private key secret: %v", err)
+	}
+
+	initial := Secret{
+		Value:            []byte("placeholder"),
+		CreatedAt:        time.Now().Add(-time.Hour),
+		ExpiresAt:        time.Now().Add(time.Hour),
+		SecretType:       SecretTypeToken,
+		OwnerApplication: "github",
+		SourceURL:        "https://api.github.com/app/installations/67890/access_tokens",
+	}
+	mb.secrets["github/ci-token"] = marshalSecret(initial)
+	_ = mc.Set("github/ci-token", initial, time.Hour)
+
+	captured := make(map[string]string)
+	_ = ls.Rotators.Register(&captureMetadataRotator{captured: captured})
+
+	ls.Config = &Config{
+		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
+		Rotation: []RotationRule{
+			{
+				Secret:           "github/*",
+				Rotator:          "capture-metadata",
+				SecretType:       SecretTypeToken,
+				OwnerApplication: "github",
+				SourceURL:        "https://api.github.com/app/installations/67890/access_tokens",
+				Timeout:          "5s",
+				Metadata: map[string]string{
+					"github_app_id":         "locksmith://github/app/id",
+					"github_installation_id": "locksmith://github/app/installation-id",
+					"github_app_private_key": "locksmith://github/app/private-key",
+				},
+			},
+		},
+	}
+
+	err := ls.RotateSecret("github/ci-token")
+	if err != nil {
+		t.Fatalf("RotateSecret failed: %v", err)
+	}
+
+	if captured["github_app_id"] != "12345" {
+		t.Fatalf("expected github_app_id to resolve from locksmith, got %q", captured["github_app_id"])
+	}
+	if captured["github_installation_id"] != "67890" {
+		t.Fatalf("expected github_installation_id to resolve from locksmith, got %q", captured["github_installation_id"])
+	}
+	if captured["github_app_private_key"] == "" {
+		t.Fatalf("expected github_app_private_key to resolve from locksmith")
+	}
 }

@@ -156,7 +156,7 @@ func TestTokenSubcommand(t *testing.T) {
 func TestAddCommand(t *testing.T) {
 	outBuf, _ := setupTest()
 
-	// 1. Test adding with 2 arguments (legacy)
+	// 1. Test adding with 2 required arguments
 	key := "test-add-arg"
 	secret := "secret-value"
 	rootCmd.SetArgs([]string{"add", key, secret})
@@ -180,29 +180,19 @@ func TestAddCommand(t *testing.T) {
 		t.Errorf("Expected success message, got: %s", outBuf.String())
 	}
 
-	// 2. Test adding with 1 argument (prompting)
-	outBuf, _ = setupTest()
-	promptSecret := "prompted-secret"
-	rootCmd.SetIn(strings.NewReader(promptSecret + "\n"))
+	// 2. Test that 1 argument fails (secret required)
+	_, _ = setupTest()
 	rootCmd.SetArgs([]string{"add", "prompt-key"})
-
 	err = rootCmd.Execute()
-	if err != nil {
-		t.Fatalf("Add command with prompt failed: %v", err)
+	if err == nil {
+		t.Fatal("Expected add command to fail when secret argument is missing")
 	}
 
-	// Important: setupTest() Re-initializes ls and mc, so we need to get the new mc
-	mc = ls.Cache.(*mockCache)
-
-	s, ok = mc.secrets["prompt-key"]
-	if !ok {
-		t.Error("Expected secret 'prompt-key' to be saved")
-	}
-	if string(s.Value) != promptSecret {
-		t.Errorf("Expected secret value '%s', got '%s'", promptSecret, string(s.Value))
-	}
-
-	if !strings.Contains(outBuf.String(), "Enter secret:") {
-		t.Error("Expected output to contain prompt 'Enter secret:'")
+	// 3. Test that 0 arguments fails (key and secret required)
+	_, _ = setupTest()
+	rootCmd.SetArgs([]string{"add"})
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatal("Expected add command to fail when key and secret arguments are missing")
 	}
 }

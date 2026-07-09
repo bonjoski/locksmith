@@ -2,67 +2,46 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
-var expiresStr string
+var secretType string
+var ownerApplication string
+var sourceURL string
+
+const defaultAddTTL = 30 * 24 * time.Hour
 
 var addCmd = &cobra.Command{
-	Use:   "add <key> [secret]",
+	Use:   "add <key> <secret>",
 	Short: "Store a secret",
-	Args:  cobra.RangeArgs(0, 2),
+	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		var key string
-		var secretBytes []byte
-		var err error
+		key := args[0]
+		secretBytes := []byte(args[1])
 
-		if len(args) > 0 {
-			key = args[0]
-		} else {
-			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Enter key name: ")
-			_, err = fmt.Fscanln(cmd.InOrStdin(), &key)
-			if err != nil {
-				return fmt.Errorf("error reading key: %w", err)
-			}
-			if key == "" {
-				return fmt.Errorf("key cannot be empty")
-			}
+		if key == "" {
+			return fmt.Errorf("key cannot be empty")
+		}
+		if len(secretBytes) == 0 {
+			return fmt.Errorf("secret cannot be empty")
 		}
 
-		if len(args) == 2 {
-			secretBytes = []byte(args[1])
-		} else {
-			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Enter secret: ")
-			if f, ok := cmd.InOrStdin().(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-				secretBytes, err = term.ReadPassword(int(f.Fd()))
-				_, _ = fmt.Fprintln(cmd.OutOrStdout())
-			} else {
-				// Fallback for non-terminal input (e.g. tests or piped input)
-				var secretStr string
-				_, err = fmt.Fscanln(cmd.InOrStdin(), &secretStr)
-				secretBytes = []byte(secretStr)
-			}
-			if err != nil {
-				return fmt.Errorf("error reading secret: %w", err)
-			}
-			if len(secretBytes) == 0 {
-				return fmt.Errorf("secret cannot be empty")
-			}
-		}
-
-		duration, err := locksmith.ParseDuration(expiresStr)
-		if err != nil {
-			return fmt.Errorf("invalid expiration duration: %w", err)
-		}
-
-		expiresAt := time.Now().Add(duration)
-		// Use SetWithBiometrics to apply the configured global requirement
-		if err := ls.SetWithBiometrics(key, secretBytes, expiresAt, globalBiometricReqs); err != nil {
+		expiresAt := time.Now().Add(defaultAddTTL)
+		typedSecretType := locksmith.ParseSecretType(secretType)
+		// Use SetWithContext to persist secret metadata used for rotator auto-loading.
+		if err := ls.SetWithContext(
+			key,
+			secretBytes,
+			expiresAt,
+			globalBiometricReqs,
+			typedSecretType,
+			ownerApplication,
+			sourceURL,
+			nil,
+		); err != nil {
 			return fmt.Errorf("error saving secret: %w", err)
 		}
 
@@ -78,5 +57,7 @@ var addCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(addCmd)
-	addCmd.Flags().StringVar(&expiresStr, "expires", "30d", "Expiration duration (e.g. 1h, 30d, 1w)")
+	addCmd.Flags().StringVar(&secretType, "type", "", "Secret type used for rotator auto-selection")
+	addCmd.Flags().StringVar(&ownerApplication, "owner-app", "", "Owning application used for rotator auto-selection")
+	addCmd.Flags().StringVar(&sourceURL, "source-url", "", "Source URL used for rotator auto-selection")
 }

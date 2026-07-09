@@ -2,6 +2,8 @@
 
 **Overview:** Locksmith is a secure, cross-platform, biometric-protected keychain vault designed to manage sensitive credentials (keys, tokens, passwords). It ensures that secrets are never exposed in plaintext and access requires hardware-backed authentication, making it suitable for modern DevOps and AI-assisted workflows.
 
+**Release Model:** Locksmith ships as one fully functional release profile. Build tags in this repository (including `locksmith_admin`) are internal compile-time controls, not separate product editions.
+
 ---
 
 ## 1. Overall Architecture and Module Relationships
@@ -83,7 +85,7 @@ graph TD
 
 | Endpoint | Method | Description | Inputs | Outputs | Security |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `locksmith add <key>` | `POST` | Stores a new secret key/token. | `<key>` (Secret Identifier), `--expires <duration>` (Optional). | Success status. | Requires Biometrics (configurable). |
+| `locksmith add <key> <secret>` | `POST` | Stores a new secret key/token. | `<key>` (Secret Identifier), `<secret>` (Secret value). | Success status (default expiration: 30 days). | Requires Biometrics (configurable). |
 | `locksmith get <key>` | `GET` | Retrieves a secret value. | `<key>`. | Raw secret value (bytes). Prints expiration warnings to `stderr`. | Requires Biometrics. |
 | `locksmith list` | `GET` | Lists all stored secret keys and their metadata. | None. | Table format listing key, creation date, expiration date, and status (Valid/Expiring/Expired). | May require Biometrics (for enumeration). |
 | `locksmith delete <key>` | `DELETE` | Deletes a secret key entirely. | `<key>`. | Success status. | Requires Biometrics. |
@@ -137,7 +139,7 @@ The core logic is exposed via the `Locksmith` struct methods.
 ### ⚙️ Key Business Logic Flows
 
 1.  **Expiration/Status Management**:
-    *   `Secret.GetExpirationStatus()`: Calculates the status (`Valid`, `Expiring`, `Expired`) by comparing the current time against the `ExpiresAt` timestamp and an optional configurable `threshold` (e.g., `7d`).
+    *   `Secret.GetExpirationStatus()`: Calculates the status (`Valid`, `Expiring`, `Expired`) by comparing the current time against the `ExpiresAt` timestamp and an optional configurable `threshold` (e.g., `10d`).
     *   The CLI prominently displays these statuses in the list view, providing proactive warning for secrets approaching expiration.
 2.  **Configuration Handling (`cmd/locksmith/cmd/root.go`):**
     *   The `PersistentPreRunE` function ensures that system configuration (`Config`) is loaded, and crucially, it initializes the `Locksmith` controller using the proper `Options`, making the system ready for execution before any command runs.
@@ -178,7 +180,7 @@ auth:
   require_biometrics: true  # Forces biometrics on all operations
   prompt_message: "Authenticate to access Locksmith secret '%s'" # Custom prompt
 notifications:
-  expiring_threshold: 7d    # Warning given 7 days before expiration
+    expiring_threshold: 10d   # Warning given 10 days before expiration
   method: macos              # Display using OS native notification
   show_on_get: true
 ```
@@ -188,7 +190,7 @@ notifications:
 #### Basic CLI Usage
 | Action | Command | Notes |
 | :--- | :--- | :--- |
-| **Store Secret** | `locksmith add my-service my-password --expires 30d` | Sets the name, value, and 30-day expiry. |
+| **Store Secret** | `locksmith add my-service my-password` | Sets the name and value with a default 30-day expiry. |
 | **Retrieve Secret** | `locksmith get my-service` | Prompts for biometrics. Prints value and warnings to stdout/stderr. |
 | **List Keys** | `locksmith list` | Shows all keys and their current status (Valid, Expiring, Expired). |
 | **Remove Secret** | `locksmith delete my-service` | Permanently removes the key from all storage layers. |
@@ -208,3 +210,134 @@ Locksmith supports the **Summon** tool, allowing secrets to be injected securely
 Locksmith includes a dedicated MCP server (`locksmith mcp`). Developers can integrate this into AI tools (e.g., Cursor).
 *   **Purpose:** Allows AI agents to treat the vault as a secure, read-only function call.
 *   **Procedure:** Configure the AI tool to point to the `locksmith` command binary. The AI's request for a secret will trigger the mandatory biometric gate on the user's machine, ensuring the AI never bypasses hardware security. The MCP server explicitly bypasses any disk caches and does not expose `set` or `delete` tools, ensuring AI agents cannot silently modify or destroy credentials.
+
+---
+
+## Appendix A: Rotation Design (v2-lite)
+
+### Product Alignment
+
+Locksmith ships one fully functional release profile. Build tags in this repository (including `locksmith_admin`) are source-level compile controls for development and testing, not separate product editions.
+
+Rotation design stays aligned with Locksmith's core purpose:
+- local, biometric-gated secret storage
+- predictable CLI workflows
+- minimal trusted surface area
+
+Rotation is user-invoked only. The application must not perform implicit rotation during read operations.
+
+Expiration warnings are configuration-driven and default to a 10-day threshold.
+
+### Goals
+
+1. Keep rotation simple to reason about and operate.
+2. Keep rotation secure by default.
+3. Keep rotation usable in daily workflows.
+4. Reuse existing Locksmith architecture instead of introducing new service layers.
+
+### Non-Goals
+
+1. No distributed orchestration engine.
+2. No JWT identity/control plane model.
+3. No cross-service transaction framework.
+4. No mandatory remote scheduler in v2-lite.
+
+### Existing Architecture (Source of Truth)
+
+Rotation stays inside existing components:
+- `pkg/locksmith/config.go`: rotation rule configuration
+- `pkg/locksmith/rotation.go`: rotation execution logic
+- `cmd/locksmith/cmd/rotate.go`: user-facing CLI
+
+No `internal/engine` or centralized storage gateway is required for v2-lite.
+
+### User Workflows
+
+#### Rotate one secret
+
+```bash
+locksmith rotate <key>
+```
+
+Behavior:
+1. Match key against configured rotation rule.
+2. Execute configured handler.
+3. Validate non-empty returned value.
+4. Store rotated value in Locksmith using normal write path.
+5. Print success/failure clearly.
+
+#### Rotate expiring secrets
+
+```bash
+locksmith rotate --all
+```
+
+Behavior:
+1. Enumerate secrets.
+2. Identify expired/expiring secrets using configured threshold.
+3. Rotate only keys with matching rotation rules.
+4. Return summary: rotated, skipped, failed.
+
+### Configuration Contract
+
+Rotation rules are configured in `~/.locksmith/config.yml`.
+
+Supported fields:
+- `secret`: glob pattern (required)
+- `rotator`: optional explicit handler ID (for example `url-json` or `github-oauth-reset`)
+- `secret_type`: optional selector field used for handler auto-loading
+- `owner_application`: optional selector field used for handler auto-loading
+- `source_url`: optional selector field used for handler auto-loading
+- `timeout`: duration, default `30s` (optional)
+
+Example:
+
+```yaml
+rotation:
+    - secret: "github/*"
+        rotator: "github-oauth-reset"
+        secret_type: "oauth_token"
+        owner_application: "github"
+        source_url: "https://api.github.com/applications/<github_client_id>/token"
+        timeout: "15s"
+```
+
+### Security Model
+
+Core principles:
+1. Never log secret values.
+2. Keep secret bytes zeroed where possible after use.
+3. Preserve existing biometric/keychain protections for storage operations.
+4. Keep execution explicit and auditable.
+
+Failure safety:
+1. If handler execution fails, existing secret remains unchanged.
+2. If storing rotated value fails, return an error and keep prior secret intact.
+
+### Execution Semantics
+
+`RotateSecret` flow:
+1. Resolve matching rule by key pattern.
+2. Build selector from secret metadata and rule fields (`secret_type`, `owner_application`, `source_url`).
+3. Resolve rotator handler by explicit ID or selector auto-match.
+4. Build timeout context.
+5. Execute handler and capture new secret value.
+6. Determine expiration using returned TTL (if provided) or prior TTL/default.
+7. Write rotated secret via normal Locksmith write path and persist selector context.
+8. Clear temporary buffers before returning.
+
+`RotateExpiringSecrets` flow:
+1. List keys with metadata.
+2. Skip valid keys.
+3. Skip keys with no matching rule.
+4. Attempt rotation per key.
+5. Aggregate results into `rotated`, `skipped`, `failed`.
+
+### Acceptance Criteria
+
+1. `rotate <key>` rotates a matching key and updates the vault.
+2. `rotate --all` rotates only expiring/expired keys with matching rules.
+3. Handler failures do not overwrite existing secrets.
+4. No secret values appear in stdout/stderr error paths.
+5. Config examples match implemented fields.
+6. Documentation reflects one shipped fully functional release model.

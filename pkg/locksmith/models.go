@@ -1,6 +1,9 @@
 package locksmith
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // ExpirationStatus represents the state of a secret
 type ExpirationStatus int
@@ -11,10 +14,35 @@ const (
 	StatusExpired
 )
 
+// SecretType classifies a secret for rotator selection and policy decisions.
+type SecretType string
+
+const (
+	SecretTypeUnspecified SecretType = ""
+	SecretTypePassword    SecretType = "password"
+	SecretTypeAPIKey      SecretType = "api_key"
+	SecretTypeOAuthToken  SecretType = "oauth_token"
+	SecretTypeToken       SecretType = "token"
+)
+
+// ParseSecretType normalizes free-form input into a SecretType value.
+func ParseSecretType(v string) SecretType {
+	return SecretType(strings.ToLower(strings.TrimSpace(v)))
+}
+
+// NormalizeSecretType normalizes an existing SecretType value.
+func NormalizeSecretType(v SecretType) SecretType {
+	return ParseSecretType(string(v))
+}
+
 type Secret struct {
-	Value     []byte    `json:"value"`
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Value            []byte            `json:"value"`
+	CreatedAt        time.Time         `json:"created_at"`
+	ExpiresAt        time.Time         `json:"expires_at"`
+	SecretType       SecretType        `json:"secret_type,omitempty"`
+	OwnerApplication string            `json:"owner_application,omitempty"`
+	SourceURL        string            `json:"source_url,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
 }
 
 // Zero clears the secret value from memory
@@ -51,8 +79,12 @@ func (s *Secret) IsExpired() bool {
 }
 
 type SecretMetadata struct {
-	CreatedAt time.Time `json:"created_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt        time.Time         `json:"created_at"`
+	ExpiresAt        time.Time         `json:"expires_at"`
+	SecretType       SecretType        `json:"secret_type,omitempty"`
+	OwnerApplication string            `json:"owner_application,omitempty"`
+	SourceURL        string            `json:"source_url,omitempty"`
+	Metadata         map[string]string `json:"metadata,omitempty"`
 }
 
 // GetExpirationStatus returns the current status based on metadata

@@ -28,8 +28,8 @@ func TestLoadConfigDefaults(t *testing.T) {
 	}
 
 	// Check defaults
-	if cfg.Notifications.ExpiringThreshold != "7d" {
-		t.Errorf("Expected default threshold '7d', got '%s'", cfg.Notifications.ExpiringThreshold)
+	if cfg.Notifications.ExpiringThreshold != "10d" {
+		t.Errorf("Expected default threshold '10d', got '%s'", cfg.Notifications.ExpiringThreshold)
 	}
 	if cfg.Notifications.Method != "stderr" {
 		t.Errorf("Expected default method 'stderr', got '%s'", cfg.Notifications.Method)

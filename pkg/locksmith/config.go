@@ -11,7 +11,7 @@ import (
 
 // NotificationConfig holds notification-related settings
 type NotificationConfig struct {
-	ExpiringThreshold string `yaml:"expiring_threshold"` // e.g., "7d"
+	ExpiringThreshold string `yaml:"expiring_threshold"` // e.g., "10d"
 	Method            string `yaml:"method"`             // stderr, macos, silent
 	ShowOnGet         bool   `yaml:"show_on_get"`
 	ShowOnList        bool   `yaml:"show_on_list"`
@@ -23,10 +23,17 @@ type AuthConfig struct {
 }
 
 type RotationRule struct {
-	Secret     string `yaml:"secret"`      // Glob pattern, e.g. "aws/*"
-	HookType   string `yaml:"hook_type"`   // "script" or "webhook"
-	HookTarget string `yaml:"hook_target"` // Script file path or URL
-	Timeout    string `yaml:"timeout"`     // optional, e.g. "30s"
+	Secret           string     `yaml:"secret"`                      // Glob pattern, e.g. "aws/*"
+	Rotator          string     `yaml:"rotator,omitempty"`           // Optional explicit handler ID, e.g. "url-json"
+	SecretType       SecretType `yaml:"secret_type,omitempty"`       // e.g. "password", "api_key", "oauth_token"
+	OwnerApplication string     `yaml:"owner_application,omitempty"` // e.g. "github", "postgres", "stripe"
+	SourceURL        string     `yaml:"source_url,omitempty"`        // URL used by compatible handlers
+	Metadata         map[string]string `yaml:"metadata,omitempty"`   // Optional handler metadata (supports locksmith://key refs)
+	Timeout          string     `yaml:"timeout"`                     // optional, e.g. "30s"
+
+	// Legacy fields retained for migration diagnostics.
+	HookType   string `yaml:"hook_type,omitempty"`
+	HookTarget string `yaml:"hook_target,omitempty"`
 }
 
 type AccessControl struct {
@@ -48,7 +55,7 @@ func LoadConfig() (*Config, error) {
 	// Default config
 	cfg := &Config{
 		Notifications: NotificationConfig{
-			ExpiringThreshold: "7d",
+			ExpiringThreshold: "10d",
 			Method:            "stderr",
 			ShowOnGet:         true,
 			ShowOnList:        true,

@@ -5,7 +5,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -71,20 +72,30 @@ func TestCLIRotateCommand(t *testing.T) {
 	_ = ls.Cache.Set("db/expired-key", expiredSecret, time.Hour)
 	_ = ls.Cache.Set("db/valid-key", validSecret, time.Hour)
 
-	// Configure rotation rules
-	var targetCommand string
-	if runtime.GOOS == "windows" {
-		targetCommand = `echo cli-rotated-value & rem`
-	} else {
-		targetCommand = `echo "cli-rotated-value"`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"value":"cli-rotated-value"}`))
+	}))
+	defer server.Close()
+
+	for _, key := range []string{"db/expired-key", "db/valid-key"} {
+		var s locksmith.Secret
+		_ = json.Unmarshal(mb.secrets[key], &s)
+		s.SecretType = "password"
+		s.OwnerApplication = "db"
+		s.SourceURL = server.URL
+		mb.secrets[key] = func() []byte { b, _ := json.Marshal(s); return b }()
+		_ = ls.Cache.Set(key, s, time.Hour)
 	}
 
 	cfg.Rotation = []locksmith.RotationRule{
 		{
-			Secret:     "db/*",
-			HookType:   "script",
-			HookTarget: targetCommand,
-			Timeout:    "5s",
+			Secret:           "db/*",
+			SecretType:       "password",
+			OwnerApplication: "db",
+			SourceURL:        server.URL,
+			Timeout:          "5s",
 		},
 	}
 

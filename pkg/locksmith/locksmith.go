@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/native"
+	"github.com/bonjoski/locksmith/v2/pkg/rotator"
 )
 
 const (
@@ -73,11 +74,12 @@ func (b *DefaultBackend) List(service string, useBiometrics bool, prompt string)
 }
 
 type Locksmith struct {
-	Service string
-	Cache   Cache
-	Backend Backend
-	Options Options
-	Config  *Config // Loaded system configuration
+	Service  string
+	Cache    Cache
+	Backend  Backend
+	Options  Options
+	Config   *Config // Loaded system configuration
+	Rotators *rotator.HandlerRegistry
 }
 
 func New() (*Locksmith, error) {
@@ -110,15 +112,18 @@ func NewWithOptions(opts Options) (*Locksmith, error) {
 }
 
 func NewWithCache(cache Cache) *Locksmith {
-	return &Locksmith{
-		Service: DefaultService,
-		Cache:   cache,
-		Backend: &DefaultBackend{},
-		Options: Options{RequireBiometrics: false}, // Default to read-only friendly behavior
+	ls := &Locksmith{
+		Service:  DefaultService,
+		Cache:    cache,
+		Backend:  &DefaultBackend{},
+		Options:  Options{RequireBiometrics: false}, // Default to read-only friendly behavior
+		Rotators: rotator.NewHandlerRegistry(),
 	}
+	registerDefaultRotationHandlers(ls)
+	return ls
 }
 
-// Set and Delete are implemented in admin.go and require locksmith_admin build tag
+// Set and Delete are implemented in admin.go and are compiled when locksmith_admin is enabled.
 
 func (l *Locksmith) Get(key string) ([]byte, error) {
 	secret, err := l.getSecret(key)
@@ -132,7 +137,6 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 }
 
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
-	l.checkLazyRotation(key)
 	return l.getSecretNoRotate(key)
 }
 
@@ -222,7 +226,7 @@ func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 	return result, nil
 }
 
-// Delete is implemented in admin.go and requires locksmith_admin build tag
+// Delete is implemented in admin.go and is compiled when locksmith_admin is enabled.
 
 // GetWithMetadata retrieves a secret with its metadata
 func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
@@ -251,8 +255,12 @@ func (l *Locksmith) ListWithMetadata() (map[string]*SecretMetadata, error) {
 		}
 		if cached != nil {
 			result[key] = &SecretMetadata{
-				CreatedAt: cached.CreatedAt,
-				ExpiresAt: cached.ExpiresAt,
+				CreatedAt:        cached.CreatedAt,
+				ExpiresAt:        cached.ExpiresAt,
+				SecretType:       cached.SecretType,
+				OwnerApplication: cached.OwnerApplication,
+				SourceURL:        cached.SourceURL,
+				Metadata:         cached.Metadata,
 			}
 		} else {
 			// If not in cache, we'd need to read from keychain
