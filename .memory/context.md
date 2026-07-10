@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore: bump version to 2.6.2
 - fix: update script paths in CI workflow and documentation
 - refactor: reorganize repository structure for improved clarity
 - Improve rotation TTL semantics, GitLab expiry handling, and CLI metadata UX
 - ci: replace trufflehog with gitleaks
-- ci: make govulncheck guard bash-3 compatible
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
