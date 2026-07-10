@@ -14,8 +14,11 @@ GOVULNCHECK_BIN="${GOVULNCHECK_BIN:-govulncheck}"
 SCAN_ARGS=("-show" "verbose" "-tags" "locksmith_admin" "./...")
 
 echo "Running govulncheck guard..."
+# Capture govulncheck output without tripping `set -e` on non-zero exits.
+set +e
 output="$(${GOVULNCHECK_BIN} "${SCAN_ARGS[@]}" 2>&1)"
 status=$?
+set -e
 
 # Always print scanner output for debugging in CI logs.
 printf '%s\n' "$output"
@@ -52,7 +55,12 @@ module_section="$(printf '%s\n' "$output" | awk '
   in_module {print}
 ')"
 
-mapfile -t module_ids < <(printf '%s\n' "$module_section" | grep -Eo 'GO-[0-9]{4}-[0-9]+' | sort -u || true)
+module_ids=()
+while IFS= read -r id; do
+  if [[ -n "$id" ]]; then
+    module_ids+=("$id")
+  fi
+done < <(printf '%s\n' "$module_section" | grep -Eo 'GO-[0-9]{4}-[0-9]+' | sort -u || true)
 
 if [[ ${#module_ids[@]} -eq 0 ]]; then
   echo "govulncheck guard passed: no module vulnerabilities reported."
