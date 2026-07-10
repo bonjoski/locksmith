@@ -65,10 +65,10 @@ release: ## Build release binaries for multiple architectures
 	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-arm64
 	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-amd64
 	@echo "Packaging macOS App Bundles..."
-	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app $(VERSION)
-	@./package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app $(VERSION)
-	@./package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-arm64 $(BUILD_DIR)/Summon-darwin-arm64.app $(VERSION)
-	@./package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-amd64 $(BUILD_DIR)/Summon-darwin-amd64.app $(VERSION)
+	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app $(VERSION)
+	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app $(VERSION)
+	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-arm64 $(BUILD_DIR)/Summon-darwin-arm64.app $(VERSION)
+	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-amd64 $(BUILD_DIR)/Summon-darwin-amd64.app $(VERSION)
 	@echo "Signing .app bundles..."
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
@@ -224,7 +224,7 @@ govulncheck: ## Run govulncheck (installs if missing)
 govulncheck-ci: ## Run govulncheck with CI policy guard
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck CI guard..."
-	@GOVULNCHECK_BIN="$(GOBIN)/govulncheck" bash ./scripts/govulncheck-guard.sh
+	@GOVULNCHECK_BIN="$(GOBIN)/govulncheck" bash ./scripts/security/govulncheck-guard.sh
 
 gosec: ## Run gosec (installs if missing)
 	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION))
@@ -252,7 +252,7 @@ complexity: ## Run cyclomatic complexity check
 
 entropy: ## Run entropy check for secrets
 	@echo "Checking for high-entropy strings..."
-	@go run scripts/entropy-checker/main.go 3 $$(grep -rhE "[a-zA-Z0-9+/]{20,}" . --exclude-dir=.git --exclude=go.sum --exclude="*.md" --exclude="*_test.go" || true) || true
+	@go run scripts/dev/entropy-checker/main.go 3 $$(grep -rhE "[a-zA-Z0-9+/]{20,}" . --exclude-dir=.git --exclude=go.sum --exclude="*.md" --exclude="*_test.go" || true) || true
 
 install-tools: ## Manually install all required tools
 	@echo "Checking/Installing tools..."

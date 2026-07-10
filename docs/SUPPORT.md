@@ -14,11 +14,11 @@ Before opening an issue, please:
 If you've found a bug or have an idea for an improvement:
 1.  Open a new issue using the appropriate **Issue Template**.
 2.  Provide as much detail as possible (OS version, Locksmith version, logs, etc.).
-3.  For security vulnerabilities, please **DO NOT** open a public issue. Follow our [Security Policy](SECURITY.md) instead.
+3.  For security vulnerabilities, please **DO NOT** open a public issue. Follow our [Security Policy](../SECURITY.md) instead.
 
 ## 🔒 Security Vulnerabilities
 
-If you discover a security vulnerability, please report it via the methods described in our [Security Policy](SECURITY.md).
+If you discover a security vulnerability, please report it via the methods described in our [Security Policy](../SECURITY.md).
 
 ## 💬 Community & Discussions
 

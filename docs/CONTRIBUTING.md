@@ -6,7 +6,7 @@ First off, thank you for considering contributing to Locksmith! It's people like
 
 As a security-focused tool, we have strict requirements for contributions:
 
-1.  **Vulnerability Reporting**: If you find a security hole, please **DO NOT** open an issue. Follow our [Security Policy](SECURITY.md) instead.
+1.  **Vulnerability Reporting**: If you find a security hole, please **DO NOT** open an issue. Follow our [Security Policy](../SECURITY.md) instead.
 2.  **Signed Commits**: All commits must be **GPG-signed**. We do not accept unsigned contributions.
 3.  **Memory Safety**: Pay close attention to memory zeroing and CGO bridge safety. See [architect-review.sh](scripts/architect-review.sh) for Automated Gating.
 
@@ -45,7 +45,7 @@ We use [GitHub Issues](https://github.com/bonjoski/locksmith/issues) to track bu
 - **Bug Reports**: Choose the Bug Report template to provide environment details and reproduction steps.
 - **Feature Requests**: Choose the Feature Request template to describe the value your idea brings.
 
-For security vulnerabilities, please refer to our [Security Policy](SECURITY.md).
+For security vulnerabilities, please refer to our [Security Policy](../SECURITY.md).
 
 ## Code of Conduct
 

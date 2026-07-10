@@ -23,8 +23,8 @@ if [ -n "$GO_VERSION" ]; then
     
     # Update README.md
     sed -i '' "s/Go [0-9.]*\./Go $GO_VERSION./g" README.md
-    sed -i '' "s/Go v[0-9.]*+/Go v$GO_VERSION+/g" CONTRIBUTING.md
-    sed -i '' "s/Go [0-9.]*\./Go $GO_VERSION./g" SETUP.md
+    sed -i '' "s/Go v[0-9.]*+/Go v$GO_VERSION+/g" docs/CONTRIBUTING.md
+    sed -i '' "s/Go [0-9.]*\./Go $GO_VERSION./g" docs/SETUP.md
     
     # Update Architect Review Gate
     sed -i '' "s/GO_VERSION_EXPECTED=\".*\"/GO_VERSION_EXPECTED=\"$GO_VERSION\"/" scripts/architect-review.sh

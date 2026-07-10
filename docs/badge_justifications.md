@@ -48,8 +48,8 @@ This document provides the technical justifications for the **Locksmith** OpenSS
 
 ### [delivery_unsigned] Signed Releases
 **Met**
-**Justification**: All releases are cryptographically signed using GPG and include **GitHub Artifact Attestations** (SLSA Level 2). Verification instructions are provided in the `RELEASING.md` file.
-**Key URL**: https://github.com/bonjoski/locksmith/blob/main/RELEASING.md
+**Justification**: All releases are cryptographically signed using GPG and include **GitHub Artifact Attestations** (SLSA Level 2). Verification instructions are provided in the `docs/RELEASING.md` file.
+**Key URL**: https://github.com/bonjoski/locksmith/blob/main/docs/RELEASING.md
 
 ### [vulnerabilities_fixed_60_days] Patch Speed
 **Met**

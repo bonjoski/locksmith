@@ -414,7 +414,7 @@ All releases include cryptographic attestations. Verify a binary:
 gh attestation verify locksmith-darwin-arm64 --repo bonjoski/locksmith
 ```
 
-See [RELEASING.md](RELEASING.md) for details.
+See [RELEASING.md](docs/RELEASING.md) for details.
 
 ## License
 Distributed under the [MIT License](LICENSE). See `LICENSE` for more information.
@@ -424,6 +424,6 @@ For security-related issues, please refer to our [Security Policy](SECURITY.md).
 
 ## AI Ready 🤖
 This repository is optimized for AI-assisted development.
-- **Rules & Guidelines**: See [.cursorrules](file:///.cursorrules) and [.memory/guidelines.md](file:///.memory/guidelines.md).
+- **Guidelines**: See [.memory/guidelines.md](file:///.memory/guidelines.md).
 - **Architecture**: See [.memory/architecture.md](file:///.memory/architecture.md) for Mermaid diagrams and data flow.
 - **Tech Stack**: Details on libraries and platform bridges in [.memory/tech-stack.md](file:///.memory/tech-stack.md).
