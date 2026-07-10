@@ -42,13 +42,17 @@ func (m *mockCache) IsExpired(key string, ttl time.Duration) bool {
 }
 
 // mockBackend for CLI tests to avoid native keyring dependencies
-type mockBackend struct{}
+type mockBackend struct {
+	cache    *mockCache
+	getCalls int
+}
 
 func (m *mockBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
 	return nil
 }
 
 func (m *mockBackend) Get(service, account string, useBiometrics bool, prompt string) ([]byte, error) {
+	m.getCalls++
 	return []byte("{\"value\":null,\"created_at\":\"0001-01-01T00:00:00Z\",\"expires_at\":\"0001-01-01T00:00:00Z\"}"), nil
 }
 
@@ -57,7 +61,16 @@ func (m *mockBackend) Delete(service, account string, useBiometrics bool, prompt
 }
 
 func (m *mockBackend) List(service string, useBiometrics bool, prompt string) ([]string, error) {
-	return []string{}, nil
+	if m.cache == nil {
+		return []string{}, nil
+	}
+
+	keys := make([]string, 0, len(m.cache.secrets))
+	for key := range m.cache.secrets {
+		keys = append(keys, key)
+	}
+
+	return keys, nil
 }
 
 func setupTest() (*bytes.Buffer, *bytes.Buffer) {
@@ -67,6 +80,10 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	// Reset global state
 	jsonOutput = false
 	noNewline = false
+	listDetails = false
+	secretType = ""
+	ownerApplication = ""
+	sourceURL = ""
 
 	cfg = &locksmith.Config{
 		Auth: locksmith.AuthConfig{RequireBiometrics: false},
@@ -88,7 +105,7 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 
 	ls = locksmith.NewWithCache(mc)
 	ls.Config = cfg
-	ls.Backend = &mockBackend{} // Inject mock backend to avoid native calls
+	ls.Backend = &mockBackend{cache: mc} // Inject mock backend to avoid native calls
 	ls.Options.RequireBiometrics = false
 
 	rootCmd.SetOut(outBuf)
@@ -156,43 +173,140 @@ func TestTokenSubcommand(t *testing.T) {
 func TestAddCommand(t *testing.T) {
 	outBuf, _ := setupTest()
 
-	// 1. Test adding with 2 required arguments
-	key := "test-add-arg"
-	secret := "secret-value"
-	rootCmd.SetArgs([]string{"add", key, secret})
+	runAddAndAssertSaved(t, outBuf, []string{"add", "test-add-arg", "secret-value"}, "", "test-add-arg", "secret-value", true)
+
+	// 2. Test that 1 argument prompts for missing secret
+	outBuf, _ = setupTest()
+	runAddAndAssertSaved(t, outBuf, []string{"add", "prompt-key"}, "prompt-secret\n\n\n\n", "prompt-key", "prompt-secret", false)
+	assertAddPrompts(t, outBuf, false)
+
+	// 3. Test that 0 arguments prompts for key and secret
+	outBuf, _ = setupTest()
+	runAddAndAssertSaved(t, outBuf, []string{"add"}, "interactive-key\ninteractive-secret\n\n\n\n", "interactive-key", "interactive-secret", false)
+	assertAddPrompts(t, outBuf, true)
+}
+
+func runAddAndAssertSaved(t *testing.T, outBuf *bytes.Buffer, args []string, stdin string, key string, secret string, assertSuccessMsg bool) {
+	t.Helper()
+
+	if stdin != "" {
+		rootCmd.SetIn(bytes.NewBufferString(stdin))
+	}
+	rootCmd.SetArgs(args)
 
 	err := rootCmd.Execute()
 	if err != nil {
 		t.Fatalf("Add command failed: %v", err)
 	}
 
-	// Verify it was saved in the mock cache
 	mc := ls.Cache.(*mockCache)
 	s, ok := mc.secrets[key]
 	if !ok {
-		t.Errorf("Expected secret '%s' to be saved", key)
+		t.Fatalf("Expected secret '%s' to be saved", key)
 	}
 	if string(s.Value) != secret {
-		t.Errorf("Expected secret value '%s', got '%s'", secret, string(s.Value))
+		t.Fatalf("Expected secret value '%s', got '%s'", secret, string(s.Value))
 	}
 
-	if !strings.Contains(outBuf.String(), "Successfully saved secret") {
-		t.Errorf("Expected success message, got: %s", outBuf.String())
+	if assertSuccessMsg {
+		if !strings.Contains(outBuf.String(), "Successfully saved secret") {
+			t.Fatalf("Expected success message, got: %s", outBuf.String())
+		}
+	}
+}
+
+func assertAddPrompts(t *testing.T, outBuf *bytes.Buffer, expectKeyPrompt bool) {
+	t.Helper()
+
+	output := outBuf.String()
+	if expectKeyPrompt {
+		if !strings.Contains(output, "Key: ") {
+			t.Fatalf("Expected prompt output to contain 'Key: ', got: %s", output)
+		}
+	}
+	if !strings.Contains(output, "Secret: ") {
+		t.Fatalf("Expected prompt output to contain 'Secret: ', got: %s", output)
+	}
+	if !strings.Contains(output, "Secret type (optional") {
+		t.Fatalf("Expected prompt output to contain optional secret type prompt, got: %s", output)
+	}
+	if !strings.Contains(output, "Owner app (optional") {
+		t.Fatalf("Expected prompt output to contain optional owner app prompt, got: %s", output)
+	}
+	if !strings.Contains(output, "Source URL (optional)") {
+		t.Fatalf("Expected prompt output to contain optional source URL prompt, got: %s", output)
+	}
+}
+
+func TestListCommand(t *testing.T) {
+	outBuf, _ := setupTest()
+	rootCmd.SetArgs([]string{"list"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("List command failed: %v", err)
 	}
 
-	// 2. Test that 1 argument fails (secret required)
-	_, _ = setupTest()
-	rootCmd.SetArgs([]string{"add", "prompt-key"})
+	output := outBuf.String()
+	if !strings.Contains(output, "KEY") {
+		t.Fatalf("Expected list output to contain table header, got: %s", output)
+	}
+	if !strings.Contains(output, "nonexistent_test_key_xyz123") {
+		t.Fatalf("Expected list output to contain seeded key, got: %s", output)
+	}
+}
+
+func TestListCommandDetails(t *testing.T) {
+	outBuf, _ := setupTest()
+
+	err := ls.SetWithContext(
+		"details-key",
+		[]byte("details-secret"),
+		time.Now().Add(24*time.Hour),
+		false,
+		locksmith.SecretTypeOAuthToken,
+		"github",
+		"https://api.github.com/app/installations/123/access_tokens",
+		map[string]string{
+			"environment":            "ci",
+			"github_app_private_key": "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----",
+		},
+	)
+	if err != nil {
+		t.Fatalf("Failed to seed metadata-rich secret: %v", err)
+	}
+
+	rootCmd.SetArgs([]string{"list", "--details"})
 	err = rootCmd.Execute()
-	if err == nil {
-		t.Fatal("Expected add command to fail when secret argument is missing")
+	if err != nil {
+		t.Fatalf("List --details command failed: %v", err)
 	}
 
-	// 3. Test that 0 arguments fails (key and secret required)
-	_, _ = setupTest()
-	rootCmd.SetArgs([]string{"add"})
-	err = rootCmd.Execute()
-	if err == nil {
-		t.Fatal("Expected add command to fail when key and secret arguments are missing")
+	output := outBuf.String()
+	if !strings.Contains(output, "Key:        details-key") {
+		t.Fatalf("Expected details output to contain key, got: %s", output)
+	}
+	if !strings.Contains(output, "Type:       oauth_token") {
+		t.Fatalf("Expected details output to contain secret type, got: %s", output)
+	}
+	if !strings.Contains(output, "Owner App:  github") {
+		t.Fatalf("Expected details output to contain owner application, got: %s", output)
+	}
+	if !strings.Contains(output, "Source URL: https://api.github.com/app/installations/123/access_tokens") {
+		t.Fatalf("Expected details output to contain source URL, got: %s", output)
+	}
+	if !strings.Contains(output, "Metadata:") || !strings.Contains(output, "  environment: ci") {
+		t.Fatalf("Expected details output to contain metadata map, got: %s", output)
+	}
+	if !strings.Contains(output, "  github_app_private_key: [REDACTED]") {
+		t.Fatalf("Expected sensitive metadata to be redacted, got: %s", output)
+	}
+
+	mb, ok := ls.Backend.(*mockBackend)
+	if !ok {
+		t.Fatalf("Expected mock backend type assertion to succeed")
+	}
+	if mb.getCalls != 0 {
+		t.Fatalf("Expected list --details to avoid per-key backend reads, but Get was called %d times", mb.getCalls)
 	}
 }

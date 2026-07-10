@@ -21,7 +21,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const GitHubAppInstallationTokenRotatorID = "github-app-installation-token"
+const GitHubAppInstallationTokenRotatorID = "github-app-installation-token" // #nosec G101 -- identifier label, not credential material
 
 type AppInstallationTokenRotator struct{}
 

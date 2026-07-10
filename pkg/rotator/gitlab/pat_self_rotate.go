@@ -65,12 +65,10 @@ func (h *PATSelfRotateRotator) Rotate(ctx context.Context, input rotator.Rotatio
 	}
 
 	client := &http.Client{Timeout: input.Timeout}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	req, err := buildPATSelfRotateRequest(ctx, endpoint, string(input.CurrentValue), input.Selector.Metadata, input.DesiredTTL)
 	if err != nil {
 		return rotator.RotationOutput{}, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", string(input.CurrentValue))
-	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -91,6 +89,51 @@ func (h *PATSelfRotateRotator) Rotate(ctx context.Context, input rotator.Rotatio
 	if resp.StatusCode != http.StatusOK {
 		return rotator.RotationOutput{}, fmt.Errorf("gitlab pat self-rotate failed with status %d", resp.StatusCode)
 	}
+
+	return parsePATSelfRotateResponse(respBytes)
+}
+
+func buildPATSelfRotateRequest(ctx context.Context, endpoint string, currentToken string, metadata map[string]string, desiredTTL time.Duration) (*http.Request, error) {
+	expiresAt := firstNonEmpty(
+		readMeta(metadata, "gitlab_expires_at"),
+		readMeta(metadata, "expires_at"),
+		os.Getenv("GITLAB_PAT_EXPIRES_AT"),
+	)
+	if expiresAt == "" {
+		expiresAt = expiresAtFromDesiredTTL(desiredTTL)
+	}
+
+	requestBody, err := buildExpiresAtBody(expiresAt)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, requestBody)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("PRIVATE-TOKEN", currentToken)
+	req.Header.Set("Accept", "application/json")
+	if expiresAt != "" {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	return req, nil
+}
+
+func buildExpiresAtBody(expiresAt string) (io.Reader, error) {
+	if expiresAt == "" {
+		return nil, nil
+	}
+	if _, err := time.Parse("2006-01-02", expiresAt); err != nil {
+		return nil, fmt.Errorf("invalid expires_at '%s': expected YYYY-MM-DD", expiresAt)
+	}
+	form := url.Values{}
+	form.Set("expires_at", expiresAt)
+	return strings.NewReader(form.Encode()), nil
+}
+
+func parsePATSelfRotateResponse(respBytes []byte) (rotator.RotationOutput, error) {
 
 	var result struct {
 		Token     string `json:"token"`
@@ -159,4 +202,11 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func expiresAtFromDesiredTTL(desiredTTL time.Duration) string {
+	if desiredTTL <= 0 {
+		return ""
+	}
+	return time.Now().UTC().Add(desiredTTL).Format("2006-01-02")
 }

@@ -162,7 +162,7 @@ rotation:
       # Optional when app has multiple installations:
       # github_installation_account: "bonjoski"
       github_app_private_key: "locksmith://github/app/private-key"
-    timeout: "24h"
+    ttl: "24h"
 ```
 
 5. Store token secrets with selector context so matching is deterministic:

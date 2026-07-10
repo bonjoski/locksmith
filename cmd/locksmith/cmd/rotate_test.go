@@ -95,7 +95,7 @@ func TestCLIRotateCommand(t *testing.T) {
 			SecretType:       "password",
 			OwnerApplication: "db",
 			SourceURL:        server.URL,
-			Timeout:          "5s",
+			TTL:              "5s",
 		},
 	}
 

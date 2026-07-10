@@ -29,7 +29,8 @@ type RotationRule struct {
 	OwnerApplication string            `yaml:"owner_application,omitempty"` // e.g. "github", "postgres", "stripe"
 	SourceURL        string            `yaml:"source_url,omitempty"`        // URL used by compatible handlers
 	Metadata         map[string]string `yaml:"metadata,omitempty"`          // Optional handler metadata (supports locksmith://key refs)
-	Timeout          string            `yaml:"timeout"`                     // optional, e.g. "30s"
+	TTL              string            `yaml:"ttl,omitempty"`               // optional TTL override for rotated secret, e.g. "30d"
+	Timeout          string            `yaml:"timeout,omitempty"`           // legacy alias for TTL (kept for compatibility)
 
 	// Legacy fields retained for migration diagnostics.
 	HookType   string `yaml:"hook_type,omitempty"`

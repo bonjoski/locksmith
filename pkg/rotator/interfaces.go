@@ -20,6 +20,7 @@ type RotationInput struct {
 	CurrentValue []byte
 	Selector     RotationSelector
 	Timeout      time.Duration
+	DesiredTTL   time.Duration
 }
 
 // RotationOutput is the runtime result produced by Go-based rotation handlers.

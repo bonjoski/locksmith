@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,7 +76,6 @@ func TestRotateSecretURLRotator(t *testing.T) {
 				SecretType:       "password",
 				OwnerApplication: "db",
 				SourceURL:        server.URL,
-				Timeout:          "5s",
 			},
 		},
 	}
@@ -156,7 +156,7 @@ func TestRotateSecretWithExplicitRotatorID(t *testing.T) {
 				SecretType:       "api_key",
 				OwnerApplication: "api-service",
 				SourceURL:        server.URL,
-				Timeout:          "5s",
+				TTL:              "5s",
 			},
 		},
 	}
@@ -204,7 +204,7 @@ func TestGetDoesNotAutoRotateOnGet(t *testing.T) {
 
 	ls.Config = &Config{
 		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
-		Rotation:      []RotationRule{{Secret: "service/*", Timeout: "5s"}},
+		Rotation:      []RotationRule{{Secret: "service/*"}},
 	}
 
 	val, err := ls.Get("service/token")
@@ -225,7 +225,7 @@ func TestGetDoesNotAutoRotateOnGet(t *testing.T) {
 	}
 }
 
-func TestRotateSecretTimeout(t *testing.T) {
+func TestRotateSecretTimeoutAsTTL(t *testing.T) {
 	mc := &MockCache{secrets: make(map[string]Secret)}
 	mb := &testRotationBackend{secrets: make(map[string][]byte)}
 	ls := NewWithCache(mc)
@@ -241,10 +241,9 @@ func TestRotateSecretTimeout(t *testing.T) {
 	_ = mc.Set("db/password", oldSecret, time.Hour)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(500 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"value":"too-late"}`))
+		_, _ = w.Write([]byte(`{"value":"ttl-updated"}`))
 	}))
 	defer server.Close()
 
@@ -256,7 +255,7 @@ func TestRotateSecretTimeout(t *testing.T) {
 				SecretType:       "password",
 				OwnerApplication: "db",
 				SourceURL:        server.URL,
-				Timeout:          "100ms",
+				TTL:              "2s",
 			},
 		},
 	}
@@ -268,13 +267,120 @@ func TestRotateSecretTimeout(t *testing.T) {
 	mb.secrets["db/password"] = secretData
 
 	err := ls.RotateSecret("db/password")
-	if err == nil {
-		t.Fatal("Expected RotateSecret to fail with timeout error, but it succeeded")
+	if err != nil {
+		t.Fatalf("Expected RotateSecret to succeed with TTL override, got: %v", err)
 	}
 
-	val, _ := ls.Get("db/password")
-	if string(val) != "old-pass" {
-		t.Errorf("Expected secret to remain 'old-pass' after failed rotation, got '%s'", val)
+	val, err := ls.Get("db/password")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if string(val) != "ttl-updated" {
+		t.Errorf("Expected rotated value 'ttl-updated', got '%s'", val)
+	}
+
+	meta, err := ls.GetWithMetadata("db/password")
+	if err != nil {
+		t.Fatalf("GetWithMetadata failed: %v", err)
+	}
+
+	timeRemaining := time.Until(meta.ExpiresAt)
+	if timeRemaining < 1*time.Second || timeRemaining > 5*time.Second {
+		t.Errorf("Expected renewed expiration to be ~2 seconds, got TTL duration: %v", timeRemaining)
+	}
+}
+
+func TestRuleSupportsSelector_SourceURLNormalization(t *testing.T) {
+	rule := &RotationRule{
+		Secret:           "GL-*",
+		SecretType:       SecretTypeToken,
+		OwnerApplication: "gitlab",
+		SourceURL:        "https://gitlab.com",
+	}
+
+	selector := rotator.RotationSelector{
+		SecretType:       "token",
+		OwnerApplication: "gitlab",
+		SourceURL:        "gitlab.com",
+	}
+
+	if !ruleSupportsSelector(rule, selector) {
+		t.Fatal("expected selector source_url 'gitlab.com' to match rule source_url 'https://gitlab.com'")
+	}
+}
+
+func TestRuleSupportsSelector_CaseInsensitiveTypeAndOwner(t *testing.T) {
+	rule := &RotationRule{
+		Secret:           "GL-*",
+		SecretType:       SecretTypeToken,
+		OwnerApplication: "gitlab",
+	}
+
+	selector := rotator.RotationSelector{
+		SecretType:       "TOKEN",
+		OwnerApplication: "GitLab",
+	}
+
+	if !ruleSupportsSelector(rule, selector) {
+		t.Fatal("expected selector with case differences to match rule")
+	}
+}
+
+func TestRuleSupportsSelector_SourceURLMismatch(t *testing.T) {
+	rule := &RotationRule{
+		Secret:           "GL-*",
+		SecretType:       SecretTypeToken,
+		OwnerApplication: "gitlab",
+		SourceURL:        "https://gitlab.com",
+	}
+
+	selector := rotator.RotationSelector{
+		SecretType:       "token",
+		OwnerApplication: "gitlab",
+		SourceURL:        "https://gitlab.example.com",
+	}
+
+	if ruleSupportsSelector(rule, selector) {
+		t.Fatal("expected mismatched hosts not to match")
+	}
+}
+
+func TestRotateSecretInvalidTimeout(t *testing.T) {
+	mc := &MockCache{secrets: make(map[string]Secret)}
+	mb := &testRotationBackend{secrets: make(map[string][]byte)}
+	ls := NewWithCache(mc)
+	ls.Backend = mb
+
+	oldSecret := Secret{
+		Value:            []byte("old-token"),
+		CreatedAt:        time.Now(),
+		ExpiresAt:        time.Now().Add(time.Hour),
+		SecretType:       "token",
+		OwnerApplication: "gitlab",
+		SourceURL:        "https://gitlab.com",
+	}
+	secretData, _ := json.Marshal(oldSecret)
+	mb.secrets["GL-Read"] = secretData
+	_ = mc.Set("GL-Read", oldSecret, time.Hour)
+
+	ls.Config = &Config{
+		Rotation: []RotationRule{
+			{
+				Secret:           "GL-Read",
+				Rotator:          "gitlab-pat-self-rotate",
+				SecretType:       "token",
+				OwnerApplication: "gitlab",
+				TTL:              "not-a-duration",
+			},
+		},
+	}
+
+	err := ls.RotateSecret("GL-Read")
+	if err == nil {
+		t.Fatal("expected invalid timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid rotation ttl") {
+		t.Fatalf("expected invalid timeout error message, got: %v", err)
 	}
 }
 
@@ -316,14 +422,12 @@ func TestRotateExpiringSecrets(t *testing.T) {
 				SecretType:       "token",
 				OwnerApplication: "batch",
 				SourceURL:        server.URL,
-				Timeout:          "5s",
 			},
 			{
 				Secret:           "valid/secret-1",
 				SecretType:       "token",
 				OwnerApplication: "batch",
 				SourceURL:        server.URL,
-				Timeout:          "5s",
 			},
 		},
 	}
@@ -456,7 +560,6 @@ func TestRotateSecretResolvesMetadataSecretRefs(t *testing.T) {
 				SecretType:       SecretTypeToken,
 				OwnerApplication: "github",
 				SourceURL:        "https://api.github.com/app/installations/67890/access_tokens",
-				Timeout:          "5s",
 				Metadata: map[string]string{
 					"github_app_id":          "locksmith://github/app/id",
 					"github_installation_id": "locksmith://github/app/installation-id",

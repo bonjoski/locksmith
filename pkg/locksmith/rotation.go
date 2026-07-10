@@ -5,12 +5,16 @@ package locksmith
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/rotator"
 )
+
+const defaultRotationOperationTimeout = 30 * time.Second
 
 // RotateSecret executes the configured in-process Go rotator for the given key and updates the vault.
 func (l *Locksmith) RotateSecret(key string) error {
@@ -24,15 +28,25 @@ func (l *Locksmith) RotateSecret(key string) error {
 		return err
 	}
 
-	// Timeout configuration
-	timeout := 30 * time.Second
-	if matchedRule.Timeout != "" {
-		if d, err := parseDurationFlex(matchedRule.Timeout); err == nil {
-			timeout = d
+	// Use a fixed, reasonable operation timeout for the rotation request/execution.
+	operationTimeout := defaultRotationOperationTimeout
+
+	// ttl in config is interpreted as TTL override for the rotated secret.
+	// timeout is retained as a legacy alias for backward compatibility.
+	var ttlOverride time.Duration
+	ttlSetting := strings.TrimSpace(matchedRule.TTL)
+	if ttlSetting == "" {
+		ttlSetting = strings.TrimSpace(matchedRule.Timeout)
+	}
+	if ttlSetting != "" {
+		d, err := parseDurationFlex(ttlSetting)
+		if err != nil {
+			return fmt.Errorf("invalid rotation ttl '%s' for rule '%s': %w", ttlSetting, matchedRule.Secret, err)
 		}
+		ttlOverride = d
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), operationTimeout)
 	defer cancel()
 
 	handler, err := l.resolveRotationHandler(matchedRule, selector)
@@ -49,7 +63,8 @@ func (l *Locksmith) RotateSecret(key string) error {
 		Key:          key,
 		CurrentValue: currentSecret.Value,
 		Selector:     selector,
-		Timeout:      timeout,
+		Timeout:      operationTimeout,
+		DesiredTTL:   ttlOverride,
 	})
 
 	if err != nil {
@@ -63,7 +78,7 @@ func (l *Locksmith) RotateSecret(key string) error {
 		}
 	}()
 
-	expiresAt := l.calculateRotationExpiration(currentSecret, result.TTL)
+	expiresAt := l.calculateRotationExpiration(currentSecret, result.TTL, ttlOverride)
 
 	valCopy := make([]byte, len(result.NewValue))
 	copy(valCopy, result.NewValue)
@@ -172,16 +187,60 @@ func (l *Locksmith) resolveMetadataValue(v string) (string, error) {
 }
 
 func ruleSupportsSelector(rule *RotationRule, selector rotator.RotationSelector) bool {
-	if rule.SecretType != SecretTypeUnspecified && selector.SecretType != string(rule.SecretType) {
+	if rule.SecretType != SecretTypeUnspecified && !strings.EqualFold(strings.TrimSpace(selector.SecretType), strings.TrimSpace(string(rule.SecretType))) {
 		return false
 	}
-	if rule.OwnerApplication != "" && selector.OwnerApplication != rule.OwnerApplication {
+	if strings.TrimSpace(rule.OwnerApplication) != "" && !strings.EqualFold(strings.TrimSpace(selector.OwnerApplication), strings.TrimSpace(rule.OwnerApplication)) {
 		return false
 	}
-	if rule.SourceURL != "" && selector.SourceURL != rule.SourceURL {
+	if strings.TrimSpace(rule.SourceURL) != "" && !sourceURLsMatch(selector.SourceURL, rule.SourceURL) {
 		return false
 	}
 	return true
+}
+
+func sourceURLsMatch(selectorSourceURL string, ruleSourceURL string) bool {
+	selNorm, selOK := normalizeSourceURLForMatch(selectorSourceURL)
+	ruleNorm, ruleOK := normalizeSourceURLForMatch(ruleSourceURL)
+
+	if selOK && ruleOK {
+		return selNorm == ruleNorm
+	}
+
+	return strings.EqualFold(strings.TrimSpace(selectorSourceURL), strings.TrimSpace(ruleSourceURL))
+}
+
+func normalizeSourceURLForMatch(raw string) (string, bool) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return "", false
+	}
+
+	if !strings.Contains(v, "://") && !strings.HasPrefix(v, "/") {
+		v = "https://" + v
+	}
+
+	u, err := url.Parse(v)
+	if err != nil {
+		return "", false
+	}
+	if strings.TrimSpace(u.Host) == "" {
+		return "", false
+	}
+
+	if strings.TrimSpace(u.Scheme) == "" {
+		u.Scheme = "https"
+	}
+
+	u.Host = strings.ToLower(strings.TrimSpace(u.Host))
+	u.Path = path.Clean("/" + strings.TrimSpace(u.Path))
+	if u.Path == "/" {
+		u.Path = ""
+	}
+	u.RawQuery = strings.TrimSpace(u.RawQuery)
+	u.Fragment = ""
+
+	return u.String(), true
 }
 
 func (l *Locksmith) resolveRotationHandler(rule *RotationRule, selector rotator.RotationSelector) (rotator.Handler, error) {
@@ -211,10 +270,14 @@ func (l *Locksmith) resolveRotationHandler(rule *RotationRule, selector rotator.
 	return h, nil
 }
 
-func (l *Locksmith) calculateRotationExpiration(existing *Secret, newTTL time.Duration) time.Time {
+func (l *Locksmith) calculateRotationExpiration(existing *Secret, newTTL time.Duration, ttlOverride time.Duration) time.Time {
 	expiresAt := time.Now().Add(30 * 24 * time.Hour) // default 30 days
 	if newTTL > 0 {
 		return time.Now().Add(newTTL)
+	}
+
+	if ttlOverride > 0 {
+		return time.Now().Add(ttlOverride)
 	}
 
 	if existing != nil {

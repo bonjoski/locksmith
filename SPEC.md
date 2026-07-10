@@ -288,7 +288,8 @@ Supported fields:
 - `secret_type`: optional selector field used for handler auto-loading
 - `owner_application`: optional selector field used for handler auto-loading
 - `source_url`: optional selector field used for handler auto-loading
-- `timeout`: duration, default `30s` (optional)
+- `ttl`: optional rotated-secret TTL override (for example `24h`, `30d`)
+- `timeout`: legacy alias for `ttl` (supported for backward compatibility)
 
 Example:
 
@@ -299,7 +300,7 @@ rotation:
         secret_type: "oauth_token"
         owner_application: "github"
         source_url: "https://api.github.com/applications/<github_client_id>/token"
-        timeout: "15s"
+        ttl: "24h"
 ```
 
 ### Security Model
@@ -320,9 +321,9 @@ Failure safety:
 1. Resolve matching rule by key pattern.
 2. Build selector from secret metadata and rule fields (`secret_type`, `owner_application`, `source_url`).
 3. Resolve rotator handler by explicit ID or selector auto-match.
-4. Build timeout context.
+4. Build operation timeout context (fixed default).
 5. Execute handler and capture new secret value.
-6. Determine expiration using returned TTL (if provided) or prior TTL/default.
+6. Determine expiration using handler-returned TTL when available; otherwise use rule `ttl` fallback; otherwise prior TTL/default.
 7. Write rotated secret via normal Locksmith write path and persist selector context.
 8. Clear temporary buffers before returning.
 

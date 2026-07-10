@@ -21,7 +21,7 @@ const (
 	SecretTypeUnspecified SecretType = ""
 	SecretTypePassword    SecretType = "password"
 	SecretTypeAPIKey      SecretType = "api_key"
-	SecretTypeOAuthToken  SecretType = "oauth_token"
+	SecretTypeOAuthToken  SecretType = "oauth_token" // #nosec G101 -- type discriminator value, not a hardcoded secret
 	SecretTypeToken       SecretType = "token"
 )
 

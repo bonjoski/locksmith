@@ -60,30 +60,34 @@ rotation:
     # Env vars are still supported as fallback:
     #   GITHUB_APP_CLIENT_ID (preferred), GITHUB_APP_ID (fallback),
     #   GITHUB_APP_INSTALLATION_ID, GITHUB_APP_PRIVATE_KEY
-    timeout: "24h"
+    ttl: "24h"
   - secret: "github/pat/*"
     rotator: "github-fgpat-replace"
     secret_type: "api_key"
     owner_application: "github"
     # Transitional broker endpoint for PAT replacement if needed.
     source_url: "https://rotation.example.internal/github/fgpat/replace"
-    timeout: "24h"
+    ttl: "24h"
   - secret: "github/oauth/*"
     rotator: "github-oauth-reset"
     secret_type: "oauth_token"
     owner_application: "github"
     source_url: "https://api.github.com/applications/<github_client_id>/token"
     # client_secret is read from GITHUB_CLIENT_SECRET (or secret metadata key github_client_secret)
-    timeout: "24h"
+    ttl: "24h"
   - secret: "atlassian/*"
     rotator: "url-json"
     secret_type: "api_key"
     owner_application: "atlassian"
     source_url: "https://rotation.example.internal/atlassian"
-    timeout: "24h"
+    ttl: "24h"
   - secret: "gitlab/*"
     rotator: "gitlab-pat-self-rotate"
     secret_type: "api_key"
     owner_application: "gitlab"
     source_url: "https://gitlab.example.com"
-    timeout: "24h"
+    # Desired validity for newly rotated PATs. Rotator maps this to GitLab expires_at.
+    ttl: "24h"
+    # Optional fixed date override (YYYY-MM-DD). Usually not needed when ttl is set.
+    # metadata:
+    #   gitlab_expires_at: "2026-07-17"
