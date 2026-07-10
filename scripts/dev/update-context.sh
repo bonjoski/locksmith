@@ -27,7 +27,7 @@ if [ -n "$GO_VERSION" ]; then
     sed -i '' "s/Go [0-9.]*\./Go $GO_VERSION./g" docs/SETUP.md
     
     # Update Architect Review Gate
-    sed -i '' "s/GO_VERSION_EXPECTED=\".*\"/GO_VERSION_EXPECTED=\"$GO_VERSION\"/" scripts/architect-review.sh
+    sed -i '' "s/GO_VERSION_EXPECTED=\".*\"/GO_VERSION_EXPECTED=\"$GO_VERSION\"/" scripts/dev/architect-review.sh
 fi
 
 # 2. Extract top-level dependencies (excluding indirects)
@@ -48,6 +48,6 @@ fi
 
 # 4. Stage synchronization changes
 echo "==> Staging documentation updates..."
-git add README.md SETUP.md CONTRIBUTING.md scripts/architect-review.sh .memory/
+git add README.md docs/SETUP.md docs/CONTRIBUTING.md scripts/dev/architect-review.sh .memory/
 
 echo "✓ Documentation sync complete."

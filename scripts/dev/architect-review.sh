@@ -15,10 +15,10 @@ echo -e "${YELLOW}==> [Architect Review Agent] Initializing Deep Analysis...${NC
 # Section 0: [Documentation Architect] Context Synchronization
 # This ensures that the .memory/ documentation stays in sync with history/code changes.
 # If changes are detected, we automatically stage them for the current commit.
-if [[ -f "scripts/update-context.sh" ]]; then
+if [[ -f "scripts/dev/update-context.sh" ]]; then
     echo -e "${YELLOW}==> [Documentation Architect] Synchronizing AI Context...${NC}"
-    chmod +x scripts/update-context.sh
-    ./scripts/update-context.sh
+    chmod +x scripts/dev/update-context.sh
+    ./scripts/dev/update-context.sh
     
     # Check if .memory/ documentation was updated
     STAGED_DOCS=$(git status --porcelain .memory/ || true)
@@ -27,7 +27,7 @@ if [[ -f "scripts/update-context.sh" ]]; then
         git add .memory/
     fi
 else
-    echo -e "${RED}[Architect Error]${NC} scripts/update-context.sh not found. Skipping documentation sync."
+    echo -e "${RED}[Architect Error]${NC} scripts/dev/update-context.sh not found. Skipping documentation sync."
 fi
 
 
