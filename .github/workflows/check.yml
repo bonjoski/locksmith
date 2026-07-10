@@ -28,9 +28,9 @@ jobs:
           go-version: '1.26.5'
           cache: true
 
-      - name: Run TruffleHog
+      - name: Run Gitleaks
         run: |
-          make trufflehog
+          make gitleaks
 
       - name: Run golangci-lint
         run: |

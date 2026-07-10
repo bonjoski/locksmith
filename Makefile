@@ -18,7 +18,7 @@ export PATH := $(GOBIN):$(PATH)
 GOLANGCI_LINT_VERSION=v1.64.2
 GOVULNCHECK_VERSION=v1.1.4
 GOSEC_VERSION=v2.22.11
-TRUFFLEHOG_VERSION=v3.95.9
+GITLEAKS_VERSION=v8.24.2
 
 .PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates
 
@@ -170,7 +170,7 @@ uninstall-summon: ## Uninstall Summon provider
 	@echo "✓ Summon provider uninstalled"
 
 ## Verification targets
-check: fmt tidy verify-deps vet lint govulncheck-ci gosec trufflehog semgrep complexity entropy ## Run all quality and security checks
+check: fmt tidy verify-deps vet lint govulncheck-ci gosec gitleaks semgrep complexity entropy ## Run all quality and security checks
 
 test: ## Run unit tests
 	@echo "Running tests..."
@@ -231,10 +231,12 @@ gosec: ## Run gosec (installs if missing)
 	@echo "Running gosec..."
 	@$(GOBIN)/gosec -tags locksmith_admin -severity high -exclude=G115 ./...
 
-trufflehog: ## Run TruffleHog secret scanning (Modern)
-	$(call install_if_missing,trufflehog,curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b $(GOBIN) $(TRUFFLEHOG_VERSION))
-	@echo "Running TruffleHog..."
-	@$(GOBIN)/trufflehog git file://. --since-commit main --only-verified --fail 2> /dev/null && echo "No secrets found."
+gitleaks: ## Run Gitleaks secret scanning
+	$(call install_if_missing,gitleaks,go install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION))
+	@echo "Running Gitleaks..."
+	@$(GOBIN)/gitleaks git --redact --exit-code 1 . && echo "No secrets found."
+
+trufflehog: gitleaks ## Backward-compatible alias for legacy hooks
 
 semgrep: ## Run semgrep (installs if missing)
 	@if ! command -v semgrep > /dev/null; then \
@@ -257,7 +259,7 @@ install-tools: ## Manually install all required tools
 	$(call install_if_missing,golangci-lint,curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOBIN))
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@latest)
 	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@latest)
-	$(call install_if_missing,trufflehog,curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b $(GOBIN) $(TRUFFLEHOG_VERSION))
+	$(call install_if_missing,gitleaks,go install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION))
 	@if ! command -v semgrep > /dev/null; then brew install semgrep; fi
 
 ## Utility targets

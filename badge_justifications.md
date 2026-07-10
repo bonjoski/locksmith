@@ -57,7 +57,7 @@ This document provides the technical justifications for the **Locksmith** OpenSS
 
 ### [no_leaked_credentials] No Leaked Secrets
 **Met**
-**Justification**: We enforce a mandatory `pre-commit` hook that runs **TruffleHog** and a custom **Entropy Checker** on every file. This prevents any private credentials or high-entropy tokens from being committed to the public repository.
+**Justification**: We enforce a mandatory `pre-commit` hook that runs **Gitleaks** and a custom **Entropy Checker** on every file. This prevents any private credentials or high-entropy tokens from being committed to the public repository.
 **Key URL**: https://github.com/bonjoski/locksmith/blob/main/scripts/architect-review.sh
 
 ### [static_analysis] Static Code Analysis

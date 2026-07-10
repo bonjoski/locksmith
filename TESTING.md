@@ -32,7 +32,7 @@ make test-manual
 
 Our CI/CD pipeline runs multiple security scanners on every commit:
 
-- **TruffleHog**: Scans the git history and current diff for accidentally committed secrets.
+- **Gitleaks**: Scans git history and repository content for accidentally committed secrets.
 - **Gosec**: Performs static analysis for security vulnerabilities in Go code (e.g., weak crypto, unsafe pointers).
 - **Semgrep**: Checks for project-specific security anti-patterns (e.g., non-v2 internal imports).
 - **Entropy Checker**: A custom Go-based tool that detects high-entropy strings (potential leaked keys) that might be missed by generic pattern matching.
