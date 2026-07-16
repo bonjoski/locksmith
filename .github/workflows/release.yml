@@ -116,6 +116,24 @@ jobs:
             bin/*
           generate_release_notes: true
 
+      - name: Update Homebrew Formula
+        run: |
+          chmod +x scripts/dev/update-homebrew-formula.sh
+          ./scripts/dev/update-homebrew-formula.sh "${GITHUB_REF_NAME}"
+
+      - name: Commit and Push Homebrew Formula Update
+        if: ${{ success() }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet contrib/homebrew/locksmith.rb; then
+            echo "No changes to Homebrew formula"
+          else
+            git add contrib/homebrew/locksmith.rb
+            git commit -m "chore: auto-update homebrew formula to ${GITHUB_REF_NAME}"
+            git push origin main
+          fi
+
 
   update-homebrew:
     name: Update Homebrew Formula
