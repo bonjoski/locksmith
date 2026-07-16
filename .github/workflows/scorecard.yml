@@ -46,6 +46,10 @@ jobs:
           # Publish results to enable scorecard badges
           publish_results: true
 
+      - name: Backoff before retry 2
+        if: steps.scorecard_attempt_1.outcome == 'failure'
+        run: sleep 20
+
       - name: Run analysis (attempt 2)
         id: scorecard_attempt_2
         if: steps.scorecard_attempt_1.outcome == 'failure'
@@ -55,6 +59,10 @@ jobs:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
+
+      - name: Backoff before retry 3
+        if: steps.scorecard_attempt_1.outcome == 'failure' && steps.scorecard_attempt_2.outcome == 'failure'
+        run: sleep 60
 
       - name: Run analysis (attempt 3)
         if: steps.scorecard_attempt_1.outcome == 'failure' && steps.scorecard_attempt_2.outcome == 'failure'
