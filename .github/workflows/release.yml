@@ -138,7 +138,6 @@ jobs:
     name: Sync Homebrew Tap Repo
     needs: build-and-release
     runs-on: ubuntu-latest
-    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
     permissions:
       contents: read
     steps:
@@ -152,12 +151,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set; skipping tap sync"
+            exit 0
+          fi
           gh repo clone bonjoski/homebrew-locksmith tap_repo
 
       - name: Sync formula and push
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set; skipping tap sync"
+            exit 0
+          fi
           cp locksmith.rb tap_repo/Formula/locksmith.rb
           cd tap_repo
           git config user.name "github-actions[bot]"
