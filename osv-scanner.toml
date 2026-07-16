@@ -1,0 +1,3 @@
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+reason = "Locksmith uses golang.org/x/crypto for SSH functionality, not openpgp. GO-2026-5932 is an openpgp unmaintained-package advisory and is accepted risk for current usage."

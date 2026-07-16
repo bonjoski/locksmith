@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- ci: sync external homebrew tap after release
 - refactor: consolidate homebrew formula updates
 - feat: auto-update homebrew formula on release
 - chore: update homebrew formula to v2.6.4
 - fix: mask secret input on add command
-- chore: bump version to 2.6.3
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
