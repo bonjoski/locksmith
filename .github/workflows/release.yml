@@ -133,3 +133,39 @@ jobs:
             git commit -m "chore: auto-update homebrew formula to ${GITHUB_REF_NAME}"
             git push origin main
           fi
+
+  sync-homebrew-tap:
+    name: Sync Homebrew Tap Repo
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Fetch formula from locksmith main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/bonjoski/locksmith/contents/contrib/homebrew/locksmith.rb?ref=main --jq '.content' | base64 --decode > locksmith.rb
+
+      - name: Checkout tap repository
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          gh repo clone bonjoski/homebrew-locksmith tap_repo
+
+      - name: Sync formula and push
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          cp locksmith.rb tap_repo/Formula/locksmith.rb
+          cd tap_repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet Formula/locksmith.rb; then
+            echo "Tap formula already up to date"
+            exit 0
+          fi
+          git add Formula/locksmith.rb
+          git commit -m "chore: sync locksmith formula ${GITHUB_REF_NAME}"
+          git push https://x-access-token:${GH_TOKEN}@github.com/bonjoski/homebrew-locksmith.git main
