@@ -34,7 +34,7 @@ fi
 # Define tool paths
 GOBIN=$(/opt/homebrew/bin/go env GOPATH)/bin
 GOCYCLO=$GOBIN/gocyclo
-ENTROPY_CHECKER="go run scripts/entropy-checker/main.go"
+ENTROPY_CHECKER="go run scripts/dev/entropy-checker/main.go"
 
 # 1. Project Governance: Go Version consistency
 GO_VERSION_EXPECTED="1.25.4"

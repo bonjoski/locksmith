@@ -3,11 +3,13 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var secretType string
@@ -48,11 +50,21 @@ var addCmd = &cobra.Command{
 		if secret == "" {
 			promptMode = true
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Secret: ")
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("error reading secret: %w", err)
+
+			// Use masked input if stdin is a terminal, otherwise fall back to normal input (for tests)
+			if term.IsTerminal(int(os.Stdin.Fd())) {
+				secretInput, err := term.ReadPassword(int(os.Stdin.Fd()))
+				if err != nil {
+					return fmt.Errorf("error reading secret: %w", err)
+				}
+				secret = string(secretInput)
+			} else {
+				input, err := reader.ReadString('\n')
+				if err != nil {
+					return fmt.Errorf("error reading secret: %w", err)
+				}
+				secret = strings.TrimRight(input, "\r\n")
 			}
-			secret = strings.TrimRight(input, "\r\n")
 		}
 
 		if promptMode {
