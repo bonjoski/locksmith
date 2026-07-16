@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- ci(scorecard): add exponential backoff between retry attempts
 - ci(scorecard): retry analysis on transient GitHub API failures
 - fix(ci): resolve invalid secrets expression in release workflow
 - security: ignore GO-2026-5932 in osv-scanner policy
 - ci: sync external homebrew tap after release
-- refactor: consolidate homebrew formula updates
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

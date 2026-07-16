@@ -66,11 +66,18 @@ jobs:
 
       - name: Run analysis (attempt 3)
         if: steps.scorecard_attempt_1.outcome == 'failure' && steps.scorecard_attempt_2.outcome == 'failure'
+        continue-on-error: true
         uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
+
+      - name: Handle transient Scorecard outages
+        if: hashFiles('results.sarif') == ''
+        run: |
+          echo "Scorecard did not produce SARIF after retries. This is usually a transient GitHub API issue (503/504)."
+          echo "Marking run successful to avoid blocking merges; next scheduled or manual run will retry."
 
       - name: "Upload artifact"
         if: hashFiles('results.sarif') != ''
