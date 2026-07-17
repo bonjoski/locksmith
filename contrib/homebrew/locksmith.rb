@@ -4,16 +4,16 @@
 class Locksmith < Formula
   desc "Secure keychain-backed secrets manager with biometric authentication"
   homepage "https://github.com/bonjoski/locksmith"
-  version "2.6.5"
+  version "2.6.6"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/bonjoski/locksmith/releases/download/v2.6.5/locksmith-darwin-arm64"
-      sha256 "a306a56a90a92384af876446fb1dfbc558b0c7a05916137edbd72389514a6f80"
+      url "https://github.com/bonjoski/locksmith/releases/download/v2.6.6/locksmith-darwin-arm64"
+      sha256 "cfc111b983e19f1c6420effef79f4b991a02d1485ba3592448614197c1c6555e"
 
       resource "summon-arm64" do
-        url "https://github.com/bonjoski/locksmith/releases/download/v2.6.5/summon-locksmith-darwin-arm64"
-        sha256 "04a2e08cc2369b63b95a19d4b9c9fa390a81cfd42dc86f250362405150417e9a"
+        url "https://github.com/bonjoski/locksmith/releases/download/v2.6.6/summon-locksmith-darwin-arm64"
+        sha256 "7bbd18b4e40b4772b23cee89cc3cb1873b5bb4a463fc3ecd35797b2404e83332"
       end
 
       def install
@@ -23,12 +23,12 @@ class Locksmith < Formula
         end
       end
     else
-      url "https://github.com/bonjoski/locksmith/releases/download/v2.6.5/locksmith-darwin-amd64"
-      sha256 "44bae6ba6eff1d3bc592541cdddbbbdc6305e46342eb29cf3facc38d943e3a27"
+      url "https://github.com/bonjoski/locksmith/releases/download/v2.6.6/locksmith-darwin-amd64"
+      sha256 "a5b3ee1d56b476badad97440f28f32aca54e12394e77e9bbc9f0adbc4534fdae"
 
       resource "summon-amd64" do
-        url "https://github.com/bonjoski/locksmith/releases/download/v2.6.5/summon-locksmith-darwin-amd64"
-        sha256 "e439329860b8126ad9a46144961ce816af97a2b7c093132694ba9a6f5ce3ea77"
+        url "https://github.com/bonjoski/locksmith/releases/download/v2.6.6/summon-locksmith-darwin-amd64"
+        sha256 "feb349d211e3a73385c3c006350b43395c2b25ce93d4bdd23d36408504e9ea46"
       end
 
       def install
