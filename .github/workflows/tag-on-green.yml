@@ -1,0 +1,97 @@
+name: Tag On Green Main
+
+on:
+  workflow_run:
+    workflows: ["CI", "check"]
+    types: [completed]
+
+permissions: read-all
+
+jobs:
+  create-signed-tag:
+    name: Create Signed Tag After Green Build
+    if: ${{ github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Ensure CI and check are both green for this commit
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          RUNS_JSON="$(gh api "repos/${REPO}/actions/runs?event=push&head_sha=${SHA}&per_page=100")"
+
+          ci_status="$(echo "$RUNS_JSON" | jq -r '[.workflow_runs[] | select(.name=="CI")][0].status // ""')"
+          ci_conclusion="$(echo "$RUNS_JSON" | jq -r '[.workflow_runs[] | select(.name=="CI")][0].conclusion // ""')"
+
+          check_status="$(echo "$RUNS_JSON" | jq -r '[.workflow_runs[] | select(.name=="check")][0].status // ""')"
+          check_conclusion="$(echo "$RUNS_JSON" | jq -r '[.workflow_runs[] | select(.name=="check")][0].conclusion // ""')"
+
+          echo "CI: status=${ci_status} conclusion=${ci_conclusion}"
+          echo "check: status=${check_status} conclusion=${check_conclusion}"
+
+          if [[ "$ci_status" != "completed" || "$check_status" != "completed" ]]; then
+            echo "Both workflows are not completed yet; skipping for now."
+            echo "should_tag=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$ci_conclusion" != "success" || "$check_conclusion" != "success" ]]; then
+            echo "Build gate failed; tag will not be created."
+            echo "should_tag=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "should_tag=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout gated commit
+        if: steps.gate.outputs.should_tag == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve version and skip when tag exists
+        if: steps.gate.outputs.should_tag == 'true'
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          VERSION="$(grep 'Version = ' pkg/locksmith/version.go | cut -d '"' -f 2)"
+          TAG="v${VERSION}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if gh api "repos/${REPO}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists; nothing to do."
+            echo "create=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "create=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import GPG key
+        if: steps.gate.outputs.should_tag == 'true' && steps.tag.outputs.create == 'true'
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v6.2.0
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Create and push signed tag
+        if: steps.gate.outputs.should_tag == 'true' && steps.tag.outputs.create == 'true'
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.tag.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -s "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
