@@ -3,6 +3,7 @@ package locksmith
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -97,9 +98,13 @@ func TestFindIntegrationPlaintextTokensGlabMacOSPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	glabPath := filepath.Join(home, "Library", "Application Support", "glab-cli", "config.yml")
+	defaultPaths := integrationProfileConfigFiles("glab", runtime.GOOS)
+	if len(defaultPaths) == 0 {
+		t.Fatal("expected at least one glab default config path")
+	}
+	glabPath := filepath.Join(home, defaultPaths[0])
 	if err := os.MkdirAll(filepath.Dir(glabPath), 0755); err != nil {
-		t.Fatalf("failed to create glab macOS config dir: %v", err)
+		t.Fatalf("failed to create glab config dir: %v", err)
 	}
 
 	glabConfig := "hosts:\n  gitlab.com:\n    user: octocat\n    token: glpat_abc123\n"
@@ -210,7 +215,11 @@ func TestFindAndScrubIntegrationPlaintextTokensMalformedYAML(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	glabPath := filepath.Join(home, "Library", "Application Support", "glab-cli", "config.yml")
+	defaultPaths := integrationProfileConfigFiles("glab", runtime.GOOS)
+	if len(defaultPaths) == 0 {
+		t.Fatal("expected at least one glab default config path")
+	}
+	glabPath := filepath.Join(home, defaultPaths[0])
 	if err := os.MkdirAll(filepath.Dir(glabPath), 0755); err != nil {
 		t.Fatalf("failed to create glab config dir: %v", err)
 	}
