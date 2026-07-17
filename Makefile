@@ -20,7 +20,7 @@ GOVULNCHECK_VERSION=v1.1.4
 GOSEC_VERSION=v2.22.11
 GITLEAKS_VERSION=v8.24.2
 
-.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates
+.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag
 
 # Default target
 all: build sign
@@ -94,6 +94,27 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-linux-arm64 >> checksums.txt
 	@make gpg-sign
 	@echo "Release binaries and .app zips built in $(BUILD_DIR)/"
+
+release-tag: ## Create and push a signed release tag (usage: make release-tag TAG=v1.2.3)
+	@if [ -z "$(TAG)" ]; then \
+		echo "TAG is required (example: make release-tag TAG=v$(VERSION))"; \
+		exit 1; \
+	fi
+	@if ! echo "$(TAG)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$$'; then \
+		echo "TAG must follow SemVer with a v prefix (example: v1.2.3 or v1.2.3-rc.1)"; \
+		exit 1; \
+	fi
+	@if git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null; then \
+		echo "Tag $(TAG) already exists locally"; \
+		exit 1; \
+	fi
+	@if git ls-remote --tags origin "refs/tags/$(TAG)" | grep -q .; then \
+		echo "Tag $(TAG) already exists on origin"; \
+		exit 1; \
+	fi
+	@git tag -s "$(TAG)" -m "Release $(TAG)"
+	@git push origin "$(TAG)"
+	@echo "Created and pushed signed tag $(TAG)"
 
 notarize: ## Notarize macOS ZIP artifacts
 	@echo "Notarizing arm64..."

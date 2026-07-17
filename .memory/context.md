@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore(ci): bump github/codeql-action to v4.37.0
 - ci(scorecard): avoid hard-fail on repeated GitHub API outages
 - ci(scorecard): add exponential backoff between retry attempts
 - ci(scorecard): retry analysis on transient GitHub API failures
 - fix(ci): resolve invalid secrets expression in release workflow
-- security: ignore GO-2026-5932 in osv-scanner policy
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

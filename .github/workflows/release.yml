@@ -26,6 +26,32 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Enforce signed release tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG_NAME="${GITHUB_REF_NAME}"
+
+          # Signed tags must be annotated tag objects, not lightweight commit refs.
+          OBJ_TYPE="$(git cat-file -t "$TAG_NAME")"
+          if [[ "$OBJ_TYPE" != "tag" ]]; then
+            echo "::error::Tag ${TAG_NAME} is lightweight. Create a signed annotated tag with: git tag -s ${TAG_NAME} -m 'Release ${TAG_NAME}'"
+            exit 1
+          fi
+
+          TAG_OBJECT_SHA="$(git rev-parse "${TAG_NAME}^{tag}")"
+          VERIFIED="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${TAG_OBJECT_SHA}" --jq '.verification.verified')"
+          REASON="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${TAG_OBJECT_SHA}" --jq '.verification.reason')"
+
+          if [[ "$VERIFIED" != "true" ]]; then
+            echo "::error::Tag ${TAG_NAME} signature is not verified by GitHub (reason: ${REASON})."
+            exit 1
+          fi
+
+          echo "Verified signed tag ${TAG_NAME}."
+
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:

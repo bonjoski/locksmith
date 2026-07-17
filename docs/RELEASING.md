@@ -18,10 +18,15 @@ Releases are automated via GitHub Actions. To create a new release:
    git push origin main
    ```
 
-3. **Create and push a tag**:
+3. **Create and push a signed tag**:
    ```bash
-   git tag v1.5.1
+   git tag -s v1.5.1 -m "Release v1.5.1"
    git push origin v1.5.1
+   ```
+
+   Or use the one-command helper target:
+   ```bash
+   make release-tag TAG=v1.5.1
    ```
 
 4. The GitHub Actions workflow will automatically:
@@ -102,7 +107,8 @@ This creates binaries in the `bin/` directory with checksums.
 If the release workflow fails:
 1. Check the Actions tab for error details
 2. Ensure the tag follows the `v*` pattern (e.g., `v1.5.1`)
-3. Verify Go version compatibility in `.github/workflows/release.yml`
+3. Ensure the tag is a signed annotated tag (lightweight tags are rejected)
+4. Verify Go version compatibility in `.github/workflows/release.yml`
 
 ### Attestation Verification Fails
 
