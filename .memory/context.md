@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- ci: auto-create signed tags only after green builds
 - fix: push homebrew formula updates from tag workflows
 - chore: bump version to v2.6.6
 - fix: make homebrew formula updater checksum matching exact
 - chore: bump version to v2.6.5
-- merge: integrations hardening migrate and oauth refresh
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

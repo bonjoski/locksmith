@@ -90,8 +90,24 @@ jobs:
           set -euo pipefail
 
           TAG="${{ steps.tag.outputs.tag }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          SIGNING_KEY="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ {print $5; exit}')"
+          UID_RAW="$(gpg --list-secret-keys --with-colons | awk -F: '/^uid:/ {print $10; exit}')"
+
+          if [[ -z "$SIGNING_KEY" || -z "$UID_RAW" ]]; then
+            echo "Unable to resolve imported GPG key identity"
+            exit 1
+          fi
+
+          USER_NAME="${UID_RAW%% <*}"
+          USER_EMAIL="$(echo "$UID_RAW" | sed -n 's/.*<\(.*\)>.*/\1/p')"
+          if [[ -z "$USER_NAME" || -z "$USER_EMAIL" ]]; then
+            echo "Unable to parse signer identity from GPG UID: $UID_RAW"
+            exit 1
+          fi
+
+          git config user.name "$USER_NAME"
+          git config user.email "$USER_EMAIL"
+          git config user.signingkey "$SIGNING_KEY"
 
           git tag -s "$TAG" -m "Release $TAG"
           git push origin "$TAG"
