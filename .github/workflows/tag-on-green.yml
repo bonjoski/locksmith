@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: read
+      actions: write
     steps:
       - name: Ensure CI and check are both green for this commit
         id: gate
@@ -111,3 +111,12 @@ jobs:
 
           git tag -s "$TAG" -m "Release $TAG"
           git push origin "$TAG"
+
+      - name: Dispatch release workflow for tag
+        if: steps.gate.outputs.should_tag == 'true' && steps.tag.outputs.create == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh workflow run release.yml --ref "$TAG"
