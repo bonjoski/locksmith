@@ -30,11 +30,25 @@ func setTestHome(t *testing.T, home string) {
 	}
 }
 
+func testProfilePath(t *testing.T, profile string, match func(string) bool) string {
+	t.Helper()
+	paths := integrationProfileConfigFiles(profile, runtime.GOOS)
+	for _, p := range paths {
+		if match == nil || match(p) {
+			return p
+		}
+	}
+	t.Fatalf("no profile path found for %q on %q", profile, runtime.GOOS)
+	return ""
+}
+
 func TestFindIntegrationPlaintextTokens(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 
-	ghPath := filepath.Join(home, ".config", "gh", "hosts.yml")
+	ghPath := filepath.Join(home, testProfilePath(t, "gh", func(p string) bool {
+		return strings.EqualFold(filepath.Base(p), "hosts.yml")
+	}))
 	if err := os.MkdirAll(filepath.Dir(ghPath), 0755); err != nil {
 		t.Fatalf("failed to create gh config dir: %v", err)
 	}
@@ -64,7 +78,9 @@ func TestScrubIntegrationPlaintextTokens(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 
-	glabPath := filepath.Join(home, ".config", "glab-cli", "config.yml")
+	glabPath := filepath.Join(home, testProfilePath(t, "glab", func(p string) bool {
+		return strings.EqualFold(filepath.Base(p), "config.yml")
+	}))
 	if err := os.MkdirAll(filepath.Dir(glabPath), 0755); err != nil {
 		t.Fatalf("failed to create glab config dir: %v", err)
 	}
@@ -179,7 +195,9 @@ func TestFindIntegrationPlaintextTokensAIJSON(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 
-	aiPath := filepath.Join(home, ".config", "claude", "claude_desktop_config.json")
+	aiPath := filepath.Join(home, testProfilePath(t, "ai", func(p string) bool {
+		return strings.EqualFold(filepath.Base(p), "claude_desktop_config.json")
+	}))
 	if err := os.MkdirAll(filepath.Dir(aiPath), 0755); err != nil {
 		t.Fatalf("failed to create ai config dir: %v", err)
 	}
@@ -297,7 +315,9 @@ func TestFindIntegrationPlaintextTokensAIProviderEnvFile(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 
-	providerPath := filepath.Join(home, ".config", "anthropic", ".env")
+	providerPath := filepath.Join(home, testProfilePath(t, "ai", func(p string) bool {
+		return strings.Contains(strings.ToLower(filepath.ToSlash(p)), "anthropic/") && strings.EqualFold(filepath.Base(p), ".env")
+	}))
 	if err := os.MkdirAll(filepath.Dir(providerPath), 0755); err != nil {
 		t.Fatalf("failed to create anthropic config dir: %v", err)
 	}
