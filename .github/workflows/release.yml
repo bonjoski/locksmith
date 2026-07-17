@@ -150,6 +150,7 @@ jobs:
       - name: Commit and Push Homebrew Formula Update
         if: ${{ success() }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           if git diff --quiet contrib/homebrew/locksmith.rb; then
@@ -157,7 +158,23 @@ jobs:
           else
             git add contrib/homebrew/locksmith.rb
             git commit -m "chore: auto-update homebrew formula to ${GITHUB_REF_NAME}"
-            git push origin HEAD:main
+            UPDATE_COMMIT="$(git rev-parse HEAD)"
+
+            if git push origin HEAD:main; then
+              echo "Pushed formula update directly to main"
+            else
+              echo "Direct push failed (main moved). Rebasing formula update onto latest main and retrying..."
+              git fetch origin main
+              git checkout -B release-homebrew-update origin/main
+
+              if git cherry-pick "$UPDATE_COMMIT"; then
+                git push origin HEAD:main
+                echo "Pushed formula update after rebasing onto latest main"
+              else
+                echo "Cherry-pick conflict while applying formula update; skipping push without failing release"
+                git cherry-pick --abort || true
+              fi
+            fi
           fi
 
   sync-homebrew-tap:
