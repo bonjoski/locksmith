@@ -6,9 +6,19 @@ This document describes the testing strategy and suite for Locksmith. We employ 
 
 Our unit tests cover the core logic in `pkg/locksmith`, including config parsing, TTL calculations, and notification logic.
 
+Integration hardening coverage includes:
+- plaintext detection for `gh`, `glab`, `acli`, and `ai`
+- raw key/value parsing fallback (including `.env` and `export KEY=VALUE` patterns)
+- custom scan path recursion for `integrations doctor --path`
+- platform-aware default config path selection (darwin/linux/windows profile expectations)
+- shell-aware alias suggestion generation (`bash`, `zsh`, `fish`, `powershell`, `cmd`)
+
 ```bash
 # Run all unit tests
 make test
+
+# Focused command + hardening test suite
+go test ./cmd/locksmith/cmd ./pkg/locksmith
 
 # Run tests with the project build tag used by release binaries and guarded methods
 go test -v -tags locksmith_admin ./...

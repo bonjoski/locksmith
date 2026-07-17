@@ -90,6 +90,11 @@ graph TD
 | `locksmith list` | `GET` | Lists all stored secret keys and their metadata. | None. | Table format listing key, creation date, expiration date, and status (Valid/Expiring/Expired). | May require Biometrics (for enumeration). |
 | `locksmith delete <key>` | `DELETE` | Deletes a secret key entirely. | `<key>`. | Success status. | Requires Biometrics. |
 | `locksmith run [--env-file <path>] [--] <command> [args...]` | `CLI/Tool` | Execute a command with secrets injected into its environment. | `<command>` (and its arguments), `--env-file` (optional path). | Process stdout/stderr and propagated exit code. | Requires Biometrics. |
+| `locksmith exec <integration> -- <command-args...>` | `CLI/Tool` | Execute a supported integration with Locksmith-backed env injection. | `<integration>` (`gh`, `glab`, `acli`), command arguments. | Process stdout/stderr and propagated exit code. | Requires Biometrics for secret resolution. |
+| `locksmith integrations doctor [integration\|all] [--path <file-or-dir>]...` | `CLI/Scanner` | Scan integration and AI config files for plaintext credentials. | Target (`ai`, `gh`, `glab`, `acli`, `all`), optional repeatable `--path`. | Summary and detailed findings (integration/file/key path). | Read-only scan. |
+| `locksmith integrations scrub [integration\|all]` | `CLI/Hardening` | Remove known plaintext credential fields from supported integration config files. | Target (`gh`, `glab`, `acli`, `all`). | Removed findings list and updated files summary. | Blocks on missing required Locksmith keys to prevent lockout. |
+| `locksmith integrations migrate [integration\|all]` | `CLI/Hardening` | Import known plaintext integration secrets into Locksmith, then scrub. | Target (`gh`, `glab`, `acli`, `all`). | Stored key report, missing-value report, scrub results. | Enforces scrub preflight safety checks. |
+| `locksmith integrations aliases [integration\|all] [--shell <auto\|bash\|zsh\|fish\|powershell\|cmd>]` | `CLI/UX` | Show shell-aware alias/function suggestions for Locksmith-backed integration execution. | Target and optional `--shell` format. | Built-in alias/function suggestions per shell. | None. |
 | `locksmith agent start` | `CLI/Daemon` | Starts the Locksmith SSH agent listening on a UNIX socket/pipe. | None. | Starts listener daemon and prints socket path. | None (serves connections). |
 | `locksmith agent add <keyname> <path>` | `CLI/Tool` | Stores an SSH private key in Locksmith and indexes its public key. | `<keyname>`, `<path>` (path to private key). | Success status. | Requires Biometrics. |
 | `locksmith pinentry` | `CLI/Tool` | Serves the GPG Assuan Pinentry protocol to unlock GPG secret keys. | Stdin (Assuan commands). | Stdout (passphrase response). | Requires Biometrics (for GETPIN). |
@@ -145,6 +150,53 @@ The core logic is exposed via the `Locksmith` struct methods.
     *   The `PersistentPreRunE` function ensures that system configuration (`Config`) is loaded, and crucially, it initializes the `Locksmith` controller using the proper `Options`, making the system ready for execution before any command runs.
 3.  **Authorization Gate (Biometrics)**:
     *   Implementation is delegated to the `Backend` interface. If `Options.RequireBiometrics` is `true`, the `Backend.Get()` call **will fail** without a successful OS-level biometric challenge handled by the native bridge.
+
+### Integration Hardening and Migration
+
+Locksmith includes first-class hardening workflows for third-party integration configs and common AI config locations.
+
+1. **Doctor** (`locksmith integrations doctor`)
+    * Scans known integration config paths and optional custom paths (`--path` can be repeated for files/directories).
+    * Detects plaintext values for sensitive key names while ignoring `locksmith://` references.
+2. **Scrub** (`locksmith integrations scrub`)
+    * Removes known plaintext fields for supported integrations (`gh`, `glab`, `acli`).
+    * AI target is scan-focused and not scrubbed automatically to avoid unsafe mutations across mixed file formats.
+3. **Migrate** (`locksmith integrations migrate`)
+    * Imports detected/known fields into Locksmith first.
+    * Runs scrub only after preflight confirms required Locksmith keys are present.
+4. **Aliases** (`locksmith integrations aliases`)
+    * Generates shell-aware suggestions for `bash`, `zsh`, `fish`, `powershell`, and `cmd`.
+    * `--shell auto` defaults to PowerShell on Windows and Bash elsewhere.
+
+Platform behavior:
+* One command surface across operating systems.
+* Runtime path selection is platform-aware (darwin/linux/windows defaults), plus optional user-provided custom scan paths.
+
+### OAuth Rotation Behavior (Automatic on Expiry)
+
+Locksmith supports automatic OAuth token rotation on retrieval for expired OAuth secrets:
+
+* Trigger point: `get` operations on secrets marked `secret_type: oauth_token`.
+* Preconditions:
+    * Secret is expired.
+    * A matching rotation rule exists for the key.
+* Behavior:
+    * Locksmith invokes configured in-process rotator.
+    * On success, writes rotated secret back with renewed expiration and returns the new value.
+    * In non-admin compile profiles where rotation APIs are unavailable, Locksmith returns the stored value without attempting rotation.
+
+GitLab-specific OAuth refresh support:
+
+* Rotator ID: `gitlab-oauth-refresh`
+* Expected selector context:
+    * `owner_application: gitlab`
+    * `secret_type: oauth_token`
+* Metadata:
+    * `gitlab_client_id`
+    * `gitlab_client_secret`
+    * `gitlab_refresh_token`
+* Endpoint resolution:
+    * `source_url` can be full `/oauth/token` endpoint or a GitLab base URL.
 
 ---
 

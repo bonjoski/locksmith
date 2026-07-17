@@ -225,6 +225,74 @@ func TestGetDoesNotAutoRotateOnGet(t *testing.T) {
 	}
 }
 
+type oauthAutoRotateTestHandler struct{}
+
+func (h *oauthAutoRotateTestHandler) ID() string {
+	return "oauth-auto-test"
+}
+
+func (h *oauthAutoRotateTestHandler) Supports(selector rotator.RotationSelector) bool {
+	return strings.EqualFold(strings.TrimSpace(selector.SecretType), "oauth_token") && strings.EqualFold(strings.TrimSpace(selector.OwnerApplication), "gitlab")
+}
+
+func (h *oauthAutoRotateTestHandler) Rotate(_ context.Context, input rotator.RotationInput) (rotator.RotationOutput, error) {
+	return rotator.RotationOutput{NewValue: []byte("oauth-rotated-value"), TTL: time.Hour}, nil
+}
+
+func TestGetAutoRotatesExpiredOAuthToken(t *testing.T) {
+	mc := &MockCache{secrets: make(map[string]Secret)}
+	mb := &testRotationBackend{secrets: make(map[string][]byte)}
+	ls := NewWithCache(mc)
+	ls.Backend = mb
+
+	// Register deterministic test rotator and reference it explicitly in rotation rule.
+	if err := ls.Rotators.Register(&oauthAutoRotateTestHandler{}); err != nil {
+		t.Fatalf("failed to register test rotator: %v", err)
+	}
+
+	expired := time.Now().Add(-2 * time.Hour)
+	oldSecret := Secret{
+		Value:            []byte("oauth-old-value"),
+		CreatedAt:        expired.Add(-time.Hour),
+		ExpiresAt:        expired,
+		SecretType:       SecretTypeOAuthToken,
+		OwnerApplication: "gitlab",
+		SourceURL:        "https://gitlab.example.com/oauth/token",
+	}
+	secretData, _ := json.Marshal(oldSecret)
+	mb.secrets["gitlab/glab/token"] = secretData
+	_ = mc.Set("gitlab/glab/token", oldSecret, time.Hour)
+
+	ls.Config = &Config{
+		Notifications: NotificationConfig{ExpiringThreshold: "5m"},
+		Rotation: []RotationRule{
+			{
+				Secret:           "gitlab/glab/token",
+				Rotator:          "oauth-auto-test",
+				SecretType:       SecretTypeOAuthToken,
+				OwnerApplication: "gitlab",
+				SourceURL:        "https://gitlab.example.com/oauth/token",
+			},
+		},
+	}
+
+	val, err := ls.Get("gitlab/glab/token")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if string(val) != "oauth-rotated-value" {
+		t.Fatalf("expected auto-rotated oauth value, got %q", string(val))
+	}
+
+	meta, err := ls.GetWithMetadata("gitlab/glab/token")
+	if err != nil {
+		t.Fatalf("GetWithMetadata failed: %v", err)
+	}
+	if !meta.ExpiresAt.After(time.Now()) {
+		t.Fatal("expected auto-rotated oauth secret expiration to be renewed")
+	}
+}
+
 func TestRotateSecretTimeoutAsTTL(t *testing.T) {
 	mc := &MockCache{secrets: make(map[string]Secret)}
 	mb := &testRotationBackend{secrets: make(map[string][]byte)}

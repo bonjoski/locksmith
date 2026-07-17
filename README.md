@@ -92,6 +92,56 @@ bin/locksmith add github/token my-token \
 
 Rotation uses in-process Go rotators, not shell scripts.
 
+### GitLab OAuth Auto-Rotation (Refresh Token Flow)
+
+For `glab` OAuth tokens, Locksmith can rotate the access token automatically when it has expired.
+
+How it works:
+- Store access token as `oauth_token` (for example: `gitlab/glab/token`).
+- Store refresh token separately (for example: `gitlab/glab/oauth2_refresh_token`).
+- Configure a rotation rule using `gitlab-oauth-refresh` and pass client/refresh metadata.
+- On `locksmith get gitlab/glab/token`, if the token is expired and a matching rule exists, Locksmith refreshes it and returns the new token.
+
+Example rule:
+
+```yaml
+rotation:
+  - secret: "gitlab/glab/token"
+    rotator: "gitlab-oauth-refresh"
+    secret_type: "oauth_token"
+    owner_application: "gitlab"
+    source_url: "https://gitlab.com/oauth/token"
+    metadata:
+      gitlab_refresh_token: "locksmith://gitlab/glab/oauth2_refresh_token"
+      # Optional for providers requiring confidential client auth:
+      # gitlab_client_id: "locksmith://gitlab/glab/client_id"
+      # gitlab_client_secret: "locksmith://gitlab/glab/client_secret"
+    ttl: "1h"
+```
+
+Example secret setup for that rule:
+
+```bash
+# Access token used by locksmith exec glab -- ...
+bin/locksmith add gitlab/glab/token "<access-token>" \
+  --type oauth_token \
+  --owner-app gitlab \
+  --source-url https://gitlab.com/oauth/token
+
+# Refresh token used by the rotator
+bin/locksmith add gitlab/glab/oauth2_refresh_token "<refresh-token>" \
+  --type oauth_token \
+  --owner-app gitlab
+
+# Optional OAuth app credentials (only if your provider setup requires them)
+# bin/locksmith add gitlab/glab/client_id "<client-id>" --type token --owner-app gitlab
+# bin/locksmith add gitlab/glab/client_secret "<client-secret>" --type token --owner-app gitlab
+```
+
+Notes:
+- Automatic rotation on `get` applies to expired `oauth_token` secrets with a matching rotation rule.
+- In non-admin compile profiles, rotation APIs are unavailable and Locksmith returns the stored value without auto-rotation.
+
 ### Retrieving a Secret
 ```bash
 bin/locksmith get my-service
@@ -130,6 +180,127 @@ Environment syntax supported by `run`:
   ```bash
   bin/locksmith run --env-file .env -- npm run dev
   ```
+
+### Running CLI Integrations with Vault-Backed Tokens (`exec`)
+Use the `exec` subcommand for common CLI integrations where token env vars should always come from Locksmith.
+
+Security posture: Locksmith treats plaintext token storage in third-party config files as a downgrade. The recommended workflow is vault-only tokens with runtime injection (`locksmith exec`), not writing tokens to `gh`/`glab` config files.
+
+Built-in integrations:
+- `acli`: injects `ATLASSIAN_API_TOKEN` from `locksmith://atlassian/acli/token`
+- `gh`: injects `GH_TOKEN` from `locksmith://github/gh/token`
+- `glab`: injects `GITLAB_TOKEN` from `locksmith://gitlab/glab/token`
+
+Examples:
+```bash
+# One-time setup (store tokens in vault)
+bin/locksmith add atlassian/acli/token "<token>" --type oauth_token --owner-app atlassian
+bin/locksmith add github/gh/token "<token>" --type token --owner-app github
+bin/locksmith add gitlab/glab/token "<token>" --type token --owner-app gitlab
+
+# Atlassian CLI
+bin/locksmith exec acli -- auth status
+
+# Run CLIs with tokens injected at runtime
+bin/locksmith exec gh -- pr list
+bin/locksmith exec glab -- auth status
+```
+
+You can override built-ins or define additional profiles in `~/.locksmith/config.yml`:
+```yaml
+integrations:
+  acli:
+    command: acli
+    env:
+      ATLASSIAN_API_TOKEN: locksmith://atlassian/acli/token
+  gh:
+    command: gh
+    env:
+      GH_TOKEN: locksmith://github/gh/token
+  glab:
+    command: glab
+    env:
+      GITLAB_TOKEN: locksmith://gitlab/glab/token
+```
+
+Because tokens are read from the vault at process start, any token rotated by Locksmith is picked up automatically on the next command execution.
+
+### Integration Hardening and Migration (`integrations doctor` / `integrations migrate` / `integrations scrub`)
+If integration config files contain historical plaintext credentials, Locksmith can detect, migrate, and remove them.
+
+Examples:
+```bash
+# Scan for plaintext token fields
+bin/locksmith integrations doctor all
+
+# Scan default targets plus custom files/directories (repeat --path as needed)
+bin/locksmith integrations doctor ai --path ~/work/project/.env --path ~/work/project/.cursor
+
+# Import discovered plaintext integration secrets into Locksmith, then scrub them
+bin/locksmith integrations migrate all
+
+# Remove known plaintext token fields
+bin/locksmith integrations scrub all
+
+# Show optional shell aliases for Locksmith-backed exec profiles
+bin/locksmith integrations aliases all
+
+# Choose shell-specific alias output format
+bin/locksmith integrations aliases all --shell powershell
+```
+
+Supported targets:
+- `ai` (doctor/scrub)
+- `acli`
+- `gh`
+- `glab`
+- `all`
+
+`doctor` reports file paths and key paths for detected plaintext token fields.
+`migrate` imports known fields into Locksmith first and only then runs scrub, blocking scrub if required Locksmith keys are still missing.
+`scrub` removes known token keys from supported config files and leaves the vault-only `exec` flow as the token source of truth.
+`aliases` supports `--shell auto|bash|zsh|fish|powershell|cmd` (`auto` defaults to PowerShell on Windows and bash elsewhere).
+
+#### `integrations migrate` output reference
+
+Successful migration + scrub example:
+```text
+$ bin/locksmith integrations migrate all
+Integration migration report:
+- acli: stored 1 secret(s)
+  * atlassian/acli/token
+- gh: stored 1 secret(s)
+  * github/gh/token
+- glab: stored 2 secret(s)
+  * gitlab/glab/token
+  * gitlab/glab/oauth2_refresh_token
+
+Removed 3 plaintext token field(s) across 2 file(s).
+- [gh] /Users/alice/.config/gh/hosts.yml (github.com.oauth_token)
+- [glab] /Users/alice/Library/Application Support/glab-cli/config.yml (line 12 (token))
+- [glab] /Users/alice/Library/Application Support/glab-cli/config.yml (line 13 (oauth2_refresh_token))
+
+Suggested aliases (optional, shell-aware):
+- alias acli='locksmith exec acli --'
+- alias gh='locksmith exec gh --'
+- alias glab='locksmith exec glab --'
+```
+
+Blocked scrub example (migration could not source all required values):
+```text
+$ bin/locksmith integrations migrate glab
+Integration migration report:
+- glab: stored 0 secret(s)
+  * missing source value for gitlab/glab/token
+  * missing source value for gitlab/glab/oauth2_refresh_token
+
+Migration completed, but scrub is still blocked due to missing required Locksmith secret(s):
+- glab token requires Locksmith key 'gitlab/glab/token' (import hint: bin/locksmith add gitlab/glab/token "$(glab auth token)" --type oauth_token --owner-app gitlab)
+
+Error: migrate incomplete: missing required Locksmith secret(s)
+```
+
+When migration is blocked, add the missing key(s) shown in output, then rerun `integrations migrate`.
 
 ### GitHub App Rotation Quick Start
 

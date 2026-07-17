@@ -36,7 +36,7 @@ make build
 1.  Create a branch from `main`.
 2.  Ensure `make check` passes locally.
 3.  Include unit tests for new logic.
-4.  Update documentation in `.memory/` if architecture or dependencies change (run `./scripts/dev/update-context.sh`).
+4.  Update documentation in `docs/` (for example `SPEC.md`, `PLATFORM_ORGANIZATION.md`, `SETUP.md`, `TESTING.md`) if architecture, platform behavior, or command UX changes.
 5.  Open a PR and ensure all CI checks pass.
 
 ## Issues and Feature Requests

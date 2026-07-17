@@ -37,6 +37,11 @@ type RotationRule struct {
 	HookTarget string `yaml:"hook_target,omitempty"`
 }
 
+type IntegrationConfig struct {
+	Command string            `yaml:"command,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
+}
+
 type AccessControl struct {
 	AllowBinaries []string `yaml:"allow_binaries"`
 	DenyBinaries  []string `yaml:"deny_binaries"`
@@ -44,10 +49,11 @@ type AccessControl struct {
 
 // Config represents the locksmith configuration
 type Config struct {
-	Notifications NotificationConfig `yaml:"notifications"`
-	Auth          AuthConfig         `yaml:"auth"`
-	Rotation      []RotationRule     `yaml:"rotation"` // Rotation rules
-	AccessControl AccessControl      `yaml:"access_control"`
+	Notifications NotificationConfig           `yaml:"notifications"`
+	Auth          AuthConfig                   `yaml:"auth"`
+	Rotation      []RotationRule               `yaml:"rotation"` // Rotation rules
+	Integrations  map[string]IntegrationConfig `yaml:"integrations,omitempty"`
+	AccessControl AccessControl                `yaml:"access_control"`
 }
 
 // LoadConfig loads configuration from ~/.locksmith/config.yml
