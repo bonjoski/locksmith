@@ -28,11 +28,11 @@ gh release download "v$VERSION" --pattern "checksums.txt" --dir "$TMP_DIR" --rep
 
 CHECKSUMS_FILE="$TMP_DIR/checksums.txt"
 
-# Extract the checksums we need
-LOCKSMITH_ARM64_SHA=$(grep "locksmith-darwin-arm64" "$CHECKSUMS_FILE" | awk '{print $1}')
-LOCKSMITH_AMD64_SHA=$(grep "locksmith-darwin-amd64" "$CHECKSUMS_FILE" | awk '{print $1}')
-SUMMON_ARM64_SHA=$(grep "summon-locksmith-darwin-arm64" "$CHECKSUMS_FILE" | awk '{print $1}')
-SUMMON_AMD64_SHA=$(grep "summon-locksmith-darwin-amd64" "$CHECKSUMS_FILE" | awk '{print $1}')
+# Extract exact checksums we need (avoid partial filename matches)
+LOCKSMITH_ARM64_SHA=$(awk '$2=="locksmith-darwin-arm64"{print $1; exit}' "$CHECKSUMS_FILE")
+LOCKSMITH_AMD64_SHA=$(awk '$2=="locksmith-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE")
+SUMMON_ARM64_SHA=$(awk '$2=="summon-locksmith-darwin-arm64"{print $1; exit}' "$CHECKSUMS_FILE")
+SUMMON_AMD64_SHA=$(awk '$2=="summon-locksmith-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE")
 
 if [ -z "$LOCKSMITH_ARM64_SHA" ] || [ -z "$LOCKSMITH_AMD64_SHA" ] || [ -z "$SUMMON_ARM64_SHA" ] || [ -z "$SUMMON_AMD64_SHA" ]; then
     echo "ERROR: Could not extract all checksums from release"
