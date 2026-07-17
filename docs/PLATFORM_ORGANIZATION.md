@@ -44,6 +44,20 @@ scripts/
 └── ci/                  # CI/CD scripts (reserved for future use)
 ```
 
+## Runtime Platform Profiles (No Build Tags)
+
+Not all platform-specific behavior in Locksmith is compile-time gated with Go build tags. Integration hardening (`integrations doctor` / `integrations scrub`) uses a single cross-platform implementation with runtime OS selection for default config paths.
+
+- Implementation: `pkg/locksmith/integration_hardening.go`
+- Mechanism: selects profile defaults by `runtime.GOOS` (for example, Darwin `Library/Application Support/...`, Linux `~/.config/...`, Windows `AppData/Roaming/...`).
+- Commands remain unified across all OSes:
+	- `locksmith integrations doctor`
+	- `locksmith integrations scrub`
+	- `locksmith integrations migrate`
+	- `locksmith integrations aliases`
+
+This keeps user-facing command UX consistent while still honoring platform-native path conventions.
+
 ## Build Constraints
 
 Go uses build constraints to conditionally compile code. The `//go:build` directive at the top of each OS-specific file determines when it's compiled:

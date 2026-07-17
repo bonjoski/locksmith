@@ -101,3 +101,38 @@ go build -o locksmith.exe ./cmd/locksmith
 
 ### Biometric Authentication
 Windows Hello is handled natively via the `winhello-go` library. Unlike macOS, Windows doesn't require explicit code signing for a CLI tool to access the biometric APIs during local development, but it is recommended for distribution.
+
+## 7. Integration Hardening Setup
+
+After initial secret import, use integration hardening to remove plaintext credentials from config files.
+
+### Doctor (scan)
+
+```bash
+# Scan built-in integration and AI paths
+bin/locksmith integrations doctor all
+
+# Scan additional custom locations (repeatable)
+bin/locksmith integrations doctor ai --path /path/to/project --path /path/to/extra.env
+```
+
+### Migrate + Scrub
+
+```bash
+# Import known integration plaintext values into Locksmith and then scrub
+bin/locksmith integrations migrate all
+
+# Scrub only (will block if required Locksmith keys are missing)
+bin/locksmith integrations scrub all
+```
+
+### Shell-Aware Alias Suggestions
+
+```bash
+# Auto shell format (PowerShell on Windows, Bash elsewhere)
+bin/locksmith integrations aliases all
+
+# Explicit shell format
+bin/locksmith integrations aliases all --shell powershell
+bin/locksmith integrations aliases all --shell fish
+```

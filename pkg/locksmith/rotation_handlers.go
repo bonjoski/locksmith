@@ -24,6 +24,7 @@ func registerDefaultRotationHandlers(l *Locksmith) {
 	_ = l.Rotators.Register(githubrotator.NewAppInstallationTokenRotator())
 	_ = l.Rotators.Register(githubrotator.NewFGPATReplaceRotator())
 	_ = l.Rotators.Register(githubrotator.NewOAuthResetRotator())
+	_ = l.Rotators.Register(gitlabrotator.NewOAuthRefreshRotator())
 	_ = l.Rotators.Register(gitlabrotator.NewPATSelfRotateRotator())
 	_ = l.Rotators.Register(&urlJSONRotator{})
 }

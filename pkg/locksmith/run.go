@@ -9,6 +9,32 @@ import (
 	"strings"
 )
 
+type integrationSpec struct {
+	command string
+	env     map[string]string
+}
+
+var builtinIntegrations = map[string]integrationSpec{
+	"acli": {
+		command: "acli",
+		env: map[string]string{
+			"ATLASSIAN_API_TOKEN": "locksmith://atlassian/acli/token",
+		},
+	},
+	"gh": {
+		command: "gh",
+		env: map[string]string{
+			"GH_TOKEN": "locksmith://github/gh/token",
+		},
+	},
+	"glab": {
+		command: "glab",
+		env: map[string]string{
+			"GITLAB_TOKEN": "locksmith://gitlab/glab/token",
+		},
+	},
+}
+
 // Run executes a command with secrets injected into its environment
 func (l *Locksmith) Run(args []string, envFile string) (int, error) {
 	if len(args) == 0 {
@@ -29,7 +55,93 @@ func (l *Locksmith) Run(args []string, envFile string) (int, error) {
 		return 1, err
 	}
 
-	cmd := exec.Command(args[0], args[1:]...) // #nosec G204 // nosem
+	return runCommandWithEnv(args[0], args[1:], env)
+}
+
+// RunIntegration executes a configured integration command with locksmith-backed env vars.
+func (l *Locksmith) RunIntegration(name string, args []string) (int, error) {
+	profile, err := l.integrationProfile(name)
+	if err != nil {
+		return 1, err
+	}
+
+	env, err := l.ResolveEnvironment(os.Environ(), profile.env)
+	if err != nil {
+		return 1, err
+	}
+
+	return runCommandWithEnv(profile.command, args, env)
+}
+
+// ResolveIntegrationEnvironment returns the environment used for a named integration.
+func (l *Locksmith) ResolveIntegrationEnvironment(name string, hostEnv []string) ([]string, error) {
+	profile, err := l.integrationProfile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return l.ResolveEnvironment(hostEnv, profile.env)
+}
+
+func (l *Locksmith) integrationProfile(name string) (integrationSpec, error) {
+	key := strings.TrimSpace(strings.ToLower(name))
+	if key == "" {
+		return integrationSpec{}, fmt.Errorf("integration name is required")
+	}
+
+	// Start from builtin defaults.
+	profile, ok := builtinIntegrations[key]
+	if !ok {
+		profile = integrationSpec{}
+	}
+
+	// Allow user config overrides.
+	if l != nil && l.Config != nil && l.Config.Integrations != nil {
+		if cfgProfile, exists := l.Config.Integrations[key]; exists {
+			if strings.TrimSpace(cfgProfile.Command) != "" {
+				profile.command = strings.TrimSpace(cfgProfile.Command)
+			}
+			if len(cfgProfile.Env) > 0 {
+				profile.env = copyStringMap(cfgProfile.Env)
+			}
+		}
+	}
+
+	if profile.command == "" {
+		return integrationSpec{}, fmt.Errorf("integration '%s' is not configured", key)
+	}
+
+	profile.env = normalizeIntegrationEnv(profile.env)
+	return profile, nil
+}
+
+func normalizeIntegrationEnv(env map[string]string) map[string]string {
+	out := make(map[string]string)
+	for k, v := range env {
+		envName := strings.TrimSpace(k)
+		secretRef := strings.TrimSpace(v)
+		if envName == "" || secretRef == "" {
+			continue
+		}
+		if strings.HasPrefix(secretRef, "locksmith://") {
+			out[envName] = secretRef
+			continue
+		}
+		out[envName] = "locksmith://" + secretRef
+	}
+	return out
+}
+
+func copyStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func runCommandWithEnv(command string, args []string, env []string) (int, error) {
+	cmd := exec.Command(command, args...) // #nosec G204 // nosem
 	cmd.Env = env
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

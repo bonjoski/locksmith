@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -137,7 +138,56 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 }
 
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
-	return l.getSecretNoRotate(key)
+	secret, err := l.getSecretNoRotate(key)
+	if err != nil {
+		return nil, err
+	}
+
+	if secret == nil {
+		return nil, nil
+	}
+
+	if !secret.IsExpired() {
+		return secret, nil
+	}
+
+	if NormalizeSecretType(secret.SecretType) != SecretTypeOAuthToken {
+		return secret, nil
+	}
+
+	if !l.hasRotationRuleForKey(key) {
+		return secret, nil
+	}
+
+	if err := l.RotateSecret(key); err != nil {
+		errMsg := strings.ToLower(strings.TrimSpace(err.Error()))
+		if strings.Contains(errMsg, "rotation unavailable in this compile profile") {
+			return secret, nil
+		}
+		return nil, fmt.Errorf("secret '%s' is expired and automatic oauth rotation failed: %w", key, err)
+	}
+
+	rotated, err := l.getSecretNoRotate(key)
+	if err != nil {
+		return nil, fmt.Errorf("secret '%s' rotated but retrieval failed: %w", key, err)
+	}
+	return rotated, nil
+}
+
+func (l *Locksmith) hasRotationRuleForKey(key string) bool {
+	if l == nil || l.Config == nil {
+		return false
+	}
+	for _, rule := range l.Config.Rotation {
+		matched, err := filepath.Match(rule.Secret, key)
+		if err != nil {
+			continue
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *Locksmith) getSecretNoRotate(key string) (*Secret, error) {

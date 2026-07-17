@@ -91,3 +91,15 @@ rotation:
     # Optional fixed date override (YYYY-MM-DD). Usually not needed when ttl is set.
     # metadata:
     #   gitlab_expires_at: "2026-07-17"
+  - secret: "gitlab/glab/token"
+    rotator: "gitlab-oauth-refresh"
+    secret_type: "oauth_token"
+    owner_application: "gitlab"
+    source_url: "https://gitlab.com/oauth/token"
+    metadata:
+      # Required by default:
+      gitlab_refresh_token: "locksmith://gitlab/glab/oauth2_refresh_token"
+      # Optional for confidential client auth setups:
+      # gitlab_client_id: "locksmith://gitlab/glab/client_id"
+      # gitlab_client_secret: "locksmith://gitlab/glab/client_secret"
+    ttl: "1h"
