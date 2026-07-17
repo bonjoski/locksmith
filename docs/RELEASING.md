@@ -35,6 +35,31 @@ Releases are automated via GitHub Actions. To create a new release:
    - Generate cryptographic attestations (SLSA provenance) for all binaries
    - Create a GitHub release with all artifacts
 
+## PR-Based Release Prep (Recommended)
+
+Use a pull request for release-preparation changes (workflow updates, signing policy updates, docs updates) instead of pushing directly to `main`.
+
+1. Create a branch from `main`:
+   ```bash
+   git checkout -b chore/release-prep
+   ```
+
+2. Commit with a verified signature:
+   ```bash
+   git add <files>
+   git commit -S -m "chore: release prep updates"
+   ```
+
+3. Push and open a PR:
+   ```bash
+   make open-pr
+   ```
+
+   Optional custom PR title/body:
+   ```bash
+   make open-pr TITLE="chore: release prep" BODY="Signed release process updates"
+   ```
+
 ## Verifying Releases
 
 Locksmith releases include cryptographic attestations that prove the binaries were built by the official GitHub Actions workflow.

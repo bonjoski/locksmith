@@ -20,7 +20,7 @@ GOVULNCHECK_VERSION=v1.1.4
 GOSEC_VERSION=v2.22.11
 GITLEAKS_VERSION=v8.24.2
 
-.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag
+.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag open-pr
 
 # Default target
 all: build sign
@@ -115,6 +115,23 @@ release-tag: ## Create and push a signed release tag (usage: make release-tag TA
 	@git tag -s "$(TAG)" -m "Release $(TAG)"
 	@git push origin "$(TAG)"
 	@echo "Created and pushed signed tag $(TAG)"
+
+open-pr: ## Push current branch and open a PR to main (usage: make open-pr [TITLE="..."] [BODY="..."])
+	@BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$BRANCH" = "main" ]; then \
+		echo "Refusing to open a PR from main. Create a feature branch first."; \
+		exit 1; \
+	fi; \
+	git push -u origin "$$BRANCH"; \
+	if [ -n "$(TITLE)" ]; then \
+		if [ -n "$(BODY)" ]; then \
+			gh pr create --base main --head "$$BRANCH" --title "$(TITLE)" --body "$(BODY)"; \
+		else \
+			gh pr create --base main --head "$$BRANCH" --title "$(TITLE)" --fill; \
+		fi; \
+	else \
+		gh pr create --base main --head "$$BRANCH" --fill; \
+	fi
 
 notarize: ## Notarize macOS ZIP artifacts
 	@echo "Notarizing arm64..."
