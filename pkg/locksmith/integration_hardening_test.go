@@ -18,9 +18,21 @@ func writeTestConfigFile(path string, content string) error {
 	return os.WriteFile(path, b, 0600)
 }
 
+func setTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	drive := filepath.VolumeName(home)
+	rest := strings.TrimPrefix(home, drive)
+	if drive != "" {
+		t.Setenv("HOMEDRIVE", drive)
+		t.Setenv("HOMEPATH", rest)
+	}
+}
+
 func TestFindIntegrationPlaintextTokens(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	ghPath := filepath.Join(home, ".config", "gh", "hosts.yml")
 	if err := os.MkdirAll(filepath.Dir(ghPath), 0755); err != nil {
@@ -50,7 +62,7 @@ func TestFindIntegrationPlaintextTokens(t *testing.T) {
 
 func TestScrubIntegrationPlaintextTokens(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	glabPath := filepath.Join(home, ".config", "glab-cli", "config.yml")
 	if err := os.MkdirAll(filepath.Dir(glabPath), 0755); err != nil {
@@ -96,7 +108,7 @@ func TestScrubIntegrationPlaintextTokens(t *testing.T) {
 
 func TestFindIntegrationPlaintextTokensGlabMacOSPath(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	defaultPaths := integrationProfileConfigFiles("glab", runtime.GOOS)
 	if len(defaultPaths) == 0 {
@@ -165,7 +177,7 @@ func TestSupportedIntegrationHardeningTargetsIncludesAI(t *testing.T) {
 
 func TestFindIntegrationPlaintextTokensAIJSON(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	aiPath := filepath.Join(home, ".config", "claude", "claude_desktop_config.json")
 	if err := os.MkdirAll(filepath.Dir(aiPath), 0755); err != nil {
@@ -189,7 +201,7 @@ func TestFindIntegrationPlaintextTokensAIJSON(t *testing.T) {
 
 func TestFindIntegrationPlaintextTokensAIIgnoresLocksmithRefQuoted(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	aiPath := filepath.Join(home, ".config", "claude", "claude_desktop_config.json")
 	if err := os.MkdirAll(filepath.Dir(aiPath), 0755); err != nil {
@@ -213,7 +225,7 @@ func TestFindIntegrationPlaintextTokensAIIgnoresLocksmithRefQuoted(t *testing.T)
 
 func TestFindAndScrubIntegrationPlaintextTokensMalformedYAML(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	defaultPaths := integrationProfileConfigFiles("glab", runtime.GOOS)
 	if len(defaultPaths) == 0 {
@@ -257,7 +269,7 @@ func TestFindAndScrubIntegrationPlaintextTokensMalformedYAML(t *testing.T) {
 
 func TestFindIntegrationPlaintextTokensAIEnvFile(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	envPath := filepath.Join(home, ".env")
 	content := "OPENAI_API_KEY=sk-openai-abc123\n"
@@ -283,7 +295,7 @@ func TestFindIntegrationPlaintextTokensAIEnvFile(t *testing.T) {
 
 func TestFindIntegrationPlaintextTokensAIProviderEnvFile(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	providerPath := filepath.Join(home, ".config", "anthropic", ".env")
 	if err := os.MkdirAll(filepath.Dir(providerPath), 0755); err != nil {
@@ -312,7 +324,7 @@ func TestFindIntegrationPlaintextTokensAIProviderEnvFile(t *testing.T) {
 
 func TestFindIntegrationPlaintextTokensWithCustomPathFile(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	customFile := filepath.Join(t.TempDir(), "ai.env")
 	if err := writeTestConfigFile(customFile, "OPENAI_API_KEY=sk-openai-custom\n"); err != nil {
@@ -334,7 +346,7 @@ func TestFindIntegrationPlaintextTokensWithCustomPathFile(t *testing.T) {
 
 func TestFindIntegrationPlaintextTokensWithCustomPathDirectory(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 
 	customDir := t.TempDir()
 	nestedDir := filepath.Join(customDir, "nested")
