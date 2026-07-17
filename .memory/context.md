@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
-- docs(release): add PR-first release prep flow
-- chore: revert accidental memory context update
-- chore(release): enforce signed tags and add release-tag helper
-- chore(ci): bump github/codeql-action to v4.37.0
-- ci(scorecard): avoid hard-fail on repeated GitHub API outages
+- merge: integrations hardening migrate and oauth refresh
+- test: use platform profile paths in hardening fixtures
+- test: fix windows UserHomeDir env setup in hardening tests
+- test: make integration hardening path tests platform-neutral
+- feat: integration hardening migrate flow and glab oauth auto-rotation
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
