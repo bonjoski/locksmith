@@ -46,12 +46,15 @@ fi
 # Function to extract vulnerability IDs for a section
 extract_vulns_for_section() {
   local section="$1"
-  printf '%s\n' "$output" | awk -v sec="$section" '
-    $0 ~ "^=== " sec " ===$" {in_sec=1; next}
-    /^=== / {in_sec=0}
-    /^Your code is affected by/ {in_sec=0}
-    in_sec {print}
-  ' | grep -Eo 'GO-[0-9]{4}-[0-9]+' | sort -u || true
+  (
+    set +o pipefail
+    printf '%s\n' "$output" | awk -v sec="$section" '
+      $0 ~ "^=== " sec " ===$" {in_sec=1; next}
+      /^=== / {in_sec=0}
+      /^Your code is affected by/ {in_sec=0}
+      in_sec {print}
+    ' | grep -Eo 'GO-[0-9]{4}-[0-9]+' | sort -u
+  )
 }
 
 # Helper to check disallowed vulnerabilities
@@ -76,13 +79,13 @@ check_disallowed() {
 }
 
 # Extract vulnerabilities per section
-read -r -a symbol_ids < <(echo "$(extract_vulns_for_section "Symbol Results")")
-read -r -a package_ids < <(echo "$(extract_vulns_for_section "Package Results")")
-read -r -a module_ids < <(echo "$(extract_vulns_for_section "Module Results")")
+symbol_ids=$(extract_vulns_for_section "Symbol Results")
+package_ids=$(extract_vulns_for_section "Package Results")
+module_ids=$(extract_vulns_for_section "Module Results")
 
-disallowed_symbols=$(check_disallowed "${symbol_ids[*]}" "${ALLOWLISTED_SYMBOL_VULNS[@]}")
-disallowed_packages=$(check_disallowed "${package_ids[*]}" "${ALLOWLISTED_PACKAGE_VULNS[@]}")
-disallowed_modules=$(check_disallowed "${module_ids[*]}" "${ALLOWLISTED_MODULE_VULNS[@]}")
+disallowed_symbols=$(check_disallowed "$symbol_ids" "${ALLOWLISTED_SYMBOL_VULNS[@]}")
+disallowed_packages=$(check_disallowed "$package_ids" "${ALLOWLISTED_PACKAGE_VULNS[@]}")
+disallowed_modules=$(check_disallowed "$module_ids" "${ALLOWLISTED_MODULE_VULNS[@]}")
 
 failed=0
 
