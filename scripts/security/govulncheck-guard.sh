@@ -57,7 +57,6 @@ extract_vulns_for_section() {
   )
 }
 
-# Helper to check disallowed vulnerabilities
 check_disallowed() {
   local ids=($1)
   shift
@@ -75,7 +74,9 @@ check_disallowed() {
       disallowed+=("$id")
     fi
   done
-  echo "${disallowed[@]}"
+  if [[ ${#disallowed[@]} -gt 0 ]]; then
+    echo "${disallowed[@]}"
+  fi
 }
 
 # Extract vulnerabilities per section
