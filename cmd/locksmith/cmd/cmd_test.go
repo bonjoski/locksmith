@@ -84,6 +84,7 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	secretType = ""
 	ownerApplication = ""
 	sourceURL = ""
+	addGit = false
 
 	cfg = &locksmith.Config{
 		Auth: locksmith.AuthConfig{RequireBiometrics: false},

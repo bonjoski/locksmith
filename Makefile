@@ -30,20 +30,25 @@ build: ## Compile the binary
 	@echo "Building $(BINARY_NAME) v$(VERSION)..."
 	@mkdir -p $(BUILD_DIR)
 	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/locksmith
+	@go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith ./cmd/git-credential-locksmith
 
 sign: build ## Sign the binary with developer identity and hardened runtime
 	@echo "Signing $(BINARY_NAME) with $(SIGN_ID)..."
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)
+	@codesign --force --options runtime --identifier $(IDENTIFIER).credential --sign "$(SIGN_ID)" $(BUILD_DIR)/git-credential-locksmith
 	@codesign -dvvv $(BUILD_DIR)/$(BINARY_NAME)
+	@codesign -dvvv $(BUILD_DIR)/git-credential-locksmith
 
 release: ## Build release binaries for multiple architectures
 	@echo "Building release binaries for $(BINARY_NAME) v$(VERSION)..."
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building for darwin/arm64..."
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/locksmith
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith-darwin-arm64 ./cmd/git-credential-locksmith
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/summon-locksmith-darwin-arm64 ./cmd/summon-locksmith
 	@echo "Building for darwin/amd64..."
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/locksmith
+	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith-darwin-amd64 ./cmd/git-credential-locksmith
 	@CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/summon-locksmith-darwin-amd64 ./cmd/summon-locksmith
 	@echo "Building for windows/amd64..."
 	@cd cmd/locksmith && \
@@ -52,46 +57,66 @@ release: ## Build release binaries for multiple architectures
 		sips -z 256 256 winres/icon.png > /dev/null && \
 		go run github.com/tc-hib/go-winres@latest make > /dev/null
 	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith-windows-amd64.exe ./cmd/git-credential-locksmith
 	@echo "Building for windows/arm64..."
 	@CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-arm64.exe ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith-windows-arm64.exe ./cmd/git-credential-locksmith
 	@rm -rf cmd/locksmith/winres cmd/locksmith/rsrc_*.syso
 	@echo "Building for linux/amd64..."
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith-linux-amd64 ./cmd/git-credential-locksmith
 	@echo "Building for linux/arm64..."
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/locksmith
+	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith-linux-arm64 ./cmd/git-credential-locksmith
 	@echo "Signing macOS binaries..."
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
+	@codesign --force --options runtime --identifier $(IDENTIFIER).credential --sign "$(SIGN_ID)" $(BUILD_DIR)/git-credential-locksmith-darwin-arm64
+	@codesign --force --options runtime --identifier $(IDENTIFIER).credential --sign "$(SIGN_ID)" $(BUILD_DIR)/git-credential-locksmith-darwin-amd64
 	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-arm64
 	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-amd64
 	@echo "Packaging macOS App Bundles..."
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app $(VERSION)
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app $(VERSION)
+	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/git-credential-locksmith-darwin-arm64 $(BUILD_DIR)/GitCredentialLocksmith-darwin-arm64.app $(VERSION)
+	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/git-credential-locksmith-darwin-amd64 $(BUILD_DIR)/GitCredentialLocksmith-darwin-amd64.app $(VERSION)
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-arm64 $(BUILD_DIR)/Summon-darwin-arm64.app $(VERSION)
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-amd64 $(BUILD_DIR)/Summon-darwin-amd64.app $(VERSION)
 	@echo "Signing .app bundles..."
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
+	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).credential --sign "$(SIGN_ID)" $(BUILD_DIR)/GitCredentialLocksmith-darwin-arm64.app
+	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).credential --sign "$(SIGN_ID)" $(BUILD_DIR)/GitCredentialLocksmith-darwin-amd64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/Summon-darwin-arm64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/Summon-darwin-amd64.app
 	@echo "Packaging release apps into zips..."
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
+	@cd $(BUILD_DIR) && zip -q -r GitCredentialLocksmith-darwin-arm64.zip GitCredentialLocksmith-darwin-arm64.app
+	@cd $(BUILD_DIR) && zip -q -r GitCredentialLocksmith-darwin-amd64.zip GitCredentialLocksmith-darwin-amd64.app
 	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-arm64.zip Summon-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-amd64.zip Summon-darwin-amd64.app
 	@echo "Creating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 git-credential-locksmith-darwin-arm64 >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 git-credential-locksmith-darwin-amd64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-arm64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-amd64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-arm64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-amd64.zip >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 GitCredentialLocksmith-darwin-arm64.zip >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 GitCredentialLocksmith-darwin-amd64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Summon-darwin-arm64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Summon-darwin-amd64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-windows-amd64.exe >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-windows-arm64.exe >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 git-credential-locksmith-windows-amd64.exe >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 git-credential-locksmith-windows-arm64.exe >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-linux-amd64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-linux-arm64 >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 git-credential-locksmith-linux-amd64 >> checksums.txt
+	@cd $(BUILD_DIR) && shasum -a 256 git-credential-locksmith-linux-arm64 >> checksums.txt
 	@make gpg-sign
 	@echo "Release binaries and .app zips built in $(BUILD_DIR)/"
 

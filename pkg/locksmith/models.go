@@ -55,6 +55,9 @@ func (s *Secret) Zero() {
 
 // GetExpirationStatus returns the current status of the secret
 func (s *Secret) GetExpirationStatus(threshold time.Duration) ExpirationStatus {
+	if s.ExpiresAt.IsZero() {
+		return StatusValid
+	}
 	now := time.Now()
 
 	if now.After(s.ExpiresAt) {
@@ -70,11 +73,17 @@ func (s *Secret) GetExpirationStatus(threshold time.Duration) ExpirationStatus {
 
 // TimeUntilExpiration returns the duration until expiration
 func (s *Secret) TimeUntilExpiration() time.Duration {
+	if s.ExpiresAt.IsZero() {
+		return 0
+	}
 	return time.Until(s.ExpiresAt)
 }
 
 // IsExpired returns true if the secret has expired
 func (s *Secret) IsExpired() bool {
+	if s.ExpiresAt.IsZero() {
+		return false
+	}
 	return time.Now().After(s.ExpiresAt)
 }
 

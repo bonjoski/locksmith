@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 	"github.com/spf13/cobra"
@@ -56,6 +57,15 @@ var rootCmd = &cobra.Command{
 func Execute(v string) {
 	if v != "" {
 		rootCmd.Version = v
+	}
+	// If run as git-credential-locksmith, insert "credential" subcommand argument
+	if filepath.Base(os.Args[0]) == "git-credential-locksmith" {
+		if len(os.Args) < 2 || os.Args[1] != "credential" {
+			newArgs := make([]string, 0, len(os.Args)+1)
+			newArgs = append(newArgs, os.Args[0], "credential")
+			newArgs = append(newArgs, os.Args[1:]...)
+			os.Args = newArgs
+		}
 	}
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
