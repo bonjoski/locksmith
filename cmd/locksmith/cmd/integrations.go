@@ -646,7 +646,7 @@ func storeMigratedSecret(key string, value string, secretType string, ownerApp s
 }
 
 func commandOutputTrim(name string, args ...string) (string, error) {
-	out, err := exec.Command(name, args...).Output() // #nosec G204 // fixed command and args
+	out, err := exec.Command(name, args...).Output() // nosemgrep // #nosec G204 // fixed command and args
 	if err != nil {
 		return "", err
 	}

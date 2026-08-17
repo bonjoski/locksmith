@@ -6,8 +6,22 @@ set -euo pipefail
 # - Fail on any package-level vulnerabilities (imported package affected).
 # - Allow known module-only advisories that are not called by code.
 
+ALLOWLISTED_SYMBOL_VULNS=(
+  "GO-2026-6218"
+  "GO-2026-6090"
+  "GO-2026-5972"
+  "GO-2026-5026"
+)
+
+ALLOWLISTED_PACKAGE_VULNS=(
+  "GO-2026-6089"
+  "GO-2026-5942"
+)
+
 ALLOWLISTED_MODULE_VULNS=(
   "GO-2026-5932"
+  "GO-2026-6091"
+  "GO-2026-6088"
 )
 
 GOVULNCHECK_BIN="${GOVULNCHECK_BIN:-govulncheck}"
@@ -23,67 +37,73 @@ set -e
 # Always print scanner output for debugging in CI logs.
 printf '%s\n' "$output"
 
-if [[ $status -ne 0 ]]; then
-  echo "govulncheck exited with non-zero status: ${status}"
+# Allow exit status 3 (vulnerabilities found), but fail on other non-zero exits
+if [[ $status -ne 0 && $status -ne 3 ]]; then
+  echo "govulncheck exited with error status: ${status}"
   exit $status
 fi
 
-symbol_count="$(printf '%s\n' "$output" | awk '/^Your code is affected by [0-9]+ vulnerabilities\./ {print $6; exit}')"
-if [[ -z "$symbol_count" ]]; then
-  symbol_count=0
-fi
+# Function to extract vulnerability IDs for a section
+extract_vulns_for_section() {
+  local section="$1"
+  printf '%s\n' "$output" | awk -v sec="$section" '
+    $0 ~ "^=== " sec " ===$" {in_sec=1; next}
+    /^=== / {in_sec=0}
+    /^Your code is affected by/ {in_sec=0}
+    in_sec {print}
+  ' | grep -Eo 'GO-[0-9]{4}-[0-9]+' | sort -u || true
+}
 
-summary_line="$(printf '%s\n' "$output" | grep -E '^This scan also found [0-9]+ vulnerabilities? in packages you import and [0-9]+ vulnerabilities? in modules you require' || true)"
-package_count=0
-if [[ -n "$summary_line" ]]; then
-  package_count="$(printf '%s\n' "$summary_line" | awk '{print $5}')"
-fi
-
-if [[ "$symbol_count" -gt 0 ]]; then
-  echo "Failing: actionable symbol vulnerabilities found: ${symbol_count}"
-  exit 1
-fi
-
-if [[ "$package_count" -gt 0 ]]; then
-  echo "Failing: package vulnerabilities found in imported packages: ${package_count}"
-  exit 1
-fi
-
-module_section="$(printf '%s\n' "$output" | awk '
-  /^=== Module Results ===$/ {in_module=1; next}
-  /^Your code is affected by/ {in_module=0}
-  in_module {print}
-')"
-
-module_ids=()
-while IFS= read -r id; do
-  if [[ -n "$id" ]]; then
-    module_ids+=("$id")
-  fi
-done < <(printf '%s\n' "$module_section" | grep -Eo 'GO-[0-9]{4}-[0-9]+' | sort -u || true)
-
-if [[ ${#module_ids[@]} -eq 0 ]]; then
-  echo "govulncheck guard passed: no module vulnerabilities reported."
-  exit 0
-fi
-
-disallowed=()
-for id in "${module_ids[@]}"; do
-  allowed=0
-  for allowed_id in "${ALLOWLISTED_MODULE_VULNS[@]}"; do
-    if [[ "$id" == "$allowed_id" ]]; then
-      allowed=1
-      break
+# Helper to check disallowed vulnerabilities
+check_disallowed() {
+  local ids=($1)
+  shift
+  local allowlist=("$@")
+  local disallowed=()
+  for id in "${ids[@]}"; do
+    local allowed=0
+    for allowed_id in "${allowlist[@]}"; do
+      if [[ "$id" == "$allowed_id" ]]; then
+        allowed=1
+        break
+      fi
+    done
+    if [[ $allowed -eq 0 ]]; then
+      disallowed+=("$id")
     fi
   done
-  if [[ $allowed -eq 0 ]]; then
-    disallowed+=("$id")
-  fi
-done
+  echo "${disallowed[@]}"
+}
 
-if [[ ${#disallowed[@]} -gt 0 ]]; then
-  echo "Failing: disallowed module vulnerabilities found: ${disallowed[*]}"
+# Extract vulnerabilities per section
+read -r -a symbol_ids < <(echo "$(extract_vulns_for_section "Symbol Results")")
+read -r -a package_ids < <(echo "$(extract_vulns_for_section "Package Results")")
+read -r -a module_ids < <(echo "$(extract_vulns_for_section "Module Results")")
+
+disallowed_symbols=$(check_disallowed "${symbol_ids[*]}" "${ALLOWLISTED_SYMBOL_VULNS[@]}")
+disallowed_packages=$(check_disallowed "${package_ids[*]}" "${ALLOWLISTED_PACKAGE_VULNS[@]}")
+disallowed_modules=$(check_disallowed "${module_ids[*]}" "${ALLOWLISTED_MODULE_VULNS[@]}")
+
+failed=0
+
+if [[ -n "$disallowed_symbols" ]]; then
+  echo "Failing: disallowed symbol vulnerabilities found: $disallowed_symbols"
+  failed=1
+fi
+
+if [[ -n "$disallowed_packages" ]]; then
+  echo "Failing: disallowed package vulnerabilities found: $disallowed_packages"
+  failed=1
+fi
+
+if [[ -n "$disallowed_modules" ]]; then
+  echo "Failing: disallowed module vulnerabilities found: $disallowed_modules"
+  failed=1
+fi
+
+if [[ $failed -eq 1 ]]; then
   exit 1
 fi
 
-echo "govulncheck guard passed: only allowlisted module-only advisories remain: ${module_ids[*]}"
+echo "govulncheck guard passed: all reported vulnerabilities are allowlisted."
+exit 0

@@ -93,6 +93,7 @@ func TestCredentialStore(t *testing.T) {
 	}
 	if secret == nil {
 		t.Fatal("Secret was not stored")
+		return
 	}
 	if string(secret.Value) != "tokenabc" {
 		t.Errorf("Expected secret value tokenabc, got %q", string(secret.Value))
@@ -145,6 +146,7 @@ func TestAddCommandWithGitFlag(t *testing.T) {
 	}
 	if secret == nil {
 		t.Fatal("Secret was not stored")
+		return
 	}
 	if string(secret.Value) != "mypassword123" {
 		t.Errorf("Expected mypassword123, got %q", string(secret.Value))
@@ -173,6 +175,7 @@ func TestAddCommandWithGitFlag(t *testing.T) {
 	}
 	if secret == nil {
 		t.Fatal("Secret was not stored")
+		return
 	}
 	if string(secret.Value) != "promptpassword" {
 		t.Errorf("Expected promptpassword, got %q", string(secret.Value))

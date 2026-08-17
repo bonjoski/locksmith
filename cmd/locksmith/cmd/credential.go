@@ -54,6 +54,65 @@ func readGitCredentialInput(r io.Reader) (map[string]string, error) {
 	return inputs, scanner.Err()
 }
 
+func findGitUserSecret(host, username string) (*locksmith.Secret, string) {
+	if username != "" {
+		key := fmt.Sprintf("git/%s/%s", host, username)
+		secret, err := ls.GetWithMetadata(key)
+		if err == nil && secret != nil && len(secret.Value) > 0 {
+			return secret, key
+		}
+	}
+	return nil, ""
+}
+
+func findGitGenericSecret(host string) (*locksmith.Secret, string) {
+	key := fmt.Sprintf("git/%s", host)
+	secret, err := ls.GetWithMetadata(key)
+	if err == nil && secret != nil && len(secret.Value) > 0 {
+		return secret, key
+	}
+	return nil, ""
+}
+
+func findGitIntegrationSecret(host string) (*locksmith.Secret, string) {
+	if host == "github.com" {
+		key := "github/gh/token"
+		secret, err := ls.GetWithMetadata(key)
+		if err == nil && secret != nil && len(secret.Value) > 0 {
+			return secret, key
+		}
+	} else if host == "gitlab.com" {
+		key := "gitlab/glab/token"
+		secret, err := ls.GetWithMetadata(key)
+		if err == nil && secret != nil && len(secret.Value) > 0 {
+			return secret, key
+		}
+	}
+	return nil, ""
+}
+
+func findGitSingleUserSecret(host string) (*locksmith.Secret, string, string) {
+	keys, err := ls.List()
+	if err != nil {
+		return nil, "", ""
+	}
+	prefix := fmt.Sprintf("git/%s/", host)
+	var matchingKeys []string
+	for k := range keys {
+		if strings.HasPrefix(k, prefix) {
+			matchingKeys = append(matchingKeys, k)
+		}
+	}
+	if len(matchingKeys) == 1 {
+		key := matchingKeys[0]
+		secret, err := ls.GetWithMetadata(key)
+		if err == nil && secret != nil && len(secret.Value) > 0 {
+			return secret, key, strings.TrimPrefix(key, prefix)
+		}
+	}
+	return nil, "", ""
+}
+
 func handleGet(cmd *cobra.Command, inputs map[string]string) error {
 	host := inputs["host"]
 	username := inputs["username"]
@@ -66,64 +125,24 @@ func handleGet(cmd *cobra.Command, inputs map[string]string) error {
 	var matchedKey string
 
 	// 1. Try git/<host>/<username> if username is provided
-	if username != "" {
-		key := fmt.Sprintf("git/%s/%s", host, username)
-		secret, err := ls.GetWithMetadata(key)
-		if err == nil && secret != nil && len(secret.Value) > 0 {
-			matchedSecret = secret
-			matchedKey = key
-		}
-	}
+	matchedSecret, matchedKey = findGitUserSecret(host, username)
 
 	// 2. Try git/<host>
 	if matchedSecret == nil {
-		key := fmt.Sprintf("git/%s", host)
-		secret, err := ls.GetWithMetadata(key)
-		if err == nil && secret != nil && len(secret.Value) > 0 {
-			matchedSecret = secret
-			matchedKey = key
-		}
+		matchedSecret, matchedKey = findGitGenericSecret(host)
 	}
 
 	// 3. Fallbacks
 	if matchedSecret == nil {
-		if host == "github.com" {
-			key := "github/gh/token"
-			secret, err := ls.GetWithMetadata(key)
-			if err == nil && secret != nil && len(secret.Value) > 0 {
-				matchedSecret = secret
-				matchedKey = key
-			}
-		} else if host == "gitlab.com" {
-			key := "gitlab/glab/token"
-			secret, err := ls.GetWithMetadata(key)
-			if err == nil && secret != nil && len(secret.Value) > 0 {
-				matchedSecret = secret
-				matchedKey = key
-			}
-		}
+		matchedSecret, matchedKey = findGitIntegrationSecret(host)
 	}
 
 	// 4. Try matching multiple git/<host>/<some_username> keys if username is empty
 	if matchedSecret == nil && username == "" {
-		keys, err := ls.List()
-		if err == nil {
-			prefix := fmt.Sprintf("git/%s/", host)
-			var matchingKeys []string
-			for k := range keys {
-				if strings.HasPrefix(k, prefix) {
-					matchingKeys = append(matchingKeys, k)
-				}
-			}
-			if len(matchingKeys) == 1 {
-				key := matchingKeys[0]
-				secret, err := ls.GetWithMetadata(key)
-				if err == nil && secret != nil && len(secret.Value) > 0 {
-					matchedSecret = secret
-					matchedKey = key
-					username = strings.TrimPrefix(key, prefix)
-				}
-			}
+		var matchedUser string
+		matchedSecret, matchedKey, matchedUser = findGitSingleUserSecret(host)
+		if matchedSecret != nil {
+			username = matchedUser
 		}
 	}
 

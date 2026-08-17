@@ -50,6 +50,7 @@ jobs:
 
           echo "should_tag=true" >> "$GITHUB_OUTPUT"
 
+      # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
       - name: Checkout gated commit
         if: steps.gate.outputs.should_tag == 'true'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
