@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
-- fix: handle concurrent main updates in release formula push
-- ci: dispatch release workflow after gated tag push
-- fix: sign gated tags with imported gpg identity
-- ci: auto-create signed tags only after green builds
-- fix: push homebrew formula updates from tag workflows
+- Merge branch 'dependabot/go_modules/golang.org/x/crypto-0.54.0' into git-credential-helper
+- Merge branch 'dependabot/go_modules/golang.org/x/term-0.45.0' into git-credential-helper
+- Merge action-gh-release update
+- Merge checkout update
+- chore: fix staticcheck, semgrep, and complexity issues found during make check
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
