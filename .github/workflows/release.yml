@@ -16,9 +16,10 @@ jobs:
     
     # 2. Grant specific write permissions only to this job
     permissions:
-      contents: write      # Required to create the GitHub Release and upload assets
-      id-token: write     # Required for signing the Artifact Attestation (OIDC)
-      attestations: write # Required to publish the build provenance to GitHub
+      contents: write       # Required to create the GitHub Release and upload assets
+      id-token: write       # Required for signing the Artifact Attestation (OIDC)
+      attestations: write   # Required to publish the build provenance to GitHub
+      pull-requests: write  # Required to create pull requests for Homebrew formula updates
 
     steps:
       - name: Checkout code
@@ -149,6 +150,8 @@ jobs:
 
       - name: Commit and Push Homebrew Formula Update
         if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -163,19 +166,22 @@ jobs:
             if git push origin HEAD:main; then
               echo "Pushed formula update directly to main"
             else
-              echo "Direct push failed (main moved). Rebasing formula update onto latest main and retrying..."
-              git fetch origin main
-              git checkout -B release-homebrew-update origin/main
-
-              if git cherry-pick "$UPDATE_COMMIT"; then
-                git push origin HEAD:main
-                echo "Pushed formula update after rebasing onto latest main"
-              else
-                echo "Cherry-pick conflict while applying formula update; skipping push without failing release"
-                git cherry-pick --abort || true
-              fi
+              echo "Direct push failed (main protected/moved). Creating pull request instead..."
+              BRANCH_NAME="chore/homebrew-update-${GITHUB_REF_NAME}"
+              git checkout -b "$BRANCH_NAME"
+              git push -u origin "$BRANCH_NAME"
+              gh pr create --base main --head "$BRANCH_NAME" \
+                --title "chore: auto-update homebrew formula to ${GITHUB_REF_NAME}" \
+                --body "Automated update of Homebrew formula with binary checksums for ${GITHUB_REF_NAME}."
             fi
           fi
+
+      - name: Upload Homebrew Formula Artifact
+        if: ${{ success() }}
+        uses: actions/upload-artifact@4aec5260026da32be824941dd0647c7e1672680f # v4.4.0
+        with:
+          name: homebrew-formula
+          path: contrib/homebrew/locksmith.rb
 
   sync-homebrew-tap:
     name: Sync Homebrew Tap Repo
@@ -184,11 +190,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Fetch formula from locksmith main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh api repos/bonjoski/locksmith/contents/contrib/homebrew/locksmith.rb?ref=main --jq '.content' | base64 --decode > locksmith.rb
+      - name: Download formula artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372ec862e1f # v4.1.8
+        with:
+          name: homebrew-formula
+          path: .
 
       - name: Checkout tap repository
         env:
