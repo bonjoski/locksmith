@@ -170,9 +170,13 @@ jobs:
               BRANCH_NAME="chore/homebrew-update-${GITHUB_REF_NAME}"
               git checkout -b "$BRANCH_NAME"
               git push -u origin "$BRANCH_NAME"
-              gh pr create --base main --head "$BRANCH_NAME" \
+              if gh pr create --base main --head "$BRANCH_NAME" \
                 --title "chore: auto-update homebrew formula to ${GITHUB_REF_NAME}" \
-                --body "Automated update of Homebrew formula with binary checksums for ${GITHUB_REF_NAME}."
+                --body "Automated update of Homebrew formula with binary checksums for ${GITHUB_REF_NAME}."; then
+                echo "Pull request created successfully"
+              else
+                echo "::warning::GitHub Actions is not permitted to create pull requests in this repository. The update branch has been successfully pushed as $BRANCH_NAME. Please open a pull request manually."
+              fi
             fi
           fi
 
