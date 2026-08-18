@@ -20,7 +20,7 @@ GOVULNCHECK_VERSION=v1.1.4
 GOSEC_VERSION=v2.22.11
 GITLEAKS_VERSION=v8.24.2
 
-.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag open-pr
+.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag open-pr verify-actions-shas
 
 # Default target
 all: build sign
@@ -233,7 +233,11 @@ uninstall-summon: ## Uninstall Summon provider
 	@echo "✓ Summon provider uninstalled"
 
 ## Verification targets
-check: fmt tidy verify-deps vet lint govulncheck-ci gosec gitleaks semgrep complexity entropy ## Run all quality and security checks
+verify-actions-shas: ## Verify that pinned GitHub Actions commit SHAs exist on GitHub
+	@echo "Running GitHub Actions commit SHA validation..."
+	@bash ./scripts/security/verify-workflow-actions.sh
+
+check: fmt tidy verify-deps vet lint govulncheck-ci gosec gitleaks semgrep complexity entropy verify-actions-shas ## Run all quality and security checks
 
 test: ## Run unit tests
 	@echo "Running tests..."
