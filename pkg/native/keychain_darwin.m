@@ -62,15 +62,23 @@ KeychainResult keychain_set(const char *service, const char *account,
   query[(__bridge id)kSecClass] = (__bridge id)kSecClassGenericPassword;
   query[(__bridge id)kSecAttrService] = serviceNS;
   query[(__bridge id)kSecAttrAccount] = accountNS;
-
-  // Delete existing item first
-  SecItemDelete((__bridge CFDictionaryRef)query);
-
   query[(__bridge id)kSecAttrAccessible] =
       (__bridge id)kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly;
   query[(__bridge id)kSecValueData] = dataNS;
 
   OSStatus status = SecItemAdd((__bridge CFDictionaryRef)query, NULL);
+  if (status == errSecDuplicateItem) {
+    NSMutableDictionary *searchQuery = [NSMutableDictionary dictionary];
+    searchQuery[(__bridge id)kSecClass] = (__bridge id)kSecClassGenericPassword;
+    searchQuery[(__bridge id)kSecAttrService] = serviceNS;
+    searchQuery[(__bridge id)kSecAttrAccount] = accountNS;
+    NSDictionary *update = @{
+      (__bridge id)kSecValueData: dataNS,
+      (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+    };
+    status = SecItemUpdate((__bridge CFDictionaryRef)searchQuery,
+                           (__bridge CFDictionaryRef)update);
+  }
   if (status != errSecSuccess) {
     result.error =
         strdup([[NSString stringWithFormat:@"Failed to add keychain item: %d",

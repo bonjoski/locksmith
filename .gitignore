@@ -1,6 +1,7 @@
 # Binaries and build artifacts
 /locksmith
 /summon-locksmith
+/git-credential-locksmith
 bin/
 *.exe
 *.exe~
