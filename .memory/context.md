@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- fix: correct actions/download-artifact commit hash in release workflow and bump version to 2.7.5
 - fix: resolve upload-artifact GHA resolution error and bump version to 2.7.4
 - fix: resolve upload-artifact GHA resolution error and bump version to 2.7.3
 - bump: release version v2.7.1
 - fix: handle main branch protection by falling back to pull request and workflow artifact in release
-- fix: resolve unbound variable check_disallowed error under set -u
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
