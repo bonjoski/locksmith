@@ -7,9 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
-	"time"
-	"unsafe"
 
 	"github.com/spf13/cobra"
 )
@@ -182,24 +179,6 @@ func writeCache(env map[string]string) error {
 	return w.Flush()
 }
 
-// bootTime returns the system boot time using kern.boottime sysctl.
-func bootTime() (time.Time, error) {
-	// kern.boottime returns a struct timeval {tv_sec int64; tv_usec int32}
-	var tv syscall.Timeval
-	mib := [2]int32{1, 21} // CTL_KERN=1, KERN_BOOTTIME=21
-	n := uintptr(unsafe.Sizeof(tv))
-	if _, _, errno := syscall.Syscall6(
-		syscall.SYS___SYSCTL,
-		uintptr(unsafe.Pointer(&mib[0])),
-		2,
-		uintptr(unsafe.Pointer(&tv)),
-		uintptr(unsafe.Pointer(&n)),
-		0, 0,
-	); errno != 0 {
-		return time.Time{}, errno
-	}
-	return time.Unix(int64(tv.Sec), int64(tv.Usec)*1000), nil
-}
 
 func init() {
 	rootCmd.AddCommand(envCmd)
