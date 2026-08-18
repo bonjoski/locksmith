@@ -155,38 +155,6 @@ jobs:
           chmod +x scripts/dev/update-homebrew-formula.sh
           ./scripts/dev/update-homebrew-formula.sh "${GITHUB_REF_NAME}"
 
-      - name: Commit and Push Homebrew Formula Update
-        if: ${{ success() }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet contrib/homebrew/locksmith.rb; then
-            echo "No changes to Homebrew formula"
-          else
-            git add contrib/homebrew/locksmith.rb
-            git commit -m "chore: auto-update homebrew formula to ${GITHUB_REF_NAME}"
-            UPDATE_COMMIT="$(git rev-parse HEAD)"
-
-            if git push origin HEAD:main; then
-              echo "Pushed formula update directly to main"
-            else
-              echo "Direct push failed (main protected/moved). Creating pull request instead..."
-              BRANCH_NAME="chore/homebrew-update-${GITHUB_REF_NAME}"
-              git checkout -b "$BRANCH_NAME"
-              git push -u origin "$BRANCH_NAME"
-              if gh pr create --base main --head "$BRANCH_NAME" \
-                --title "chore: auto-update homebrew formula to ${GITHUB_REF_NAME}" \
-                --body "Automated update of Homebrew formula with binary checksums for ${GITHUB_REF_NAME}."; then
-                echo "Pull request created successfully"
-              else
-                echo "::warning::GitHub Actions is not permitted to create pull requests in this repository. The update branch has been successfully pushed as $BRANCH_NAME. Please open a pull request manually."
-              fi
-            fi
-          fi
-
       - name: Upload Homebrew Formula Artifact
         if: ${{ success() }}
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
