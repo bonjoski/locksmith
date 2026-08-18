@@ -103,18 +103,24 @@ jobs:
           echo "=== Strict codesign verify ==="
           codesign --verify --strict --verbose=4 bin/Locksmith-darwin-arm64.app
           codesign --verify --strict --verbose=4 bin/Locksmith-darwin-amd64.app
-          codesign --verify --strict --verbose=4 bin/Summon-darwin-arm64.app # Added check
-          codesign --verify --strict --verbose=4 bin/Summon-darwin-amd64.app # Added check
+          codesign --verify --strict --verbose=4 bin/Summon-darwin-arm64.app
+          codesign --verify --strict --verbose=4 bin/Summon-darwin-amd64.app
+          codesign --verify --strict --verbose=4 bin/GitCredentialLocksmith-darwin-arm64.app
+          codesign --verify --strict --verbose=4 bin/GitCredentialLocksmith-darwin-amd64.app
           echo "=== Gatekeeper assessment ==="
           spctl --assess --type execute --verbose bin/Locksmith-darwin-arm64.app || true
           spctl --assess --type execute --verbose bin/Locksmith-darwin-amd64.app || true
-          spctl --assess --type execute --verbose bin/Summon-darwin-arm64.app || true # Added check
-          spctl --assess --type execute --verbose bin/Summon-darwin-amd64.app || true # Added check
+          spctl --assess --type execute --verbose bin/Summon-darwin-arm64.app || true
+          spctl --assess --type execute --verbose bin/Summon-darwin-amd64.app || true
+          spctl --assess --type execute --verbose bin/GitCredentialLocksmith-darwin-arm64.app || true
+          spctl --assess --type execute --verbose bin/GitCredentialLocksmith-darwin-amd64.app || true
           echo "=== Dynamic library dependencies ==="
           otool -L bin/locksmith-darwin-arm64
           otool -L bin/locksmith-darwin-amd64
           otool -L bin/summon-locksmith-darwin-arm64
           otool -L bin/summon-locksmith-darwin-amd64
+          otool -L bin/git-credential-locksmith-darwin-arm64
+          otool -L bin/git-credential-locksmith-darwin-amd64
 
       - name: Notarize and Staple Release Apps
         run: make notarize && make staple
