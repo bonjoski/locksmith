@@ -48,12 +48,17 @@ type AccessControl struct {
 }
 
 // Config represents the locksmith configuration
+type ShellConfig struct {
+	Env map[string]string `yaml:"env,omitempty"`
+}
+
 type Config struct {
 	Notifications NotificationConfig           `yaml:"notifications"`
 	Auth          AuthConfig                   `yaml:"auth"`
 	Rotation      []RotationRule               `yaml:"rotation"` // Rotation rules
 	Integrations  map[string]IntegrationConfig `yaml:"integrations,omitempty"`
 	AccessControl AccessControl                `yaml:"access_control"`
+	Shell         ShellConfig                  `yaml:"shell,omitempty"`
 }
 
 // LoadConfig loads configuration from ~/.locksmith/config.yml
