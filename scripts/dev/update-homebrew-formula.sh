@@ -33,17 +33,23 @@ LOCKSMITH_ARM64_SHA=$(awk '$2=="locksmith-darwin-arm64"{print $1; exit}' "$CHECK
 LOCKSMITH_AMD64_SHA=$(awk '$2=="locksmith-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE")
 SUMMON_ARM64_SHA=$(awk '$2=="summon-locksmith-darwin-arm64"{print $1; exit}' "$CHECKSUMS_FILE")
 SUMMON_AMD64_SHA=$(awk '$2=="summon-locksmith-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE")
+GIT_CRED_ARM64_SHA=$(awk '$2=="git-credential-locksmith-darwin-arm64"{print $1; exit}' "$CHECKSUMS_FILE")
+GIT_CRED_AMD64_SHA=$(awk '$2=="git-credential-locksmith-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE")
 
-if [ -z "$LOCKSMITH_ARM64_SHA" ] || [ -z "$LOCKSMITH_AMD64_SHA" ] || [ -z "$SUMMON_ARM64_SHA" ] || [ -z "$SUMMON_AMD64_SHA" ]; then
+if [ -z "$LOCKSMITH_ARM64_SHA" ] || [ -z "$LOCKSMITH_AMD64_SHA" ] || \
+   [ -z "$SUMMON_ARM64_SHA" ] || [ -z "$SUMMON_AMD64_SHA" ] || \
+   [ -z "$GIT_CRED_ARM64_SHA" ] || [ -z "$GIT_CRED_AMD64_SHA" ]; then
     echo "ERROR: Could not extract all checksums from release"
     exit 1
 fi
 
 echo "Checksums extracted:"
-echo "  locksmith-darwin-arm64: $LOCKSMITH_ARM64_SHA"
-echo "  locksmith-darwin-amd64: $LOCKSMITH_AMD64_SHA"
-echo "  summon-darwin-arm64: $SUMMON_ARM64_SHA"
-echo "  summon-darwin-amd64: $SUMMON_AMD64_SHA"
+echo "  locksmith-darwin-arm64:             $LOCKSMITH_ARM64_SHA"
+echo "  locksmith-darwin-amd64:             $LOCKSMITH_AMD64_SHA"
+echo "  summon-darwin-arm64:                $SUMMON_ARM64_SHA"
+echo "  summon-darwin-amd64:                $SUMMON_AMD64_SHA"
+echo "  git-credential-locksmith-arm64:     $GIT_CRED_ARM64_SHA"
+echo "  git-credential-locksmith-amd64:     $GIT_CRED_AMD64_SHA"
 
 # Update the formula file with sed
 echo "Updating $FORMULA_FILE..."
@@ -66,5 +72,13 @@ sed -i '' "/url.*summon-locksmith-darwin-arm64/ { N; s/sha256 \"[^\"]*\"/sha256 
 # Update download URLs and checksums for summon-locksmith-darwin-amd64
 sed -i '' "s|download/v[^/]*/summon-locksmith-darwin-amd64|download/v$VERSION/summon-locksmith-darwin-amd64|" "$FORMULA_FILE"
 sed -i '' "/url.*summon-locksmith-darwin-amd64/ { N; s/sha256 \"[^\"]*\"/sha256 \"$SUMMON_AMD64_SHA\"/; }" "$FORMULA_FILE"
+
+# Update download URLs and checksums for git-credential-locksmith-darwin-arm64
+sed -i '' "s|download/v[^/]*/git-credential-locksmith-darwin-arm64|download/v$VERSION/git-credential-locksmith-darwin-arm64|" "$FORMULA_FILE"
+sed -i '' "/url.*git-credential-locksmith-darwin-arm64/ { N; s/sha256 \"[^\"]*\"/sha256 \"$GIT_CRED_ARM64_SHA\"/; }" "$FORMULA_FILE"
+
+# Update download URLs and checksums for git-credential-locksmith-darwin-amd64
+sed -i '' "s|download/v[^/]*/git-credential-locksmith-darwin-amd64|download/v$VERSION/git-credential-locksmith-darwin-amd64|" "$FORMULA_FILE"
+sed -i '' "/url.*git-credential-locksmith-darwin-amd64/ { N; s/sha256 \"[^\"]*\"/sha256 \"$GIT_CRED_AMD64_SHA\"/; }" "$FORMULA_FILE"
 
 echo "✅ Homebrew formula updated successfully"

@@ -16,10 +16,18 @@ class Locksmith < Formula
         sha256 "a44a6b03eddccc4b61bf727f56b3974ef58f1dc7ac0aa95a06d03774d036adb5"
       end
 
+      resource "git-credential-arm64" do
+        url "https://github.com/bonjoski/locksmith/releases/download/v2.6.7/git-credential-locksmith-darwin-arm64"
+        sha256 ""
+      end
+
       def install
         bin.install "locksmith-darwin-arm64" => "locksmith"
         resource("summon-arm64").stage do
           bin.install "summon-locksmith-darwin-arm64" => "summon-locksmith"
+        end
+        resource("git-credential-arm64").stage do
+          bin.install "git-credential-locksmith-darwin-arm64" => "git-credential-locksmith"
         end
       end
     else
@@ -31,10 +39,18 @@ class Locksmith < Formula
         sha256 "2aa249542050d398b551a92818523be50362bf9572fb5f6a622824a0b6b11630"
       end
 
+      resource "git-credential-amd64" do
+        url "https://github.com/bonjoski/locksmith/releases/download/v2.6.7/git-credential-locksmith-darwin-amd64"
+        sha256 ""
+      end
+
       def install
         bin.install "locksmith-darwin-amd64" => "locksmith"
         resource("summon-amd64").stage do
           bin.install "summon-locksmith-darwin-amd64" => "summon-locksmith"
+        end
+        resource("git-credential-amd64").stage do
+          bin.install "git-credential-locksmith-darwin-amd64" => "git-credential-locksmith"
         end
       end
     end
@@ -43,5 +59,6 @@ class Locksmith < Formula
   test do
     assert_match version.to_s, shell_output("#{bin}/locksmith --version 2>&1")
     assert_match version.to_s, shell_output("#{bin}/summon-locksmith --version 2>&1")
+    assert_match version.to_s, shell_output("#{bin}/git-credential-locksmith --version 2>&1")
   end
 end
