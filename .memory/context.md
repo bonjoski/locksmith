@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- fix: handle main branch protection by falling back to pull request and workflow artifact in release
 - fix: resolve unbound variable check_disallowed error under set -u
 - fix: make govulncheck-guard subshell pipeline robust against grep non-matches under pipefail
 - bump: release version v2.7.0
 - Merge branch 'dependabot/go_modules/golang.org/x/crypto-0.54.0' into git-credential-helper
-- Merge branch 'dependabot/go_modules/golang.org/x/term-0.45.0' into git-credential-helper
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
