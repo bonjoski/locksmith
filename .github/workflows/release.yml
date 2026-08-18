@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload Homebrew Formula Artifact
         if: ${{ success() }}
-        uses: actions/upload-artifact@4aec5260026da32be824941dd0647c7e1672680f # v4.4.0
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: homebrew-formula
           path: contrib/homebrew/locksmith.rb
