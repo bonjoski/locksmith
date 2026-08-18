@@ -195,7 +195,7 @@ jobs:
       contents: read
     steps:
       - name: Download formula artifact
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372ec862e1f # v4.1.8
+        uses: actions/download-artifact@c850b9d0b61679090623315a6b83f3e1b764b8d9 # v4.1.8
         with:
           name: homebrew-formula
           path: .
