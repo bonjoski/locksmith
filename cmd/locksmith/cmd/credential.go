@@ -92,13 +92,13 @@ func findGitIntegrationSecret(host string) (*locksmith.Secret, string) {
 }
 
 func findGitSingleUserSecret(host string) (*locksmith.Secret, string, string) {
-	keys, err := ls.List()
+	keys, err := ls.ListKeyNames()
 	if err != nil {
 		return nil, "", ""
 	}
 	prefix := fmt.Sprintf("git/%s/", host)
 	var matchingKeys []string
-	for k := range keys {
+	for _, k := range keys {
 		if strings.HasPrefix(k, prefix) {
 			matchingKeys = append(matchingKeys, k)
 		}
