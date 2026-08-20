@@ -276,6 +276,33 @@ func (l *Locksmith) List() (map[string]SecretMetadata, error) {
 	return result, nil
 }
 
+// ListKeyNames returns configured key names without requiring biometric
+// authentication. It exposes only key names, never secret values, so it's
+// safe for internal resolution paths (e.g. the git credential helper
+// matching a host to its stored key) that run on every git operation and
+// would otherwise force a Face ID/Touch ID prompt just to find a key name.
+// Binary access control still applies. Use List/ListWithMetadata for
+// interactive/user-facing listing, which stays biometric-gated.
+func (l *Locksmith) ListKeyNames() ([]string, error) {
+	if err := l.checkBinaryAccess(); err != nil {
+		return nil, err
+	}
+
+	keys, err := l.Backend.List(l.Service, false, "")
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key == MasterKeyAccount {
+			continue
+		}
+		result = append(result, key)
+	}
+	return result, nil
+}
+
 // Delete is implemented in admin.go and is compiled when locksmith_admin is enabled.
 
 // GetWithMetadata retrieves a secret with its metadata
