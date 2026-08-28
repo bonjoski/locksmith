@@ -45,9 +45,16 @@ func (m *mockCache) IsExpired(key string, ttl time.Duration) bool {
 type mockBackend struct {
 	cache    *mockCache
 	getCalls int
+	setCalls int
+	storage  map[string][]byte
 }
 
 func (m *mockBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
+	m.setCalls++
+	if m.storage == nil {
+		m.storage = make(map[string][]byte)
+	}
+	m.storage[account] = data
 	return nil
 }
 

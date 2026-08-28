@@ -192,6 +192,32 @@ func handleStore(cmd *cobra.Command, inputs map[string]string) error {
 		key = fmt.Sprintf("git/%s", host)
 	}
 
+	// Check if credential already exists with the same value
+	// If it does, skip keychain write (no biometric prompt) and just refresh cache
+	existing, _ := ls.GetWithMetadata(key)
+	if existing != nil && string(existing.Value) == password {
+		// Credential unchanged - just refresh cache without keychain write
+		secret := locksmith.Secret{
+			Value:            []byte(password),
+			CreatedAt:        time.Now(),
+			ExpiresAt:        time.Time{},
+			SecretType:       locksmith.SecretTypePassword,
+			OwnerApplication: "git",
+			SourceURL:        fmt.Sprintf("%s://%s", protocol, host),
+			Metadata: map[string]string{
+				"protocol": protocol,
+				"host":     host,
+			},
+		}
+		if username != "" {
+			secret.Metadata["username"] = username
+		}
+		if inputs["path"] != "" {
+			secret.Metadata["path"] = inputs["path"]
+		}
+		return ls.Cache.Set(key, secret, locksmith.DefaultCacheTTL)
+	}
+
 	metadata := map[string]string{
 		"protocol": protocol,
 		"host":     host,
