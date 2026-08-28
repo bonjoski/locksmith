@@ -18,10 +18,9 @@ var credentialCmd = &cobra.Command{
 	Long:  "Acts as a Git credential helper by reading key=value pairs from stdin and returning matching credentials on stdout.",
 	Args:  cobra.ExactArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
-		// Enable OnlyCached mode for git credential operations to avoid blocking biometric prompts.
-		// This makes the helper read from cache only - cache misses return nil instead of prompting.
-		// Git will then prompt the user for password and call "store" to cache it.
-		if ls != nil {
+		// Enable OnlyCached mode ONLY for 'get' to avoid blocking biometric prompts on cache miss.
+		// For 'store', we need to allow keychain access to save the credential.
+		if ls != nil && len(args) > 0 && strings.ToLower(args[0]) == "get" {
 			ls.Options.OnlyCached = true
 		}
 	},

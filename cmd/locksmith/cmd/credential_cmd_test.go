@@ -212,15 +212,38 @@ func TestCredentialCommand_SetsOnlyCached(t *testing.T) {
 		t.Fatalf("Failed to execute credential get: %v", err)
 	}
 
-	// Verify OnlyCached was set to true by PreRun hook
+	// Verify OnlyCached was set to true by PreRun hook for 'get' action
 	if !ls.Options.OnlyCached {
-		t.Error("Expected credential command PreRun to set OnlyCached=true")
+		t.Error("Expected credential GET command PreRun to set OnlyCached=true")
 	}
 
 	// Verify it returned from cache (which proves OnlyCached worked)
 	outStr := outBuf.String()
 	if !strings.Contains(outStr, "password=cached-token") {
 		t.Errorf("Expected credential to return from cache, got: %q", outStr)
+	}
+}
+
+func TestCredentialStore_DoesNotSetOnlyCached(t *testing.T) {
+	setupTest()
+
+	// Verify OnlyCached starts as false
+	if ls.Options.OnlyCached {
+		t.Error("Expected OnlyCached to be false before credential command")
+	}
+
+	stdin := "protocol=https\nhost=gitlab.com\nusername=storeuser\npassword=storetoken\n\n"
+	rootCmd.SetIn(strings.NewReader(stdin))
+	rootCmd.SetArgs([]string{"credential", "store"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("Failed to execute credential store: %v", err)
+	}
+
+	// Verify OnlyCached was NOT set for 'store' action (it should still be false)
+	if ls.Options.OnlyCached {
+		t.Error("Expected credential STORE command to NOT set OnlyCached=true")
 	}
 }
 
