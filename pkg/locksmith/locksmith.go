@@ -22,6 +22,10 @@ type Options struct {
 	RequireBiometrics bool
 	PromptMessage     string
 	BypassCache       bool
+	// OnlyCached mode: if true, only read from cache and don't fall back to keychain.
+	// Cache misses return nil (secret not found) instead of prompting for biometrics.
+	// This is useful for git credential helpers to avoid blocking prompts.
+	OnlyCached bool
 	// Binary access control
 	AllowBinaries []string
 	DenyBinaries  []string
@@ -131,6 +135,9 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if secret == nil {
+		return nil, nil
+	}
 	// Return a copy to prevent cache modification
 	valueCopy := make([]byte, len(secret.Value))
 	copy(valueCopy, secret.Value)
@@ -197,6 +204,11 @@ func (l *Locksmith) getSecretNoRotate(key string) (*Secret, error) {
 		if err == nil && secret != nil {
 			return secret, nil
 		}
+	}
+
+	// 1a. If OnlyCached mode, don't fall back to keychain - return nil for cache miss
+	if l.Options.OnlyCached {
+		return nil, nil
 	}
 
 	// 1b. Binary whitelisting enforcement (moved to helper)

@@ -59,6 +59,13 @@ func (h *PATSelfRotateRotator) Rotate(ctx context.Context, input rotator.Rotatio
 		"https://gitlab.com",
 	)
 
+	// Enforce HTTPS-only for GitLab API calls (allow localhost/127.0.0.1 for testing)
+	if strings.HasPrefix(strings.ToLower(base), "http://") &&
+		!strings.Contains(strings.ToLower(base), "://localhost") &&
+		!strings.Contains(strings.ToLower(base), "://127.0.0.1") {
+		return rotator.RotationOutput{}, fmt.Errorf("plain HTTP not allowed for GitLab API - use HTTPS")
+	}
+
 	endpoint, err := resolveSelfRotateEndpoint(base)
 	if err != nil {
 		return rotator.RotationOutput{}, err
@@ -70,6 +77,7 @@ func (h *PATSelfRotateRotator) Rotate(ctx context.Context, input rotator.Rotatio
 		return rotator.RotationOutput{}, err
 	}
 
+	// #nosec G704 - Intentional HTTP call to user-configured GitLab instance for PAT rotation
 	resp, err := client.Do(req)
 	if err != nil {
 		return rotator.RotationOutput{}, fmt.Errorf("gitlab pat self-rotate request failed: %w", err)
@@ -108,6 +116,7 @@ func buildPATSelfRotateRequest(ctx context.Context, endpoint string, currentToke
 		return nil, err
 	}
 
+	// #nosec G704 - Endpoint is derived from trusted sources (SourceURL or GITLAB_BASE_URL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, requestBody)
 	if err != nil {
 		return nil, err

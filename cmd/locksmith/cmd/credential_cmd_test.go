@@ -184,3 +184,84 @@ func TestAddCommandWithGitFlag(t *testing.T) {
 		t.Errorf("Expected promptuser, got %q", secret.Metadata["username"])
 	}
 }
+
+func TestCredentialCommand_SetsOnlyCached(t *testing.T) {
+	outBuf, _ := setupTest()
+
+	// Verify OnlyCached starts as false
+	if ls.Options.OnlyCached {
+		t.Error("Expected OnlyCached to be false before credential command")
+	}
+
+	// Pre-seed cache with a credential
+	mc := ls.Cache.(*mockCache)
+	_ = mc.Set("git/github.com/testuser", locksmith.Secret{
+		Value:     []byte("cached-token"),
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}, locksmith.DefaultCacheTTL)
+
+	// Execute credential get command
+	stdin := "protocol=https\nhost=github.com\nusername=testuser\n\n"
+	rootCmd.SetIn(strings.NewReader(stdin))
+	rootCmd.SetOut(outBuf)
+	rootCmd.SetArgs([]string{"credential", "get"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("Failed to execute credential get: %v", err)
+	}
+
+	// Verify OnlyCached was set to true by PreRun hook
+	if !ls.Options.OnlyCached {
+		t.Error("Expected credential command PreRun to set OnlyCached=true")
+	}
+
+	// Verify it returned from cache (which proves OnlyCached worked)
+	outStr := outBuf.String()
+	if !strings.Contains(outStr, "password=cached-token") {
+		t.Errorf("Expected credential to return from cache, got: %q", outStr)
+	}
+}
+
+func TestCredentialGet_CacheMiss_ReturnsEmpty(t *testing.T) {
+	outBuf, _ := setupTest()
+
+	// Don't seed cache - this simulates a cache miss
+	// The backend will be called only if OnlyCached=false
+
+	// Execute credential get for a key that doesn't exist in cache
+	stdin := "protocol=https\nhost=gitlab.com\nusername=nonexistent\n\n"
+	rootCmd.SetIn(strings.NewReader(stdin))
+	rootCmd.SetOut(outBuf)
+	rootCmd.SetArgs([]string{"credential", "get"})
+
+	// Track backend calls
+	mb := ls.Backend.(*mockBackend)
+	initialGetCalls := mb.getCalls
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("Failed to execute credential get: %v", err)
+	}
+
+	// Verify OnlyCached was set
+	if !ls.Options.OnlyCached {
+		t.Error("Expected OnlyCached to be true after credential PreRun")
+	}
+
+	// Verify backend was NOT called (OnlyCached prevents backend fallback)
+	if mb.getCalls != initialGetCalls {
+		t.Errorf("Expected backend Get to NOT be called with OnlyCached=true, but getCalls went from %d to %d",
+			initialGetCalls, mb.getCalls)
+	}
+
+	outStr := outBuf.String()
+	// Should return empty (no output) because OnlyCached=true and cache miss
+	if strings.Contains(outStr, "password=") {
+		t.Errorf("Expected empty output on cache miss with OnlyCached=true, got: %q", outStr)
+	}
+	if strings.Contains(outStr, "username=") {
+		t.Errorf("Expected empty output on cache miss with OnlyCached=true, got: %q", outStr)
+	}
+}
