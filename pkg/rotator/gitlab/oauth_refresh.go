@@ -62,12 +62,21 @@ func (h *OAuthRefreshRotator) Rotate(ctx context.Context, input rotator.Rotation
 		os.Getenv("GITLAB_CLIENT_SECRET"),
 	)
 
-	endpoint, err := resolveOAuthRefreshEndpoint(firstNonEmpty(
+	base := firstNonEmpty(
 		strings.TrimSpace(input.Selector.SourceURL),
 		readMeta(input.Selector.Metadata, "gitlab_base_url"),
 		os.Getenv("GITLAB_BASE_URL"),
 		"https://gitlab.com",
-	))
+	)
+
+	// Enforce HTTPS-only for GitLab OAuth calls (allow localhost/127.0.0.1 for testing)
+	if strings.HasPrefix(strings.ToLower(base), "http://") &&
+		!strings.Contains(strings.ToLower(base), "://localhost") &&
+		!strings.Contains(strings.ToLower(base), "://127.0.0.1") {
+		return rotator.RotationOutput{}, fmt.Errorf("plain HTTP not allowed for GitLab API - use HTTPS")
+	}
+
+	endpoint, err := resolveOAuthRefreshEndpoint(base)
 	if err != nil {
 		return rotator.RotationOutput{}, err
 	}
@@ -83,6 +92,7 @@ func (h *OAuthRefreshRotator) Rotate(ctx context.Context, input rotator.Rotation
 	}
 
 	client := &http.Client{Timeout: input.Timeout}
+	// #nosec G704 - Endpoint is derived from trusted sources (SourceURL or GITLAB_BASE_URL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return rotator.RotationOutput{}, err
@@ -90,6 +100,7 @@ func (h *OAuthRefreshRotator) Rotate(ctx context.Context, input rotator.Rotation
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
+	// #nosec G704 - Intentional HTTP call to user-configured GitLab instance for OAuth refresh
 	resp, err := client.Do(req)
 	if err != nil {
 		return rotator.RotationOutput{}, fmt.Errorf("gitlab oauth refresh request failed: %w", err)

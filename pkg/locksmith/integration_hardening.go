@@ -755,6 +755,7 @@ func scrubPlaintextFieldsFromRawFile(path string, profile integrationHardeningPr
 	}
 
 	out := strings.Join(filtered, "\n")
+	// #nosec G703 - Path is validated by caller (integration profile config files)
 	if err := os.WriteFile(path, []byte(out), mode); err != nil {
 		return nil, false, err
 	}

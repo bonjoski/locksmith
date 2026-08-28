@@ -179,7 +179,6 @@ func writeCache(env map[string]string) error {
 	return w.Flush()
 }
 
-
 func init() {
 	rootCmd.AddCommand(envCmd)
 	envCmd.Flags().BoolVar(&envNoCache, "no-cache", false, "Skip the session cache and re-fetch all secrets")
