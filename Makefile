@@ -15,10 +15,15 @@ GOBIN=$(GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
 # Tool versions
-GOLANGCI_LINT_VERSION=v1.64.2
+GOLANGCI_LINT_VERSION=v1.64.8
 GOVULNCHECK_VERSION=v1.1.4
 GOSEC_VERSION=v2.22.11
 GITLEAKS_VERSION=v8.24.2
+
+# Go version compatibility check
+GO_VERSION=$(shell go version | awk '{print $$3}' | sed 's/go//')
+GO_MAJOR_MINOR=$(shell echo $(GO_VERSION) | cut -d. -f1-2)
+RECOMMENDED_GO_VERSION=1.26
 
 .PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag open-pr verify-actions-shas
 
@@ -280,6 +285,12 @@ endef
 
 lint: ## Run golangci-lint (installs if missing)
 	$(call install_if_missing,golangci-lint,go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
+	@if [ "$(shell echo $(GO_MAJOR_MINOR) | awk '{if ($$1 > 1.26) print "new"}')" = "new" ]; then \
+		echo "⚠️  Warning: Go $(GO_VERSION) detected. golangci-lint may have compatibility issues with Go 1.27+."; \
+		echo "   Recommended: Use Go $(RECOMMENDED_GO_VERSION).x for local development."; \
+		echo "   CI uses Go 1.26.5 and will be the source of truth for lint checks."; \
+		echo ""; \
+	fi
 	@echo "Running golangci-lint..."
 	@$(GOBIN)/golangci-lint run --build-tags locksmith_admin
 
