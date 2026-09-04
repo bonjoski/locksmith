@@ -206,7 +206,8 @@ func (l *Locksmith) getSecretNoRotate(key string) (*Secret, error) {
 		}
 	}
 
-	// 1a. If OnlyCached mode, don't fall back to keychain - return nil for cache miss
+	// 1a. OnlyCached mode: if cache is expired or missing, return nil without keychain fallback
+	// This prevents biometric prompts on every git operation when cache expires.
 	if l.Options.OnlyCached {
 		return nil, nil
 	}
