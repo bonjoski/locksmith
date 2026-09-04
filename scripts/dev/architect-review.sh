@@ -37,7 +37,7 @@ GOCYCLO=$GOBIN/gocyclo
 ENTROPY_CHECKER="go run scripts/dev/entropy-checker/main.go"
 
 # 1. Project Governance: Go Version consistency
-GO_VERSION_EXPECTED="1.25.4"
+GO_VERSION_EXPECTED="1.26.0"
 GO_MOD_VERSION=$(grep -E "^go [0-9.]+" go.mod | awk '{print $2}')
 if [[ "$GO_MOD_VERSION" != "$GO_VERSION_EXPECTED" ]]; then
     echo -e "${RED}[Architect Error]${NC} go.mod specifies Go $GO_MOD_VERSION, but project standard is $GO_VERSION_EXPECTED."

@@ -10,15 +10,21 @@ import (
 
 // mockCache implements Cache in memory for tests.
 type mockCache struct {
-	store map[string]Secret
+	store       map[string]Secret
+	expiredKeys map[string]bool // Keys marked as expired for testing
 }
 
 func newMockCache() *mockCache {
-	return &mockCache{store: make(map[string]Secret)}
+	return &mockCache{
+		store:       make(map[string]Secret),
+		expiredKeys: make(map[string]bool),
+	}
 }
 
 func (c *mockCache) Set(key string, secret Secret, ttl time.Duration) error {
 	c.store[key] = secret
+	// Clear expired flag when setting a fresh value
+	delete(c.expiredKeys, key)
 	return nil
 }
 
@@ -31,11 +37,16 @@ func (c *mockCache) Get(key string) (*Secret, error) {
 
 func (c *mockCache) Delete(key string) error {
 	delete(c.store, key)
+	delete(c.expiredKeys, key)
 	return nil
 }
 
 func (c *mockCache) IsExpired(key string, ttl time.Duration) bool {
-	// In-memory cache never expires for test simplicity.
+	// Check if this key is marked as expired for testing
+	if c.expiredKeys[key] {
+		return true
+	}
+	// Otherwise, in-memory cache never expires for test simplicity
 	return false
 }
 
@@ -45,15 +56,11 @@ func TestSetGetAndList(t *testing.T) {
 
 	key := "testkey"
 	value := []byte("secretvalue")
-	// Ensure we zero the secret value after the test to avoid lingering plaintext
-	defer func() {
-		for i := range value {
-			value[i] = 0
-		}
-	}()
 	expires := time.Now().Add(1 * time.Hour)
 
-	// Set secret
+	// Set secret (note: Set zeros the input value for security, so we compare against a copy)
+	valueCopy := make([]byte, len(value))
+	copy(valueCopy, value)
 	if err := ls.Set(key, value, expires); err != nil {
 		t.Fatalf("Set failed: %v", err)
 	}
@@ -68,9 +75,12 @@ func TestSetGetAndList(t *testing.T) {
 		for i := range got {
 			got[i] = 0
 		}
+		for i := range valueCopy {
+			valueCopy[i] = 0
+		}
 	}()
-	if !bytes.Equal(got, value) {
-		t.Fatalf("Get returned %s, want %s", string(got), string(value))
+	if !bytes.Equal(got, valueCopy) {
+		t.Fatalf("Get returned %s, want %s", string(got), string(valueCopy))
 	}
 
 	// List secrets

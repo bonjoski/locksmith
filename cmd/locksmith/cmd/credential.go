@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 	"github.com/spf13/cobra"
@@ -18,11 +17,9 @@ var credentialCmd = &cobra.Command{
 	Long:  "Acts as a Git credential helper by reading key=value pairs from stdin and returning matching credentials on stdout.",
 	Args:  cobra.ExactArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
-		// Enable OnlyCached mode ONLY for 'get' to avoid blocking biometric prompts on cache miss.
-		// For 'store', we need to allow keychain access to save the credential.
-		if ls != nil && len(args) > 0 && strings.ToLower(args[0]) == "get" {
-			ls.Options.OnlyCached = true
-		}
+		// No special OnlyCached mode needed - cache expiry will trigger biometric refresh
+		// which is acceptable UX (once per hour). This prevents the bug where expired cache
+		// caused git to prompt for password re-entry when credential was already in keychain.
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		action := strings.ToLower(args[0])
@@ -192,15 +189,20 @@ func handleStore(cmd *cobra.Command, inputs map[string]string) error {
 		key = fmt.Sprintf("git/%s", host)
 	}
 
-	// Check if credential already exists with the same value
-	// If it does, skip keychain write (no biometric prompt) and just refresh cache
+	// Check if credential already exists
 	existing, _ := ls.GetWithMetadata(key)
-	if existing != nil && string(existing.Value) == password {
+	if existing == nil {
+		// Credential does not exist in locksmith - error instead of storing
+		// This enforces explicit credential management via 'locksmith add --git'
+		return fmt.Errorf("credential for '%s' not found in locksmith. Please add it explicitly:\n  locksmith add %s <username> --git", host, host)
+	}
+
+	if string(existing.Value) == password {
 		// Credential unchanged - just refresh cache without keychain write
 		secret := locksmith.Secret{
 			Value:            []byte(password),
-			CreatedAt:        time.Now(),
-			ExpiresAt:        time.Time{},
+			CreatedAt:        existing.CreatedAt,
+			ExpiresAt:        existing.ExpiresAt,
 			SecretType:       locksmith.SecretTypePassword,
 			OwnerApplication: "git",
 			SourceURL:        fmt.Sprintf("%s://%s", protocol, host),
@@ -218,6 +220,7 @@ func handleStore(cmd *cobra.Command, inputs map[string]string) error {
 		return ls.Cache.Set(key, secret, locksmith.DefaultCacheTTL)
 	}
 
+	// Credential exists but value changed - update it
 	metadata := map[string]string{
 		"protocol": protocol,
 		"host":     host,
@@ -232,7 +235,7 @@ func handleStore(cmd *cobra.Command, inputs map[string]string) error {
 	err := ls.SetWithContext(
 		key,
 		[]byte(password),
-		time.Time{}, // no expiration
+		existing.ExpiresAt, // preserve existing expiration
 		globalBiometricReqs,
 		locksmith.SecretTypePassword,
 		"git",
@@ -240,7 +243,7 @@ func handleStore(cmd *cobra.Command, inputs map[string]string) error {
 		metadata,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to store credential: %w", err)
+		return fmt.Errorf("failed to update credential: %w", err)
 	}
 
 	return nil

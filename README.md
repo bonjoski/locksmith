@@ -57,13 +57,13 @@ When importing as a Go module, your build profile determines which compile-time 
 
 ### macOS Prerequisites
 - macOS with Touch ID or Apple Watch support.
-- Go 1.25.4.
+- Go 1.26.0.
 - Xcode Command Line Tools (`xcode-select --install`).
 - An Apple Developer ID is recommended for persistent trust, but ad-hoc signing (`-`) is supported for local development.
 
 ### Windows Prerequisites
 - Windows 10/11 with Windows Hello support.
-- Go 1.25.4.
+- Go 1.26.0.
 
 ### Build from Source
 ```bash

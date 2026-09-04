@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
-- fix: correct actions/download-artifact SHA in release workflow and bump version to 2.7.7
-- fix: correct actions/download-artifact SHA in release workflow and bump version to 2.7.6
-- fix: correct actions/download-artifact commit hash in release workflow and bump version to 2.7.5
-- fix: resolve upload-artifact GHA resolution error and bump version to 2.7.4
-- fix: resolve upload-artifact GHA resolution error and bump version to 2.7.3
+- fix: skip keychain write when git credential unchanged
+- chore: update Go toolchain to 1.26.6 and golang.org/x/crypto to v0.55.0
+- chore: bump version to 2.7.12
+- fix: only enable OnlyCached for credential get, not store
+- chore: bump version to 2.7.11
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

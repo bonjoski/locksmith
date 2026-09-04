@@ -2,7 +2,7 @@
 
 ## Language & Tools
 
-- **Language**: Go (v1.25.4)
+- **Language**: Go (v1.26.0)
 - **Framework**: `cobra` (CLI)
 - **Platform Support**: macOS, Windows, Linux
 - **Security Validation**: `golangci-lint`, `govulncheck`, `gosec`, `gitleaks`, `semgrep`.

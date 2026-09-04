@@ -212,12 +212,12 @@ func TestCredentialCommand_SetsOnlyCached(t *testing.T) {
 		t.Fatalf("Failed to execute credential get: %v", err)
 	}
 
-	// Verify OnlyCached was set to true by PreRun hook for 'get' action
-	if !ls.Options.OnlyCached {
-		t.Error("Expected credential GET command PreRun to set OnlyCached=true")
+	// Verify OnlyCached is NOT set (we removed this feature)
+	if ls.Options.OnlyCached {
+		t.Error("Expected OnlyCached to remain false (feature removed)")
 	}
 
-	// Verify it returned from cache (which proves OnlyCached worked)
+	// Verify it returned from cache
 	outStr := outBuf.String()
 	if !strings.Contains(outStr, "password=cached-token") {
 		t.Errorf("Expected credential to return from cache, got: %q", outStr)
@@ -251,9 +251,9 @@ func TestCredentialGet_CacheMiss_ReturnsEmpty(t *testing.T) {
 	outBuf, _ := setupTest()
 
 	// Don't seed cache - this simulates a cache miss
-	// The backend will be called only if OnlyCached=false
+	// Without OnlyCached, cache miss falls back to keychain backend
 
-	// Execute credential get for a key that doesn't exist in cache
+	// Execute credential get for a key that doesn't exist in cache or backend
 	stdin := "protocol=https\nhost=gitlab.com\nusername=nonexistent\n\n"
 	rootCmd.SetIn(strings.NewReader(stdin))
 	rootCmd.SetOut(outBuf)
@@ -268,23 +268,23 @@ func TestCredentialGet_CacheMiss_ReturnsEmpty(t *testing.T) {
 		t.Fatalf("Failed to execute credential get: %v", err)
 	}
 
-	// Verify OnlyCached was set
-	if !ls.Options.OnlyCached {
-		t.Error("Expected OnlyCached to be true after credential PreRun")
+	// Verify OnlyCached was NOT set (feature removed)
+	if ls.Options.OnlyCached {
+		t.Error("Expected OnlyCached to remain false (feature removed)")
 	}
 
-	// Verify backend was NOT called (OnlyCached prevents backend fallback)
-	if mb.getCalls != initialGetCalls {
-		t.Errorf("Expected backend Get to NOT be called with OnlyCached=true, but getCalls went from %d to %d",
-			initialGetCalls, mb.getCalls)
+	// Verify backend WAS called (cache miss triggers backend fallback)
+	if mb.getCalls <= initialGetCalls {
+		t.Errorf("Expected backend Get to be called on cache miss, but getCalls stayed at %d",
+			mb.getCalls)
 	}
 
 	outStr := outBuf.String()
-	// Should return empty (no output) because OnlyCached=true and cache miss
+	// Should return empty (no output) because key doesn't exist in backend either
 	if strings.Contains(outStr, "password=") {
-		t.Errorf("Expected empty output on cache miss with OnlyCached=true, got: %q", outStr)
+		t.Errorf("Expected empty output when credential doesn't exist, got: %q", outStr)
 	}
 	if strings.Contains(outStr, "username=") {
-		t.Errorf("Expected empty output on cache miss with OnlyCached=true, got: %q", outStr)
+		t.Errorf("Expected empty output when credential doesn't exist, got: %q", outStr)
 	}
 }

@@ -16,6 +16,7 @@ var secretType string
 var ownerApplication string
 var sourceURL string
 var addGit bool
+var expiresIn string
 
 const defaultAddTTL = 30 * 24 * time.Hour
 
@@ -105,11 +106,23 @@ var addCmd = &cobra.Command{
 				metadata["username"] = username
 			}
 
-			// Use zero expiration (time.Time{}) for long-lived credentials
+			// Determine expiration: custom --expires-in or default 30 days
+			var expiresAt time.Time
+			if expiresIn != "" {
+				duration, err := locksmith.ParseDuration(expiresIn)
+				if err != nil {
+					return fmt.Errorf("invalid --expires-in value: %w", err)
+				}
+				expiresAt = time.Now().Add(duration)
+			} else {
+				// Default: 30 days for git credentials
+				expiresAt = time.Now().Add(defaultAddTTL)
+			}
+
 			if err := ls.SetWithContext(
 				key,
 				secretBytes,
-				time.Time{}, // no expiration
+				expiresAt,
 				globalBiometricReqs,
 				locksmith.SecretTypePassword,
 				"git",
@@ -119,7 +132,7 @@ var addCmd = &cobra.Command{
 				return fmt.Errorf("error saving git secret: %w", err)
 			}
 
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Successfully saved git credential '%s'\n", key)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Successfully saved git credential '%s' (expires at %v)\n", key, expiresAt.Format(time.RFC822))
 			return nil
 		}
 
@@ -203,7 +216,15 @@ var addCmd = &cobra.Command{
 			return fmt.Errorf("secret cannot be empty")
 		}
 
+		// Determine expiration: custom --expires-in or default 30 days
 		expiresAt := time.Now().Add(defaultAddTTL)
+		if expiresIn != "" {
+			duration, err := locksmith.ParseDuration(expiresIn)
+			if err != nil {
+				return fmt.Errorf("invalid --expires-in value: %w", err)
+			}
+			expiresAt = time.Now().Add(duration)
+		}
 		typedSecretType := locksmith.ParseSecretType(secretType)
 		// Use SetWithContext to persist secret metadata used for rotator auto-loading.
 		if err := ls.SetWithContext(
@@ -235,4 +256,5 @@ func init() {
 	addCmd.Flags().StringVar(&ownerApplication, "owner-app", "", "Optional owner application/provider identifier (for example: github, gitlab)")
 	addCmd.Flags().StringVar(&sourceURL, "source-url", "", "Optional source endpoint URL used by rotator selection")
 	addCmd.Flags().BoolVar(&addGit, "git", false, "Store a Git credential (format: add <host> <username> --git)")
+	addCmd.Flags().StringVar(&expiresIn, "expires-in", "", "Expiration duration (e.g., 30d, 1y, 90d). Defaults to 30 days if not specified.")
 }
