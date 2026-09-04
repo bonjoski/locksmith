@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // NotificationConfig holds notification-related settings
