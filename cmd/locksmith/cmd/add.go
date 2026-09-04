@@ -107,7 +107,7 @@ var addCmd = &cobra.Command{
 			}
 
 			// Determine expiration: custom --expires-in or default 30 days
-			expiresAt := time.Time{}
+			var expiresAt time.Time
 			if expiresIn != "" {
 				duration, err := locksmith.ParseDuration(expiresIn)
 				if err != nil {
