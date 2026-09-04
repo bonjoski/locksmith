@@ -92,7 +92,7 @@ Windows support uses the native **Windows Credential Manager** and **Windows Hel
 ### Prerequisites
 - Windows 10 or 11.
 - A functional Windows Hello method (PIN, Fingerprint, or Face).
-- Go 1.25.4.
+- Go 1.26.0.
 
 ### Building on Windows
 ```powershell
