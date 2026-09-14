@@ -7,7 +7,7 @@ toolchain go1.26.6
 require (
 	github.com/danieljoos/wincred v1.2.3
 	github.com/julian-bruyers/winhello-go v1.1.0
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/crypto v0.56.0
