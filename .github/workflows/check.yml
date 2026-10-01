@@ -35,9 +35,10 @@ jobs:
 
       - name: Validate Airlock Policy & Sandbox Readiness
         run: |
-          go install github.com/bonjoski/airlock/cmd/airlock@latest
-          airlock doctor
-          airlock config validate --config ./airlock.yaml
+          curl -fsSL https://raw.githubusercontent.com/bonjoski/airlock/main/install.sh | sh
+          echo "$HOME/.airlock/bin" >> "$GITHUB_PATH"
+          "$HOME/.airlock/bin/airlock" doctor
+          "$HOME/.airlock/bin/airlock" config validate --config ./airlock.yaml
 
       - name: Run Argus Dependency Provenance Scan
         run: |
