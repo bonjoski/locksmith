@@ -4,20 +4,24 @@
 package locksmith
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"os/exec"
 	"strings"
 )
 
-func deriveMasterKey() ([]byte, error) {
+func getMachineID() (string, error) {
 	// Get Hardware UUID via ioreg
 	// ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/ {print $(NF-1)}'
 	cmd := exec.Command("ioreg", "-d2", "-c", "IOPlatformExpertDevice")
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get hardware info: %w", err)
+		return "", fmt.Errorf("failed to get hardware info: %w", err)
 	}
+	defer func() {
+		for i := range out {
+			out[i] = 0
+		}
+	}()
 
 	// Simple parsing for IOPlatformUUID
 	lines := strings.Split(string(out), "\n")
@@ -33,10 +37,8 @@ func deriveMasterKey() ([]byte, error) {
 	}
 
 	if uuid == "" {
-		return nil, fmt.Errorf("failed to extract IOPlatformUUID")
+		return "", fmt.Errorf("failed to extract IOPlatformUUID")
 	}
 
-	// Hash the UUID to get a 32-byte key
-	hash := sha256.Sum256([]byte(uuid))
-	return hash[:], nil
+	return uuid, nil
 }

@@ -1,0 +1,61 @@
+# Airlock Policy — Locksmith Workspace
+version: "1"
+
+# Confinement strictness mode: strict (fail-closed), permissive (prompt on unknown), audit (log-only)
+mode: strict
+
+network:
+  # Set to true for complete offline airgap isolation
+  airgap: false
+  # Permitted domain endpoints
+  allow_domains:
+    - "proxy.golang.org"
+    - "sum.golang.org"
+    - "github.com"
+    - "objects.githubusercontent.com"
+    - "raw.githubusercontent.com"
+    - "api.github.com"
+    - "vuln.go.dev"
+    - "semgrep.dev"
+  # Action for unrecognized domain requests: prompt | nxdomain | refused
+  unknown_domain_action: prompt
+
+env:
+  # Additional environment variables passed into the sandbox
+  allow:
+    - "GOPROXY"
+    - "GOSUMDB"
+    - "GOPRIVATE"
+    - "GOPATH"
+    - "GOCACHE"
+    - "SSL_CERT_FILE"
+  # Explicitly scrubbed sensitive variables
+  deny:
+    - "DATABASE_URL"
+    - "AWS_SECRET_ACCESS_KEY"
+    - "GITHUB_TOKEN"
+    - "SIGNING_KEY"
+
+filesystem:
+  # Additional read-only host paths required by tooling
+  allow_read:
+    - "/etc/ssl"
+    - "/private/etc/ssl"
+  # Additional scratch/temp writable directories
+  allow_write:
+    - "bin"
+  # Extra secret patterns masked inside workspace root
+  deny_read:
+    - "~/.ssh"
+    - "~/.aws"
+
+vetting:
+  # Run Argus static analysis heuristics before sandboxed execution
+  enable: true
+  strict: false
+  ignored_rules: []
+
+interactive:
+  # Prompt user on terminal for runtime permission when unknown domain is requested
+  prompt_on_unknown_domain: true
+  prompt_timeout_sec: 15

@@ -8,9 +8,14 @@ Go requires files in the same package to reside in the same directory, so OS-spe
 
 ### Locksmith Package (`pkg/locksmith/`)
 
-- **masterkey_darwin.go** - macOS keychain integration via LocalAuthentication
-- **masterkey_linux.go** - Linux secret service integration
-- **masterkey_windows.go** - Windows credential manager integration
+- **masterkey.go** - Common HKDF key derivation combining hardware ID and OS user identity
+- **masterkey_darwin.go** - macOS machine identifier lookup via IOPlatformUUID
+- **masterkey_linux.go** - Linux machine identifier lookup via machine-id
+- **masterkey_windows.go** - Windows machine identifier lookup via MachineGuid
+- **masterkey_other.go** - Fallback machine identifier for other platforms
+- **user_identity.go** - Cross-platform OS user identity resolution
+- **user_identity_unix.go** - Unix-specific user identity helpers (UID)
+- **user_identity_windows.go** - Windows-specific user identity helpers (SID/Account)
 - **run_signals_unix.go** - Signal handling for Unix-like systems
 - **run_signals_windows.go** - Signal handling for Windows
 

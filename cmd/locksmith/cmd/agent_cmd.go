@@ -34,8 +34,8 @@ var agentStartCmd = &cobra.Command{
 		}
 
 		// Delete existing socket if it exists
-		if _, err := os.Stat(socketPath); err == nil {
-			_ = os.Remove(socketPath)
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove existing socket %s: %w", socketPath, err)
 		}
 
 		listener, err := net.Listen("unix", socketPath)

@@ -93,13 +93,16 @@ func New() (*Locksmith, error) {
 }
 
 func NewWithOptions(opts Options) (*Locksmith, error) {
-	// 1. Derive Master Key from platform-specific logic
+	// 1. Derive user-bound master key (defense-in-depth: combines machine hardware ID and OS user identity)
 	masterKey, err := deriveMasterKey()
 	if err != nil {
 		return nil, fmt.Errorf("failed to derive master key: %w", err)
 	}
 
-	cache, err := NewDiskCache(masterKey)
+	// 2. Derive legacy master key for transparent auto-migration of existing cache entries
+	legacyKey, _ := deriveLegacyMasterKey()
+
+	cache, err := NewDiskCacheWithLegacy(masterKey, legacyKey)
 	if err != nil {
 		return nil, err
 	}

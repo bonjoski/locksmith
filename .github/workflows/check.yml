@@ -33,6 +33,16 @@ jobs:
           chmod +x scripts/dev/validate-workflows.sh
           ./scripts/dev/validate-workflows.sh
 
+      - name: Validate Airlock Policy & Sandbox Readiness
+        run: |
+          go install github.com/bonjoski/airlock/cmd/airlock@latest
+          airlock doctor
+          airlock config validate --config ./airlock.yaml
+
+      - name: Run Argus Dependency Provenance Scan
+        run: |
+          make argus-scan
+
       - name: Run Gitleaks
         run: |
           make gitleaks
