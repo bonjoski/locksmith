@@ -16,17 +16,23 @@ FORMULA_FILE="contrib/homebrew/locksmith.rb"
 
 echo "Updating Homebrew formula to version $VERSION..."
 
-# Download the release checksums
-TMP_DIR=$(mktemp -d)
-trap "rm -rf $TMP_DIR" EXIT
+# Check for complete local checksums file first (from build step in release workflow)
+if [ -f "bin/checksums.txt" ] && grep -q "summon-locksmith-darwin-arm64" "bin/checksums.txt"; then
+    echo "Using local bin/checksums.txt..."
+    CHECKSUMS_FILE="bin/checksums.txt"
+else
+    # Download the release checksums
+    TMP_DIR=$(mktemp -d)
+    trap "rm -rf $TMP_DIR" EXIT
 
-echo "Fetching checksums from GitHub..."
-gh release download "v$VERSION" --pattern "checksums.txt" --dir "$TMP_DIR" --repo bonjoski/locksmith || {
-    echo "ERROR: Failed to download checksums for v$VERSION"
-    exit 1
-}
+    echo "Fetching checksums from GitHub..."
+    gh release download "v$VERSION" --pattern "checksums.txt" --dir "$TMP_DIR" --repo bonjoski/locksmith || {
+        echo "ERROR: Failed to download checksums for v$VERSION"
+        exit 1
+    }
 
-CHECKSUMS_FILE="$TMP_DIR/checksums.txt"
+    CHECKSUMS_FILE="$TMP_DIR/checksums.txt"
+fi
 
 # Extract exact checksums we need (avoid partial filename matches)
 LOCKSMITH_ARM64_SHA=$(awk '$2=="locksmith-darwin-arm64"{print $1; exit}' "$CHECKSUMS_FILE")

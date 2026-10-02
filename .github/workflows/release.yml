@@ -151,6 +151,8 @@ jobs:
           generate_release_notes: true
 
       - name: Update Homebrew Formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x scripts/dev/update-homebrew-formula.sh
           ./scripts/dev/update-homebrew-formula.sh "${GITHUB_REF_NAME}"

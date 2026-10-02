@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore: bump version to 2.7.15
 - feat(pipeline): integrate Airlock sandbox and Argus provenance scanning (#99)
 - fix: git credential cache expiry and security improvements (#88)
 - fix: skip keychain write when git credential unchanged
 - chore: update Go toolchain to 1.26.6 and golang.org/x/crypto to v0.55.0
-- chore: bump version to 2.7.12
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
