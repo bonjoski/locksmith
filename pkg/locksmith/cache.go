@@ -152,9 +152,7 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 					newEncrypted[i] = 0
 				}
 			}()
-			if writeErr := os.WriteFile(path, newEncrypted, 0600); writeErr != nil { // #nosec G306
-				// Non-fatal: cached item was successfully read, re-encryption can retry next time
-			}
+			_ = os.WriteFile(path, newEncrypted, 0600) // #nosec G306 - non-fatal cache auto-migration
 		}
 	}
 

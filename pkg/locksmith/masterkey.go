@@ -12,13 +12,6 @@ const (
 	masterKeySalt = "sh.locksmith.masterkey.v2"
 )
 
-// zeroKey zeroes out a sensitive key slice in memory after use.
-func zeroKey(k []byte) {
-	for i := range k {
-		k[i] = 0
-	}
-}
-
 // deriveMasterKey derives the primary 32-byte AES-GCM encryption key bound to
 // both the machine hardware ID and the current OS user identity.
 func deriveMasterKey() ([]byte, error) {
@@ -44,6 +37,11 @@ func deriveLegacyMasterKey() ([]byte, error) {
 	}
 
 	hash := sha256.Sum256([]byte(machineID))
+	defer func() {
+		for i := range hash {
+			hash[i] = 0
+		}
+	}()
 	key := make([]byte, 32)
 	copy(key, hash[:])
 	return key, nil
