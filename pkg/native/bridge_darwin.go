@@ -10,7 +10,7 @@ package native
 */
 import "C"
 import (
-	"fmt"
+	"errors"
 	"unsafe"
 )
 
@@ -26,7 +26,7 @@ func Set(service, account string, data []byte, requireBiometrics bool) error {
 	defer C.free_keychain_result(res)
 
 	if res.error != nil {
-		return fmt.Errorf("%s", C.GoString(res.error))
+		return errors.New(C.GoString(res.error))
 	}
 	return nil
 }
@@ -43,7 +43,7 @@ func Get(service, account string, useBiometrics bool, prompt string) ([]byte, er
 	defer C.free_keychain_result(res)
 
 	if res.error != nil {
-		return nil, fmt.Errorf("%s", C.GoString(res.error))
+		return nil, errors.New(C.GoString(res.error))
 	}
 
 	return C.GoBytes(unsafe.Pointer(res.data), C.int(res.length)), nil
@@ -61,7 +61,7 @@ func Delete(service, account string, useBiometrics bool, prompt string) error {
 	defer C.free_keychain_result(res)
 
 	if res.error != nil {
-		return fmt.Errorf("%s", C.GoString(res.error))
+		return errors.New(C.GoString(res.error))
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ func List(service string, useBiometrics bool, prompt string) ([]string, error) {
 	defer C.free_keychain_list_result(res)
 
 	if res.error != nil {
-		return nil, fmt.Errorf("%s", C.GoString(res.error))
+		return nil, errors.New(C.GoString(res.error))
 	}
 
 	count := int(res.count)

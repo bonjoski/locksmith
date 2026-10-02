@@ -25,7 +25,7 @@ GO_VERSION=$(shell go version | awk '{print $$3}' | sed 's/go//')
 GO_MAJOR_MINOR=$(shell echo $(GO_VERSION) | cut -d. -f1-2)
 RECOMMENDED_GO_VERSION=1.26
 
-.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag open-pr verify-actions-shas
+.PHONY: all build sign clean test lint govulncheck govulncheck-ci gosec gitleaks check fmt tidy vet help updates release-tag open-pr verify-actions-shas check-sandboxed test-sandboxed build-sandboxed argus-scan
 
 # Default target
 all: build sign
@@ -237,12 +237,31 @@ uninstall-summon: ## Uninstall Summon provider
 	@rm -f /usr/local/lib/summon/locksmith
 	@echo "✓ Summon provider uninstalled"
 
+## Sandboxed targets (Airlock zero-trust sandbox)
+check-sandboxed: ## Run all quality and security checks inside Airlock sandbox
+	@echo "Running sandboxed quality checks with Airlock..."
+	@airlock run -- make check
+
+test-sandboxed: ## Run unit tests inside Airlock sandbox
+	@echo "Running sandboxed tests with Airlock..."
+	@airlock run -- make test
+
+build-sandboxed: ## Compile binaries inside Airlock sandbox
+	@echo "Running sandboxed build with Airlock..."
+	@airlock run -- make build
+
 ## Verification targets
 verify-actions-shas: ## Verify that pinned GitHub Actions commit SHAs exist on GitHub
 	@echo "Running GitHub Actions commit SHA validation..."
 	@bash ./scripts/security/verify-workflow-actions.sh
 
-check: fmt tidy verify-deps vet lint govulncheck-ci gosec gitleaks semgrep complexity entropy verify-actions-shas ## Run all quality and security checks
+check: fmt tidy verify-deps argus-scan vet lint govulncheck-ci gosec gitleaks semgrep complexity entropy verify-actions-shas ## Run all quality and security checks
+
+argus-scan: ## Scan dependencies for hallucinated or slopsquatted packages using Argus
+	@echo "Checking/Installing Argus..."
+	@bash ./scripts/dev/install-argus.sh
+	@echo "Running Argus dependency provenance scan..."
+	@$(GOBIN)/argus scan go.sum
 
 test: ## Run unit tests
 	@echo "Running tests..."

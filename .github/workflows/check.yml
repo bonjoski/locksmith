@@ -33,6 +33,17 @@ jobs:
           chmod +x scripts/dev/validate-workflows.sh
           ./scripts/dev/validate-workflows.sh
 
+      - name: Validate Airlock Policy & Sandbox Readiness
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/bonjoski/airlock/main/install.sh | sh
+          echo "$HOME/.airlock/bin" >> "$GITHUB_PATH"
+          "$HOME/.airlock/bin/airlock" doctor
+          "$HOME/.airlock/bin/airlock" config validate --config ./airlock.yaml
+
+      - name: Run Argus Dependency Provenance Scan
+        run: |
+          make argus-scan
+
       - name: Run Gitleaks
         run: |
           make gitleaks

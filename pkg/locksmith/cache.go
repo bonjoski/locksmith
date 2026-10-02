@@ -14,13 +14,21 @@ import (
 )
 
 type DiskCache struct {
-	Dir       string
-	MasterKey []byte
+	Dir             string
+	MasterKey       []byte
+	LegacyMasterKey []byte
 }
 
 func NewDiskCache(masterKey []byte) (*DiskCache, error) {
+	return NewDiskCacheWithLegacy(masterKey, nil)
+}
+
+func NewDiskCacheWithLegacy(masterKey []byte, legacyMasterKey []byte) (*DiskCache, error) {
 	if len(masterKey) != 32 {
 		return nil, fmt.Errorf("invalid master key length: expected 32 bytes, got %d", len(masterKey))
+	}
+	if len(legacyMasterKey) > 0 && len(legacyMasterKey) != 32 {
+		return nil, fmt.Errorf("invalid legacy master key length: expected 32 bytes, got %d", len(legacyMasterKey))
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -30,7 +38,7 @@ func NewDiskCache(masterKey []byte) (*DiskCache, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	return &DiskCache{Dir: dir, MasterKey: masterKey}, nil
+	return &DiskCache{Dir: dir, MasterKey: masterKey, LegacyMasterKey: legacyMasterKey}, nil
 }
 
 func (c *DiskCache) validatePath(key string) (string, error) {
@@ -104,8 +112,20 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 	}()
 
 	data, err := c.decrypt(encrypted)
+	var fromLegacy bool
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt cache item: %w", err)
+		// If decryption with primary master key fails, attempt legacy key if available
+		if len(c.LegacyMasterKey) == 32 {
+			legacyData, legacyErr := c.decryptWithKey(encrypted, c.LegacyMasterKey)
+			if legacyErr == nil {
+				data = legacyData
+				fromLegacy = true
+			} else {
+				return nil, fmt.Errorf("failed to decrypt cache item: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to decrypt cache item: %w", err)
+		}
 	}
 	defer func() {
 		for i := range data {
@@ -123,11 +143,28 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 		return nil, err
 	}
 
+	// Transparent auto-migration: if decrypted with legacy key, re-encrypt with user-bound key
+	if fromLegacy {
+		newEncrypted, encErr := c.encrypt(data)
+		if encErr == nil {
+			defer func() {
+				for i := range newEncrypted {
+					newEncrypted[i] = 0
+				}
+			}()
+			_ = os.WriteFile(path, newEncrypted, 0600) // #nosec G306 - non-fatal cache auto-migration
+		}
+	}
+
 	return &secret, nil
 }
 
 func (c *DiskCache) encrypt(data []byte) ([]byte, error) {
-	block, err := aes.NewCipher(c.MasterKey)
+	return c.encryptWithKey(data, c.MasterKey)
+}
+
+func (c *DiskCache) encryptWithKey(data []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +183,11 @@ func (c *DiskCache) encrypt(data []byte) ([]byte, error) {
 }
 
 func (c *DiskCache) decrypt(data []byte) ([]byte, error) {
-	block, err := aes.NewCipher(c.MasterKey)
+	return c.decryptWithKey(data, c.MasterKey)
+}
+
+func (c *DiskCache) decryptWithKey(data []byte, key []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
