@@ -9,16 +9,16 @@ class Locksmith < Formula
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/bonjoski/locksmith/releases/download/v2.8.0/locksmith-darwin-arm64"
-      sha256 "2f629030157cb8fb1f60fa63c052b0da2422975c0ead69d19c29fdf13b71a806"
+      sha256 "e6eddee4567514b0952be3d0e7c4372bf6241b83d8b3fd8190fecc2bb828fa15"
 
       resource "summon-arm64" do
         url "https://github.com/bonjoski/locksmith/releases/download/v2.8.0/summon-locksmith-darwin-arm64"
-        sha256 "7c2647b6331fcdc75cab55a39d6a4e5066e81c2395ac259d7c1ff11c9419f597"
+        sha256 "9e6f1934e1c73a0c2f2b76f6b1d4fb6de01669cfeb26b29bbe544a30fd02adf4"
       end
 
       resource "git-credential-arm64" do
         url "https://github.com/bonjoski/locksmith/releases/download/v2.8.0/git-credential-locksmith-darwin-arm64"
-        sha256 "b107bf7013d6c9970ad08e862423b56d519d134a0bec1e7a569175269994175b"
+        sha256 "5dfea3f56acd1bea336f0245c03405fafaf88c8d196527f9358272b905785f0e"
       end
 
       def install
@@ -32,16 +32,16 @@ class Locksmith < Formula
       end
     else
       url "https://github.com/bonjoski/locksmith/releases/download/v2.8.0/locksmith-darwin-amd64"
-      sha256 "502e5d574abe397d48ae8f329fbc2fea5df16776cc9e3e93e734c88af284e87d"
+      sha256 "2fc82ab0eea5e95ace72baa217cf797659b54aa51a57f247c437e0badcfd8275"
 
       resource "summon-amd64" do
         url "https://github.com/bonjoski/locksmith/releases/download/v2.8.0/summon-locksmith-darwin-amd64"
-        sha256 "09bb595f3a7b58ce2e7e2995ed6d5eeaffb3913a080e95fab9498dd6382897e6"
+        sha256 "e588793b9cc2d5049e86be3a4ec2d6fbaf60ddda44bce309df2f789cd5a2409c"
       end
 
       resource "git-credential-amd64" do
         url "https://github.com/bonjoski/locksmith/releases/download/v2.8.0/git-credential-locksmith-darwin-amd64"
-        sha256 "490171a8e6d659dc4f5f9a4270eaa384bee9c19fcd2cffe82a7d9517c18aeede"
+        sha256 "36038fa52420de918d024af0e2525fb6efcff6bf8e65340edea21758ce694b97"
       end
 
       def install
