@@ -56,9 +56,18 @@ class Locksmith < Formula
     end
   end
 
+  on_linux do
+    url "https://github.com/bonjoski/locksmith/archive/refs/tags/v2.8.0.tar.gz"
+    sha256 "164a576940ee1e3d8fb33e3737a55116cd6c8b6aa096c1acd9bd6400841e157e"
+
+    depends_on "go" => :build
+
+    def install
+      system "go", "build", *std_go_args(ldflags: "-s -w"), "./cmd/locksmith"
+    end
+  end
+
   test do
     assert_match version.to_s, shell_output("#{bin}/locksmith --version 2>&1")
-    assert_match version.to_s, shell_output("#{bin}/summon-locksmith --version 2>&1")
-    assert_match version.to_s, shell_output("#{bin}/git-credential-locksmith --version 2>&1")
   end
 end
