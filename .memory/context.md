@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- fix(release): omit passphrase for unencrypted GPG key to prevent preset-passphrase error
 - fix(ci): launch and configure gpg-agent with preset-passphrase in release workflow
 - fix(security): safe expansion of empty vulnerability arrays under set -u
 - fix(ci): pin Go 1.26.9 for golangci-lint export compatibility and zero-CVE stdlib
 - chore(deps): update dependencies, Go version, and workflow specs
-- fix(windows): skip POSIX 0600 socket permission check on Windows
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
