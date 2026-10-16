@@ -72,6 +72,16 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
 
+      - name: Preset GPG Passphrase for Signing Subkey
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          PRESET_BIN=$(find /opt/homebrew/Cellar/gnupg -name gpg-preset-passphrase | head -1)
+          if [ -n "$PRESET_BIN" ] && [ -n "$GPG_PASSPHRASE" ]; then
+            "$PRESET_BIN" --preset --passphrase "$GPG_PASSPHRASE" AD1D8BE8792B5E21F3791642409FEEACE2DEBB91
+            echo "✓ Passphrase preset for signing subkey AD1D8BE8"
+          fi
+
       - name: Import macOS Certificate
         uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
         with:
