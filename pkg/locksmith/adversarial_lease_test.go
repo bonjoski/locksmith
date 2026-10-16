@@ -89,6 +89,9 @@ func TestAdversarial_SocketPermissionsHardening(t *testing.T) {
 	}
 
 	// Verify permissions: must NOT have group or other read/write permissions
+	if os.Getenv("OS") == "Windows_NT" || os.PathSeparator == '\\' {
+		t.Skip("POSIX file permissions (0600) do not apply on Windows NTFS")
+	}
 	perm := fi.Mode().Perm()
 	if perm&0077 != 0 {
 		t.Fatalf("CRITICAL: Socket permissions too permissive: %v (expected 0600)", perm)
