@@ -58,13 +58,19 @@ extract_vulns_for_section() {
 }
 
 check_disallowed() {
-  local ids=($1)
+  local -a ids=()
+  if [[ -n "${1:-}" ]]; then
+    read -r -a ids <<< "$1"
+  fi
   shift
   local allowlist=("$@")
   local disallowed=()
+  if [[ ${#ids[@]} -eq 0 ]]; then
+    return 0
+  fi
   for id in "${ids[@]}"; do
     local allowed=0
-    for allowed_id in "${allowlist[@]}"; do
+    for allowed_id in ${allowlist[@]+"${allowlist[@]}"}; do
       if [[ "$id" == "$allowed_id" ]]; then
         allowed=1
         break
