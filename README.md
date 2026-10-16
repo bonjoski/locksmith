@@ -30,7 +30,7 @@
 The **preferred method** for installing Locksmith on macOS. This ensures you receive a pre-signed binary that is compatible with macOS security policies:
 
 ```bash
-brew tap bonjoski/locksmith
+brew tap bonjoski/tap
 brew install locksmith
 ```
 
