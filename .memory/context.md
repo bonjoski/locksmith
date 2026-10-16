@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore(release): bump version to v2.8.0
 - feat(lease): add ETX lease manager, daemon server, and peer attestation
 - fix(release): support local checksums in update-homebrew-formula.sh and pass GH_TOKEN
 - chore: bump version to 2.7.15
 - feat(pipeline): integrate Airlock sandbox and Argus provenance scanning (#99)
-- fix: git credential cache expiry and security improvements (#88)
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
