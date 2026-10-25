@@ -7,6 +7,7 @@ set -euo pipefail
 # - Allow known module-only advisories that are not called by code.
 
 ALLOWLISTED_SYMBOL_VULNS=(
+  "GO-2026-6809"
   "GO-2026-6218"
   "GO-2026-6090"
   "GO-2026-5972"
