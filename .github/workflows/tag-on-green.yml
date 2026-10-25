@@ -94,42 +94,33 @@ jobs:
         uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v6.2.0
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
-      - name: Create and push signed tag
+      - name: Preset GPG Passphrase for Signing Subkey
         if: steps.gate.outputs.should_tag == 'true' && steps.tag.outputs.create == 'true'
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
+          PRESET_BIN="$(find /usr/lib -name gpg-preset-passphrase 2>/dev/null | head -1 || which gpg-preset-passphrase || true)"
+          if [ -n "$PRESET_BIN" ] && [ -n "${GPG_PASSPHRASE:-}" ]; then
+            "$PRESET_BIN" --preset --passphrase "$GPG_PASSPHRASE" AD1D8BE8792B5E21F3791642409FEEACE2DEBB91
+            echo "✓ Passphrase preset for signing subkey AD1D8BE8"
+          fi
+
+      - name: Create and push signed tag
+        if: steps.gate.outputs.should_tag == 'true' && steps.tag.outputs.create == 'true'
+        run: |
+          set -euo pipefail
 
           TAG="${{ steps.tag.outputs.tag }}"
-          SIGNING_KEY="$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ {print $5; exit}')"
-          UID_RAW="$(gpg --list-secret-keys --with-colons | awk -F: '/^uid:/ {print $10; exit}')"
-
-          if [[ -z "$SIGNING_KEY" || -z "$UID_RAW" ]]; then
-            echo "Unable to resolve imported GPG key identity"
-            exit 1
-          fi
-
-          USER_NAME="${UID_RAW%% <*}"
-          USER_EMAIL="$(echo "$UID_RAW" | sed -n 's/.*<\(.*\)>.*/\1/p')"
-          if [[ -z "$USER_NAME" || -z "$USER_EMAIL" ]]; then
-            echo "Unable to parse signer identity from GPG UID: $UID_RAW"
-            exit 1
-          fi
+          SIGNING_KEY="7BB5B44244E586B0!"
+          USER_NAME="Bonjo"
+          USER_EMAIL="bonjoski@users.noreply.github.com"
 
           git config user.name "$USER_NAME"
           git config user.email "$USER_EMAIL"
           git config user.signingkey "$SIGNING_KEY"
-
-          # Fallback preset for signing subkeys
-          PRESET_BIN="$(find /usr/lib/gnupg* -name gpg-preset-passphrase 2>/dev/null | head -1 || true)"
-          if [[ -n "$PRESET_BIN" && -n "${GPG_PASSPHRASE:-}" ]]; then
-            for grip in $(gpg --with-colons --with-keygrip -k "$SIGNING_KEY" | awk -F: '/^grp:/ {print $10}'); do
-              "$PRESET_BIN" --preset --passphrase "$GPG_PASSPHRASE" "$grip" 2>/dev/null || true
-            done
-          fi
+          git config gpg.program "gpg"
 
           git tag -s "$TAG" -m "Release $TAG"
           git push origin "$TAG"
