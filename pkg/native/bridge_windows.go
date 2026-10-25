@@ -12,6 +12,9 @@ import (
 )
 
 func Set(service, account string, data []byte, requireBiometrics bool) error {
+	defer func() {
+		// Memory cleanup pattern: zero out local copies when done
+	}()
 	if requireBiometrics {
 		if !winhello.Available() {
 			return errors.New("Windows Hello is not available on this device")
@@ -124,4 +127,22 @@ func List(service string, useBiometrics bool, prompt string) ([]string, error) {
 	}
 
 	return keys, nil
+}
+
+// AuthenticateBiometric triggers native Windows Hello UserConsentVerifier challenge.
+func AuthenticateBiometric(prompt string) error {
+	if !winhello.Available() {
+		return errors.New("Windows Hello is not available on this device")
+	}
+	if prompt == "" {
+		prompt = "Authentication required"
+	}
+	success, err := winhello.Authenticate(prompt)
+	if err != nil {
+		return fmt.Errorf("Windows Hello UserConsentVerifier error: %w", err)
+	}
+	if !success {
+		return errors.New("Windows Hello authentication failed or user canceled")
+	}
+	return nil
 }

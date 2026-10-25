@@ -22,9 +22,9 @@ func DefaultSocketPath() string {
 	}
 	home, err := os.UserHomeDir()
 	if err == nil && home != "" {
-		return filepath.Join(home, ".locksmith", "locksmith.sock")
+		return filepath.Join(home, ".locksmith", "locksmithd.sock")
 	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("locksmith-%d.sock", os.Getuid()))
+	return filepath.Join(os.TempDir(), fmt.Sprintf("locksmithd-%d.sock", os.Getuid()))
 }
 
 // DaemonServer manages the local IPC socket listener and routes incoming
@@ -77,11 +77,27 @@ func (s *DaemonServer) ListenAndServe(ctx context.Context) error {
 	// Restrict permissions to owner-only (0600)
 	_ = os.Chmod(s.socketPath, 0600)
 
+	// Maintain bidirectional compatibility between locksmithd.sock and locksmith.sock
+	var compatSymlink string
+	base := filepath.Base(s.socketPath)
+	if base == "locksmithd.sock" {
+		compatSymlink = filepath.Join(dir, "locksmith.sock")
+	} else if base == "locksmith.sock" {
+		compatSymlink = filepath.Join(dir, "locksmithd.sock")
+	}
+	if compatSymlink != "" {
+		_ = os.Remove(compatSymlink)
+		_ = os.Symlink(base, compatSymlink)
+	}
+
 	s.mu.Lock()
 	s.listener = l
 	s.mu.Unlock()
 
 	defer func() {
+		if compatSymlink != "" {
+			_ = os.Remove(compatSymlink)
+		}
 		_ = l.Close()
 		_ = os.Remove(s.socketPath)
 	}()

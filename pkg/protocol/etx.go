@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -48,6 +49,38 @@ type LeaseRequest struct {
 	MaxUses          int           `json:"max_uses"`
 	SessionTicket    string        `json:"session_ticket,omitempty"`
 	TargetCommand    string        `json:"target_command,omitempty"`
+	SpiffeID         string        `json:"spiffe_id,omitempty"`
+}
+
+// ValidateSpiffeID validates standard SPIFFE workload identity URI format.
+// Spec: spiffe://<trust-domain>/<workload-path>
+func ValidateSpiffeID(spiffeID string) error {
+	if strings.TrimSpace(spiffeID) == "" {
+		return errors.New("spiffe ID cannot be empty")
+	}
+	u, err := url.Parse(spiffeID)
+	if err != nil {
+		return fmt.Errorf("malformed spiffe URI: %w", err)
+	}
+	if u.Scheme != "spiffe" {
+		return fmt.Errorf("invalid scheme %q, expected 'spiffe'", u.Scheme)
+	}
+	if u.Host == "" {
+		return errors.New("spiffe ID trust domain cannot be empty")
+	}
+	if u.User != nil {
+		return errors.New("spiffe ID cannot contain userinfo")
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("spiffe ID cannot contain query params or fragments")
+	}
+	if u.Path == "" || u.Path == "/" {
+		return errors.New("spiffe ID workload path cannot be empty")
+	}
+	if strings.Contains(u.Path, "/../") || strings.HasSuffix(u.Path, "/..") {
+		return errors.New("spiffe ID path cannot contain path traversal segments")
+	}
+	return nil
 }
 
 // Validate checks the completeness and sanity of a lease request.
@@ -55,12 +88,22 @@ func (r *LeaseRequest) Validate() error {
 	if r.Version != ProtocolVersion {
 		return fmt.Errorf("etx: unsupported protocol version %q, expected %q", r.Version, ProtocolVersion)
 	}
-	if r.ClientPID <= 0 {
-		return errors.New("etx: client_pid must be positive")
+
+	// For headless SPIFFE workloads (Aegisbox microVM / daemon), ClientPID can be 0 or omitted
+	// if a valid SpiffeID is provided.
+	if r.SpiffeID != "" {
+		if err := ValidateSpiffeID(r.SpiffeID); err != nil {
+			return fmt.Errorf("etx: invalid spiffe_id: %w", err)
+		}
+	} else {
+		if r.ClientPID <= 0 {
+			return errors.New("etx: client_pid must be positive")
+		}
+		if r.ProcessStartTime <= 0 {
+			return errors.New("etx: process_start_time must be positive (used for PID recycling protection)")
+		}
 	}
-	if r.ProcessStartTime <= 0 {
-		return errors.New("etx: process_start_time must be positive (used for PID recycling protection)")
-	}
+
 	if strings.TrimSpace(r.SecretName) == "" && r.Action == ActionRequestLease {
 		return errors.New("etx: secret_name cannot be empty")
 	}
@@ -77,6 +120,8 @@ type LeaseResponse struct {
 	SecretValue   []byte      `json:"secret_value,omitempty"`
 	ExpiresAt     time.Time   `json:"expires_at,omitempty"`
 	SessionTicket string      `json:"session_ticket,omitempty"`
+	SpiffeID      string      `json:"spiffe_id,omitempty"`
+	TTLSeconds    int64       `json:"ttl_seconds,omitempty"`
 	Error         string      `json:"error,omitempty"`
 }
 

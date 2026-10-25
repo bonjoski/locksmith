@@ -41,6 +41,14 @@ static char* get_auth_error_message(int code) {
     return strdup([[NSString stringWithFormat:@"Authentication failed (error %d)", code] UTF8String]);
 }
 
+int keychain_biometric_auth(const char *reason) {
+    return perform_biometric_auth(reason);
+}
+
+char *keychain_get_auth_error_message(int code) {
+    return get_auth_error_message(code);
+}
+
 KeychainResult keychain_set(const char *service, const char *account,
                             const char *data, size_t length,
                             bool require_biometrics) {

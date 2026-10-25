@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- feat(homebrew): add on_linux source build block to formula template
 - docs: reference official bonjoski/tap in homebrew installation instructions
 - chore(homebrew): update formula hashes for v2.8.0 release
 - fix(release): preset passphrase directly for signing subkey AD1D8BE8
 - fix(release): add --batch --no-tty --pinentry-mode loopback to gpg signing in Makefile
-- fix(release): omit passphrase for unencrypted GPG key to prevent preset-passphrase error
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

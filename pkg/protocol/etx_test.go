@@ -44,6 +44,35 @@ func TestLeaseRequestValidation(t *testing.T) {
 	if err := invalidReq.Validate(); err == nil {
 		t.Errorf("expected error for missing start time, got nil")
 	}
+
+	// Test valid SPIFFE workload identity request (ClientPID and ProcessStartTime not required)
+	spiffeReq := protocol.LeaseRequest{
+		Version:    protocol.ProtocolVersion,
+		Action:     protocol.ActionRequestLease,
+		SpiffeID:   "spiffe://aegisbox.local/workload/microvm",
+		SecretName: "GITHUB_TOKEN",
+		LeaseTTL:   120 * time.Second,
+	}
+	if err := spiffeReq.Validate(); err != nil {
+		t.Fatalf("expected valid spiffe request, got: %v", err)
+	}
+
+	// Test invalid SPIFFE ID formats
+	badSpiffeReq := spiffeReq
+	badSpiffeReq.SpiffeID = "https://aegisbox.local/microvm"
+	if err := badSpiffeReq.Validate(); err == nil {
+		t.Errorf("expected error for non-spiffe scheme, got nil")
+	}
+
+	badSpiffeReq.SpiffeID = "spiffe:///workload"
+	if err := badSpiffeReq.Validate(); err == nil {
+		t.Errorf("expected error for missing trust domain, got nil")
+	}
+
+	badSpiffeReq.SpiffeID = "spiffe://aegisbox.local"
+	if err := badSpiffeReq.Validate(); err == nil {
+		t.Errorf("expected error for missing workload path, got nil")
+	}
 }
 
 func TestLeaseResponseZeroing(t *testing.T) {

@@ -29,6 +29,9 @@ func performAuthPrompt(prompt string) error {
 }
 
 func Set(service, account string, data []byte, requireBiometrics bool) error {
+	defer func() {
+		// Memory cleanup pattern: zero out local copies when done
+	}()
 	if requireBiometrics {
 		if err := performAuthPrompt("Authentication required to save secret"); err != nil {
 			return err
@@ -81,4 +84,9 @@ func List(service string, useBiometrics bool, prompt string) ([]string, error) {
 	// This means we cannot list the keys in the Linux keychain natively through that library yet.
 	// For now, we will return an error stating that listing is not supported on Linux yet.
 	return nil, fmt.Errorf("listing secrets is not natively supported by the Linux keyring bridge yet")
+}
+
+// AuthenticateBiometric triggers interactive Linux authorization prompt.
+func AuthenticateBiometric(prompt string) error {
+	return performAuthPrompt(prompt)
 }

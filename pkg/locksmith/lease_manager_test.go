@@ -321,3 +321,102 @@ func TestDaemonServer_SocketEndToEnd(t *testing.T) {
 	cancel()
 	_ = server.Close()
 }
+
+func TestLeaseManager_SpiffeWorkloadIdentityAndAmbientSecrets(t *testing.T) {
+	// Set ambient secret in OS environment
+	os.Setenv("GITHUB_TOKEN", "ghp_ambient_test_token_12345")
+	defer os.Unsetenv("GITHUB_TOKEN")
+
+	store := &mockSecretStore{
+		secrets: map[string][]byte{
+			"OPENAI_API_KEY": []byte("sk-ambient-openai-key"),
+		},
+	}
+
+	lm := NewLeaseManager(store, LeaseManagerOptions{
+		DefaultTTL:    5 * time.Minute,
+		WatchInterval: 50 * time.Millisecond,
+	})
+	defer lm.Close()
+
+	sockPath := fmt.Sprintf("/tmp/ls-spiffe-test-%d-%d.sock", os.Getpid(), time.Now().UnixNano()%10000)
+	server := NewDaemonServer(lm, sockPath)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		_ = server.ListenAndServe(ctx)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// 1. Request lease for ambient env secret (GITHUB_TOKEN) via SPIFFE workload identity
+	conn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatalf("failed to dial daemon socket: %v", err)
+	}
+	defer conn.Close()
+
+	spiffeReq := protocol.LeaseRequest{
+		Version:    protocol.ProtocolVersion,
+		Action:     protocol.ActionRequestLease,
+		SpiffeID:   "spiffe://aegisbox.local/workload/microvm",
+		SecretName: "GITHUB_TOKEN",
+		LeaseTTL:   120 * time.Second, // 2 minutes (within 60-300s)
+	}
+
+	reqBytes, _ := json.Marshal(spiffeReq)
+	_, _ = conn.Write(reqBytes)
+
+	var resp protocol.LeaseResponse
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Status != protocol.StatusGranted {
+		t.Fatalf("expected GRANTED, got %s (err: %s)", resp.Status, resp.Error)
+	}
+	if string(resp.SecretValue) != "ghp_ambient_test_token_12345" {
+		t.Fatalf("expected ambient GITHUB_TOKEN value, got %s", string(resp.SecretValue))
+	}
+	if resp.SpiffeID != "spiffe://aegisbox.local/workload/microvm" {
+		t.Fatalf("expected SpiffeID echoed back, got %s", resp.SpiffeID)
+	}
+	if resp.TTLSeconds != 120 {
+		t.Fatalf("expected 120s TTL, got %d", resp.TTLSeconds)
+	}
+
+	// 2. Request lease for vault secret (OPENAI_API_KEY) with out-of-bounds TTL clamped to 300s max
+	conn2, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatalf("failed to dial daemon socket: %v", err)
+	}
+	defer conn2.Close()
+
+	spiffeReq2 := protocol.LeaseRequest{
+		Version:    protocol.ProtocolVersion,
+		Action:     protocol.ActionRequestLease,
+		SpiffeID:   "spiffe://aegisbox.local/workload/microvm",
+		SecretName: "OPENAI_API_KEY",
+		LeaseTTL:   600 * time.Second, // 10 minutes -> should clamp to 300s
+	}
+
+	reqBytes2, _ := json.Marshal(spiffeReq2)
+	_, _ = conn2.Write(reqBytes2)
+
+	var resp2 protocol.LeaseResponse
+	if err := json.NewDecoder(conn2).Decode(&resp2); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp2.Status != protocol.StatusGranted {
+		t.Fatalf("expected GRANTED, got %s (err: %s)", resp2.Status, resp2.Error)
+	}
+	if string(resp2.SecretValue) != "sk-ambient-openai-key" {
+		t.Fatalf("expected OPENAI_API_KEY value, got %s", string(resp2.SecretValue))
+	}
+	if resp2.TTLSeconds != 300 {
+		t.Fatalf("expected TTL clamped to 300s, got %d", resp2.TTLSeconds)
+	}
+}

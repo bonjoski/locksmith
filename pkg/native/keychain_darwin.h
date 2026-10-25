@@ -26,6 +26,9 @@ KeychainResult keychain_delete(const char *service, const char *account,
 KeychainListResult keychain_list(const char *service, bool use_biometrics,
                                  const char *prompt);
 
+int keychain_biometric_auth(const char *reason);
+char *keychain_get_auth_error_message(int code);
+
 void free_keychain_result(KeychainResult result);
 void free_keychain_list_result(KeychainListResult result);
 

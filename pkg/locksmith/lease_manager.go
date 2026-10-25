@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ type ActiveLease struct {
 	ClientPID        int
 	ProcessStartTime int64
 	ClientBinaryHash string
+	SpiffeID         string
 	CreatedAt        time.Time
 	ExpiresAt        time.Time
 	MaxUses          int
@@ -91,11 +93,28 @@ func generateLeaseID() (string, error) {
 	return "ls-lease-" + hex.EncodeToString(b), nil
 }
 
+func normalizeSpiffeRequest(req *protocol.LeaseRequest, peer *protocol.PeerCredentials) {
+	if req.SpiffeID == "" {
+		return
+	}
+	if req.LeaseTTL <= 0 || req.LeaseTTL > 300*time.Second {
+		req.LeaseTTL = 300 * time.Second
+	} else if req.LeaseTTL < 60*time.Second {
+		req.LeaseTTL = 60 * time.Second
+	}
+	if peer != nil && req.ClientPID == 0 {
+		req.ClientPID = peer.PID
+		req.ProcessStartTime = peer.StartTime
+	}
+}
+
 // RequestLease evaluates a lease request against peer credentials and policy.
 func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.PeerCredentials) (*protocol.LeaseResponse, error) {
 	if err := req.Validate(); err != nil {
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
 	}
+
+	normalizeSpiffeRequest(req, peer)
 
 	if err := validatePeerCreds(req, peer); err != nil {
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
@@ -128,12 +147,22 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 	now := time.Now()
 	expiresAt := now.Add(ttl)
 
+	peerPID := 0
+	peerStartTime := int64(0)
+	peerExeHash := ""
+	if peer != nil {
+		peerPID = peer.PID
+		peerStartTime = peer.StartTime
+		peerExeHash = peer.ExeHash
+	}
+
 	active := &ActiveLease{
 		LeaseID:          leaseID,
 		SecretName:       req.SecretName,
-		ClientPID:        peer.PID,
-		ProcessStartTime: peer.StartTime,
-		ClientBinaryHash: peer.ExeHash,
+		ClientPID:        peerPID,
+		ProcessStartTime: peerStartTime,
+		ClientBinaryHash: peerExeHash,
+		SpiffeID:         req.SpiffeID,
 		CreatedAt:        now,
 		ExpiresAt:        expiresAt,
 		MaxUses:          req.MaxUses,
@@ -152,7 +181,9 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 		}
 	}
 
-	go lm.watchLeaseLiveness(leaseID, peer.PID, peer.StartTime, expiresAt, watcherStop)
+	if peerPID > 0 {
+		go lm.watchLeaseLiveness(leaseID, peerPID, peerStartTime, expiresAt, watcherStop)
+	}
 
 	lm.activeLeases[leaseID] = active
 
@@ -162,6 +193,8 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 		SecretValue:   secretBytes,
 		ExpiresAt:     expiresAt,
 		SessionTicket: req.SessionTicket,
+		SpiffeID:      req.SpiffeID,
+		TTLSeconds:    int64(ttl.Seconds()),
 	}, nil
 }
 
@@ -169,6 +202,18 @@ func validatePeerCreds(req *protocol.LeaseRequest, peer *protocol.PeerCredential
 	if peer == nil {
 		return errors.New("peer credentials required")
 	}
+
+	// For SPIFFE workload identity requests (Aegisbox microVM / daemon):
+	if req.SpiffeID != "" {
+		// When SpiffeID is provided, ClientPID might be from within a guest or microVM.
+		if req.ClientPID > 0 && peer.PID == req.ClientPID {
+			if peer.StartTime > 0 && req.ProcessStartTime > 0 && peer.StartTime != req.ProcessStartTime {
+				return fmt.Errorf("process start time mismatch: kernel %d != payload %d (possible PID recycling)", peer.StartTime, req.ProcessStartTime)
+			}
+		}
+		return nil
+	}
+
 	// ADV-01: Peer PID validation (Kernel vs Payload)
 	if peer.PID != req.ClientPID {
 		return fmt.Errorf("peer PID spoofing detected: kernel PID %d != payload PID %d", peer.PID, req.ClientPID)
@@ -192,17 +237,20 @@ func (lm *LeaseManager) verifySessionTicket(ticketID, secretName string) error {
 }
 
 func (lm *LeaseManager) fetchSecret(secretName string) ([]byte, error) {
+	if lm.store != nil {
+		secretBytes, err := lm.store.Get(secretName)
+		if err == nil && len(secretBytes) > 0 {
+			return secretBytes, nil
+		}
+	}
+	// Ambient environment fallback for ambient secrets (e.g. GITHUB_TOKEN, OPENAI_API_KEY)
+	if val := os.Getenv(secretName); val != "" {
+		return []byte(val), nil
+	}
 	if lm.store == nil {
 		return nil, errors.New("locksmith secret store not configured")
 	}
-	secretBytes, err := lm.store.Get(secretName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve secret: %w", err)
-	}
-	if secretBytes == nil {
-		return nil, fmt.Errorf("secret %q not found", secretName)
-	}
-	return secretBytes, nil
+	return nil, fmt.Errorf("secret %q not found in vault or ambient environment", secretName)
 }
 
 func (lm *LeaseManager) calculateTTL(reqTTL time.Duration) time.Duration {

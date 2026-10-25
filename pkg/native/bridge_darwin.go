@@ -93,3 +93,20 @@ func List(service string, useBiometrics bool, prompt string) ([]string, error) {
 
 	return keys, nil
 }
+
+// AuthenticateBiometric triggers native macOS LocalAuthentication Touch ID challenge.
+func AuthenticateBiometric(prompt string) error {
+	if prompt == "" {
+		prompt = "Authentication required"
+	}
+	cPrompt := C.CString(prompt)
+	defer C.free(unsafe.Pointer(cPrompt))
+
+	authCode := C.keychain_biometric_auth(cPrompt)
+	if authCode != 0 {
+		cErr := C.keychain_get_auth_error_message(authCode)
+		defer C.free(unsafe.Pointer(cErr))
+		return errors.New(C.GoString(cErr))
+	}
+	return nil
+}
