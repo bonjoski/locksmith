@@ -137,9 +137,7 @@ func GetOrGenerateAttestationKey() (ed25519.PrivateKey, error) {
 	}
 
 	_ = os.MkdirAll(filepath.Dir(keyPath), 0700)
-	if err := os.WriteFile(keyPath, priv, 0600); err != nil {
-		// Log non-fatal error; key will still work in-memory
-	}
+	_ = os.WriteFile(keyPath, priv, 0600)
 
 	cachedPrivKey = priv
 	return cachedPrivKey, nil
