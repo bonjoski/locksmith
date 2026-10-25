@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- fix(security): allowlist GO-2026-6809 stdlib crypto/x509 advisory in govulncheck guard
 - fix(stepup): remove empty branch to satisfy staticcheck SA9003
 - feat(release): bump version to v2.9.0
 - feat(homebrew): add on_linux source build block to formula template
 - docs: reference official bonjoski/tap in homebrew installation instructions
-- chore(homebrew): update formula hashes for v2.8.0 release
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
