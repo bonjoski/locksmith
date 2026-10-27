@@ -17,6 +17,7 @@
 ## Features
 
 - **Biometric Security**: Leverages macOS `LocalAuthentication`, **Windows Hello**, and **Linux Polkit** for biometric and interactive protection.
+- **Desktop Cockpit**: Native Tauri + Svelte desktop control plane for real-time ephemeral lease monitoring, secret inspection, audit logs, and rotation management.
 - **MCP Server**: Built-in support for the **Model Context Protocol**, allowing AI agents (like Claude or Cursor) to securely access secrets via biometric gates.
 - **Keychain Integration**: Stores secrets in the secure macOS Keychain Services, **Windows Credential Manager**, and the **Linux Secret Service DBus**.
 - **Binary Whitelisting**: Restricts secret access to cryptographically verified or path-authorized binaries to prevent unauthorized exfiltration.
@@ -27,7 +28,7 @@
 ## Installation
 
 ### Homebrew (macOS)
-The **preferred method** for installing Locksmith on macOS. This ensures you receive a pre-signed binary that is compatible with macOS security policies:
+The **preferred method** for installing Locksmith on macOS. This packages the core CLI (`locksmith`), Summon provider (`summon-locksmith`), Git credential helper (`git-credential-locksmith`), and the Desktop Cockpit GUI (`locksmith-cockpit`):
 
 ```bash
 brew tap bonjoski/tap
@@ -75,6 +76,51 @@ make sign
 ```
 
 ## Usage
+
+### Locksmith Cockpit (Desktop GUI)
+
+Locksmith Cockpit is the native desktop control plane for inspecting your biometric vault, monitoring ephemeral credential leases, and reviewing security audits in real-time. Built with Tauri and Svelte, it runs as a lightweight, memory-safe resident application with native macOS menu bar / tray integration.
+
+#### Launching the Cockpit
+
+Once installed via Homebrew (`brew install locksmith`), you can launch the Cockpit directly from your terminal:
+
+```bash
+# Launch Cockpit attached in foreground
+locksmith cockpit
+
+# Or launch detached in the background
+locksmith cockpit -d
+
+# Direct executable launcher
+locksmith-cockpit
+```
+
+#### Key Capabilities
+
+- **Ephemeral Lease Monitor**: Live visual tracking of active resident daemon leases. View which agentic runtimes (Aegisbox, Airlock, Claude, Cursor) have checked out temporary credentials, remaining TTL countdowns, calling process PIDs, and instantly revoke individual leases on demand.
+- **Vault Dashboard**: Interactive overview of stored keys, token types, expiry statuses, and configured auto-rotation profiles without exposing secrets in plaintext.
+- **Security Audit Log**: Stream of security events including biometric touch prompts, hardware-bound keychain operations, binary whitelisting verifications, and rotation outcomes.
+- **Auto-Rotation Policies**: Visual inspection of secret rotation schedules and rules (GitHub PATs, GitLab OAuth refresh tokens, AWS credentials).
+- **Resident System Tray**: Persistent tray icon in the macOS menu bar for rapid access, status indications, and seamless background execution.
+
+#### Building & Developing Cockpit from Source
+
+To run or develop Cockpit locally from the repository:
+
+```bash
+# Launch Cockpit desktop app
+make cockpit
+
+# Run Cockpit with live hot-reloading for UI development
+make cockpit-dev
+
+# Run Cockpit test suite and UI validation
+make cockpit-test
+
+# Compile the standalone production release binary
+make cockpit-build
+```
 
 ### Storing a Secret
 ```bash
