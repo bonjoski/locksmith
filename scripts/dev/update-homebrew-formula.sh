@@ -41,6 +41,8 @@ SUMMON_ARM64_SHA=$(awk '$2=="summon-locksmith-darwin-arm64"{print $1; exit}' "$C
 SUMMON_AMD64_SHA=$(awk '$2=="summon-locksmith-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE")
 GIT_CRED_ARM64_SHA=$(awk '$2=="git-credential-locksmith-darwin-arm64"{print $1; exit}' "$CHECKSUMS_FILE")
 GIT_CRED_AMD64_SHA=$(awk '$2=="git-credential-locksmith-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE")
+COCKPIT_ARM64_SHA=$(awk '$2=="locksmith-cockpit-darwin-arm64"{print $1; exit}' "$CHECKSUMS_FILE" || true)
+COCKPIT_AMD64_SHA=$(awk '$2=="locksmith-cockpit-darwin-amd64"{print $1; exit}' "$CHECKSUMS_FILE" || true)
 
 if [ -z "$LOCKSMITH_ARM64_SHA" ] || [ -z "$LOCKSMITH_AMD64_SHA" ] || \
    [ -z "$SUMMON_ARM64_SHA" ] || [ -z "$SUMMON_AMD64_SHA" ] || \
@@ -86,5 +88,19 @@ sed -i '' "/url.*git-credential-locksmith-darwin-arm64/ { N; s/sha256 \"[^\"]*\"
 # Update download URLs and checksums for git-credential-locksmith-darwin-amd64
 sed -i '' "s|download/v[^/]*/git-credential-locksmith-darwin-amd64|download/v$VERSION/git-credential-locksmith-darwin-amd64|" "$FORMULA_FILE"
 sed -i '' "/url.*git-credential-locksmith-darwin-amd64/ { N; s/sha256 \"[^\"]*\"/sha256 \"$GIT_CRED_AMD64_SHA\"/; }" "$FORMULA_FILE"
+
+# Update download URLs and checksums for locksmith-cockpit-darwin-arm64
+if [ -n "$COCKPIT_ARM64_SHA" ]; then
+    echo "  locksmith-cockpit-darwin-arm64:     $COCKPIT_ARM64_SHA"
+    sed -i '' "s|download/v[^/]*/locksmith-cockpit-darwin-arm64|download/v$VERSION/locksmith-cockpit-darwin-arm64|" "$FORMULA_FILE"
+    sed -i '' "/url.*locksmith-cockpit-darwin-arm64/ { N; s/sha256 \"[^\"]*\"/sha256 \"$COCKPIT_ARM64_SHA\"/; }" "$FORMULA_FILE"
+fi
+
+# Update download URLs and checksums for locksmith-cockpit-darwin-amd64
+if [ -n "$COCKPIT_AMD64_SHA" ]; then
+    echo "  locksmith-cockpit-darwin-amd64:     $COCKPIT_AMD64_SHA"
+    sed -i '' "s|download/v[^/]*/locksmith-cockpit-darwin-amd64|download/v$VERSION/locksmith-cockpit-darwin-amd64|" "$FORMULA_FILE"
+    sed -i '' "/url.*locksmith-cockpit-darwin-amd64/ { N; s/sha256 \"[^\"]*\"/sha256 \"$COCKPIT_AMD64_SHA\"/; }" "$FORMULA_FILE"
+fi
 
 echo "✅ Homebrew formula updated successfully"

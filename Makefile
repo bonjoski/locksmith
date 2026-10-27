@@ -73,6 +73,22 @@ release: ## Build release binaries for multiple architectures
 	@echo "Building for linux/arm64..."
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/locksmith
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags locksmith_admin -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/git-credential-locksmith-linux-arm64 ./cmd/git-credential-locksmith
+	@echo "Building Cockpit desktop binaries..."
+	@cd desktop && npm run build
+	@if rustup target list --installed 2>/dev/null | grep -q "aarch64-apple-darwin"; then \
+		cd desktop/src-tauri && cargo build --release --target aarch64-apple-darwin && \
+		cp target/aarch64-apple-darwin/release/locksmith-desktop ../../$(BUILD_DIR)/locksmith-cockpit-darwin-arm64; \
+	elif [ "$$(uname -m)" = "arm64" ]; then \
+		cd desktop/src-tauri && cargo build --release && \
+		cp target/release/locksmith-desktop ../../$(BUILD_DIR)/locksmith-cockpit-darwin-arm64; \
+	fi
+	@if rustup target list --installed 2>/dev/null | grep -q "x86_64-apple-darwin"; then \
+		cd desktop/src-tauri && cargo build --release --target x86_64-apple-darwin && \
+		cp target/x86_64-apple-darwin/release/locksmith-desktop ../../$(BUILD_DIR)/locksmith-cockpit-darwin-amd64; \
+	elif [ "$$(uname -m)" = "x86_64" ]; then \
+		cd desktop/src-tauri && cargo build --release && \
+		cp target/release/locksmith-desktop ../../$(BUILD_DIR)/locksmith-cockpit-darwin-amd64; \
+	fi
 	@echo "Signing macOS binaries..."
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64
 	@codesign --force --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64
@@ -80,6 +96,12 @@ release: ## Build release binaries for multiple architectures
 	@codesign --force --options runtime --identifier $(IDENTIFIER).credential --sign "$(SIGN_ID)" $(BUILD_DIR)/git-credential-locksmith-darwin-amd64
 	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-arm64
 	@codesign --force --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/summon-locksmith-darwin-amd64
+	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-arm64 ]; then \
+		codesign --force --options runtime --identifier $(IDENTIFIER).cockpit --sign "$(SIGN_ID)" $(BUILD_DIR)/locksmith-cockpit-darwin-arm64; \
+	fi
+	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-amd64 ]; then \
+		codesign --force --options runtime --identifier $(IDENTIFIER).cockpit --sign "$(SIGN_ID)" $(BUILD_DIR)/locksmith-cockpit-darwin-amd64; \
+	fi
 	@echo "Packaging macOS App Bundles..."
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 $(BUILD_DIR)/Locksmith-darwin-arm64.app $(VERSION)
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 $(BUILD_DIR)/Locksmith-darwin-amd64.app $(VERSION)
@@ -87,6 +109,12 @@ release: ## Build release binaries for multiple architectures
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/git-credential-locksmith-darwin-amd64 $(BUILD_DIR)/GitCredentialLocksmith-darwin-amd64.app $(VERSION)
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-arm64 $(BUILD_DIR)/Summon-darwin-arm64.app $(VERSION)
 	@./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/summon-locksmith-darwin-amd64 $(BUILD_DIR)/Summon-darwin-amd64.app $(VERSION)
+	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-arm64 ]; then \
+		./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/locksmith-cockpit-darwin-arm64 $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.app $(VERSION) "Locksmith Cockpit"; \
+	fi
+	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-amd64 ]; then \
+		./scripts/platform/macos/package_macos.sh assets/icon.png $(BUILD_DIR)/locksmith-cockpit-darwin-amd64 $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.app $(VERSION) "Locksmith Cockpit"; \
+	fi
 	@echo "Signing .app bundles..."
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-arm64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER) --sign "$(SIGN_ID)" $(BUILD_DIR)/Locksmith-darwin-amd64.app
@@ -94,6 +122,12 @@ release: ## Build release binaries for multiple architectures
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).credential --sign "$(SIGN_ID)" $(BUILD_DIR)/GitCredentialLocksmith-darwin-amd64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/Summon-darwin-arm64.app
 	@codesign --force --deep --options runtime --identifier $(IDENTIFIER).summon --sign "$(SIGN_ID)" $(BUILD_DIR)/Summon-darwin-amd64.app
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.app ]; then \
+		codesign --force --deep --options runtime --identifier $(IDENTIFIER).cockpit --sign "$(SIGN_ID)" $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.app; \
+	fi
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.app ]; then \
+		codesign --force --deep --options runtime --identifier $(IDENTIFIER).cockpit --sign "$(SIGN_ID)" $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.app; \
+	fi
 	@echo "Packaging release apps into zips..."
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
@@ -101,6 +135,12 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && zip -q -r GitCredentialLocksmith-darwin-amd64.zip GitCredentialLocksmith-darwin-amd64.app
 	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-arm64.zip Summon-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-amd64.zip Summon-darwin-amd64.app
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.app ]; then \
+		cd $(BUILD_DIR) && zip -q -r LocksmithCockpit-darwin-arm64.zip LocksmithCockpit-darwin-arm64.app; \
+	fi
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.app ]; then \
+		cd $(BUILD_DIR) && zip -q -r LocksmithCockpit-darwin-amd64.zip LocksmithCockpit-darwin-amd64.app; \
+	fi
 	@echo "Creating checksums..."
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-arm64 > checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 $(BINARY_NAME)-darwin-amd64 >> checksums.txt
@@ -108,6 +148,14 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && shasum -a 256 git-credential-locksmith-darwin-amd64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-arm64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-amd64 >> checksums.txt
+	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-arm64 ]; then \
+		cd $(BUILD_DIR) && shasum -a 256 locksmith-cockpit-darwin-arm64 >> checksums.txt; \
+		cd $(BUILD_DIR) && shasum -a 256 LocksmithCockpit-darwin-arm64.zip >> checksums.txt; \
+	fi
+	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-amd64 ]; then \
+		cd $(BUILD_DIR) && shasum -a 256 locksmith-cockpit-darwin-amd64 >> checksums.txt; \
+		cd $(BUILD_DIR) && shasum -a 256 LocksmithCockpit-darwin-amd64.zip >> checksums.txt; \
+	fi
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-arm64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-amd64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 GitCredentialLocksmith-darwin-arm64.zip >> checksums.txt
@@ -194,6 +242,26 @@ notarize: ## Notarize macOS ZIP artifacts
 	{ echo "--- Apple notarization log (summon amd64) ---"; \
 	  xcrun notarytool log $$SUMMON_AMD64_ID --keychain-profile "notarytool-profile"; \
 	  exit 1; }
+	@if [ -f $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.zip ]; then \
+		echo "Notarizing cockpit arm64..."; \
+		COCKPIT_ARM64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.zip \
+			--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
+		echo "cockpit arm64 submission ID: $$COCKPIT_ARM64_ID"; \
+		xcrun notarytool wait $$COCKPIT_ARM64_ID --keychain-profile "notarytool-profile" --timeout 30m || \
+		{ echo "--- Apple notarization log (cockpit arm64) ---"; \
+		  xcrun notarytool log $$COCKPIT_ARM64_ID --keychain-profile "notarytool-profile"; \
+		  exit 1; }; \
+	fi
+	@if [ -f $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.zip ]; then \
+		echo "Notarizing cockpit amd64..."; \
+		COCKPIT_AMD64_ID=$$(xcrun notarytool submit $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.zip \
+			--keychain-profile "notarytool-profile" --output-format json | jq -r '.id'); \
+		echo "cockpit amd64 submission ID: $$COCKPIT_AMD64_ID"; \
+		xcrun notarytool wait $$COCKPIT_AMD64_ID --keychain-profile "notarytool-profile" --timeout 30m || \
+		{ echo "--- Apple notarization log (cockpit amd64) ---"; \
+		  xcrun notarytool log $$COCKPIT_AMD64_ID --keychain-profile "notarytool-profile"; \
+		  exit 1; }; \
+	fi
 
 staple: ## Staple notarization tickets to .app bundles
 	@echo "Stapling notarization tickets..."
@@ -201,20 +269,36 @@ staple: ## Staple notarization tickets to .app bundles
 	@xcrun stapler staple $(BUILD_DIR)/Locksmith-darwin-amd64.app
 	@xcrun stapler staple $(BUILD_DIR)/Summon-darwin-arm64.app
 	@xcrun stapler staple $(BUILD_DIR)/Summon-darwin-amd64.app
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.app ]; then \
+		xcrun stapler staple $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.app; \
+	fi
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.app ]; then \
+		xcrun stapler staple $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.app; \
+	fi
 	@echo "✓ Stapling complete. Re-packaging into ZIPs..."
 	@rm -f $(BUILD_DIR)/Locksmith-darwin-arm64.zip
 	@rm -f $(BUILD_DIR)/Locksmith-darwin-amd64.zip
 	@rm -f $(BUILD_DIR)/Summon-darwin-arm64.zip
 	@rm -f $(BUILD_DIR)/Summon-darwin-amd64.zip
+	@rm -f $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.zip
+	@rm -f $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.zip
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-arm64.zip Locksmith-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Locksmith-darwin-amd64.zip Locksmith-darwin-amd64.app
 	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-arm64.zip Summon-darwin-arm64.app
 	@cd $(BUILD_DIR) && zip -q -r Summon-darwin-amd64.zip Summon-darwin-amd64.app
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-arm64.app ]; then \
+		cd $(BUILD_DIR) && zip -q -r LocksmithCockpit-darwin-arm64.zip LocksmithCockpit-darwin-arm64.app; \
+	fi
+	@if [ -d $(BUILD_DIR)/LocksmithCockpit-darwin-amd64.app ]; then \
+		cd $(BUILD_DIR) && zip -q -r LocksmithCockpit-darwin-amd64.zip LocksmithCockpit-darwin-amd64.app; \
+	fi
 
 gpg-sign: ## Sign all release artifacts with GPG
 	@echo "Signing release artifacts with GPG (Key: $(GPG_KEY_ID))..."
-	@for file in $(BUILD_DIR)/$(BINARY_NAME)-* $(BUILD_DIR)/summon-locksmith-darwin-*; do \
-		gpg --batch --no-tty --pinentry-mode loopback --detach-sign --armor --local-user $(GPG_KEY_ID) $$file; \
+	@for file in $(BUILD_DIR)/$(BINARY_NAME)-* $(BUILD_DIR)/summon-locksmith-darwin-* $(BUILD_DIR)/locksmith-cockpit-darwin-*; do \
+		if [ -f "$$file" ]; then \
+			gpg --batch --no-tty --pinentry-mode loopback --detach-sign --armor --local-user $(GPG_KEY_ID) "$$file"; \
+		fi; \
 	done
 	@gpg --batch --no-tty --pinentry-mode loopback --detach-sign --armor --local-user $(GPG_KEY_ID) $(BUILD_DIR)/checksums.txt
 	@echo "✓ GPG signatures created (.asc files)"
