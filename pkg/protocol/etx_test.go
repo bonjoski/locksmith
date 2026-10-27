@@ -150,3 +150,9 @@ func TestPeerProcessInspection(t *testing.T) {
 		t.Errorf("expected non-empty executable path")
 	}
 }
+
+func TestActionListLeasesConstant(t *testing.T) {
+	if protocol.ActionListLeases != "list_leases" {
+		t.Errorf("expected ActionListLeases to be 'list_leases', got %q", protocol.ActionListLeases)
+	}
+}

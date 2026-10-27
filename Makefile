@@ -359,6 +359,26 @@ install-tools: ## Manually install all required tools
 	$(call install_if_missing,gitleaks,go install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION))
 	@if ! command -v semgrep > /dev/null; then brew install semgrep; fi
 
+## Desktop Cockpit targets
+cockpit: ## Build and run Locksmith Cockpit desktop app
+	@echo "Launching Locksmith Cockpit..."
+	@cd desktop && npm run build
+	@cd desktop/src-tauri && cargo run
+
+cockpit-dev: ## Run Cockpit in development mode with live hot-reloading
+	@echo "Starting Locksmith Cockpit in dev mode..."
+	@cd desktop && npm run tauri dev
+
+cockpit-build: ## Build Cockpit frontend and native release binary
+	@echo "Building Locksmith Cockpit..."
+	@cd desktop && npm run build
+	@cd desktop/src-tauri && cargo build --release
+
+cockpit-test: ## Run Cockpit unit tests and UI validation suite
+	@echo "Running Cockpit test suite..."
+	@cd desktop/src-tauri && cargo test
+	@cd desktop && node validate_ui.mjs
+
 ## Utility targets
 clean: ## Remove build artifacts
 	@echo "Cleaning up..."

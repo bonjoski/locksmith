@@ -14,18 +14,18 @@ import (
 
 // ActiveLease represents an in-flight ephemeral credential lease.
 type ActiveLease struct {
-	LeaseID          string
-	SecretName       string
-	ClientPID        int
-	ProcessStartTime int64
-	ClientBinaryHash string
-	SpiffeID         string
-	CreatedAt        time.Time
-	ExpiresAt        time.Time
-	MaxUses          int
-	UsesCount        int
-	SessionTicketID  string
-	Revoked          bool
+	LeaseID          string    `json:"lease_id"`
+	SecretName       string    `json:"secret_name"`
+	ClientPID        int       `json:"client_pid"`
+	ProcessStartTime int64     `json:"process_start_time"`
+	ClientBinaryHash string    `json:"client_binary_hash"`
+	SpiffeID         string    `json:"spiffe_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	MaxUses          int       `json:"max_uses"`
+	UsesCount        int       `json:"uses_count"`
+	SessionTicketID  string    `json:"session_ticket_id,omitempty"`
+	Revoked          bool      `json:"revoked"`
 	cancelWatcher    func()
 }
 
@@ -347,6 +347,18 @@ func (lm *LeaseManager) ActiveCount() int {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 	return len(lm.activeLeases)
+}
+
+// ListLeases returns snapshots of all currently active ephemeral leases.
+func (lm *LeaseManager) ListLeases() []*ActiveLease {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+	leases := make([]*ActiveLease, 0, len(lm.activeLeases))
+	for _, lease := range lm.activeLeases {
+		cp := *lease
+		leases = append(leases, &cp)
+	}
+	return leases
 }
 
 // GetLease returns a snapshot of an active lease (for testing and audit).

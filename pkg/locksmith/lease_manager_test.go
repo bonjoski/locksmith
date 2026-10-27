@@ -322,6 +322,96 @@ func TestDaemonServer_SocketEndToEnd(t *testing.T) {
 	_ = server.Close()
 }
 
+func TestDaemonServer_SocketListLeases(t *testing.T) {
+	store := &mockSecretStore{
+		secrets: map[string][]byte{
+			"DEMO_SECRET": []byte("super-secret-passphrase"),
+		},
+	}
+
+	sockPath := fmt.Sprintf("/tmp/ls-list-test-%d-%d.sock", os.Getpid(), time.Now().UnixNano()%10000)
+	defer os.Remove(sockPath)
+
+	lm := NewLeaseManager(store)
+	defer lm.Close()
+
+	server := NewDaemonServer(lm, sockPath)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		_ = server.ListenAndServe(ctx)
+	}()
+
+	// Wait for socket
+	for i := 0; i < 20; i++ {
+		conn, err := net.Dial("unix", sockPath)
+		if err == nil {
+			conn.Close()
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	myPID := os.Getpid()
+	myStartTime, _ := protocol.GetProcessStartTime(myPID)
+
+	peer := &protocol.PeerCredentials{
+		PID:       myPID,
+		StartTime: myStartTime,
+		ExePath:   "/path/to/caller",
+		ExeHash:   "sha256:abc",
+	}
+
+	// Create a lease directly via LeaseManager
+	lease, err := lm.RequestLease(&protocol.LeaseRequest{
+		Version:          protocol.ProtocolVersion,
+		Action:           protocol.ActionRequestLease,
+		ClientPID:        myPID,
+		ProcessStartTime: myStartTime,
+		ClientBinaryHash: "sha256:abc",
+		SecretName:       "DEMO_SECRET",
+		LeaseTTL:         2 * time.Minute,
+	}, peer)
+	if err != nil {
+		t.Fatalf("failed to request lease: %v", err)
+	}
+
+	conn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatalf("failed to dial socket: %v", err)
+	}
+	defer conn.Close()
+
+	listReqBytes, _ := json.Marshal(map[string]any{
+		"action": protocol.ActionListLeases,
+	})
+	_, _ = conn.Write(listReqBytes)
+
+	var listResp struct {
+		Status string         `json:"status"`
+		Leases []*ActiveLease `json:"leases"`
+	}
+	if err := json.NewDecoder(conn).Decode(&listResp); err != nil {
+		t.Fatalf("failed to decode list_leases response: %v", err)
+	}
+	if listResp.Status != "OK" {
+		t.Fatalf("expected OK status from list_leases, got %s", listResp.Status)
+	}
+	if len(listResp.Leases) != 1 {
+		t.Fatalf("expected 1 active lease, got %d", len(listResp.Leases))
+	}
+	if listResp.Leases[0].LeaseID != lease.LeaseID {
+		t.Fatalf("expected lease ID %s, got %s", lease.LeaseID, listResp.Leases[0].LeaseID)
+	}
+	if listResp.Leases[0].SecretName != "DEMO_SECRET" {
+		t.Fatalf("expected secret name DEMO_SECRET, got %s", listResp.Leases[0].SecretName)
+	}
+
+	cancel()
+	_ = server.Close()
+}
+
 func TestLeaseManager_SpiffeWorkloadIdentityAndAmbientSecrets(t *testing.T) {
 	// Set ambient secret in OS environment
 	os.Setenv("GITHUB_TOKEN", "ghp_ambient_test_token_12345")

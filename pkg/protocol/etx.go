@@ -34,6 +34,7 @@ const (
 	ActionRevokeLease   Action = "revoke_lease"
 	ActionCreateSession Action = "create_session"
 	ActionRevokeSession Action = "revoke_session"
+	ActionListLeases    Action = "list_leases"
 	ActionPing          Action = "ping"
 )
 

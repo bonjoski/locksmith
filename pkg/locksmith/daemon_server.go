@@ -172,6 +172,8 @@ func (s *DaemonServer) dispatchAction(conn net.Conn, action protocol.Action, pay
 		s.handleCreateSession(conn, payload)
 	case protocol.ActionRevokeSession:
 		s.handleRevokeSession(conn, payload)
+	case protocol.ActionListLeases:
+		s.handleListLeases(conn)
 	default:
 		writeJSONError(conn, fmt.Sprintf("unsupported action %q", action))
 	}
@@ -240,6 +242,17 @@ func (s *DaemonServer) handleRevokeSession(conn net.Conn, payload []byte) {
 	}
 	_ = s.lm.RevokeSession(req.TicketID)
 	_ = json.NewEncoder(conn).Encode(map[string]bool{"success": true})
+}
+
+func (s *DaemonServer) handleListLeases(conn net.Conn) {
+	leases := []*ActiveLease{}
+	if s.lm != nil {
+		leases = s.lm.ListLeases()
+	}
+	_ = json.NewEncoder(conn).Encode(map[string]any{
+		"status": "OK",
+		"leases": leases,
+	})
 }
 
 func writeJSONError(conn net.Conn, msg string) {

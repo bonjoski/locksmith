@@ -45,3 +45,9 @@ dist/
 
 # AI Assistant memory and scratch files
 .gemini/
+
+# Desktop Cockpit build artifacts
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+

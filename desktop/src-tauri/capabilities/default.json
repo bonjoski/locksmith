@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Strict minimal capabilities for Locksmith Desktop Cockpit",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}
