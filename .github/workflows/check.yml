@@ -35,7 +35,7 @@ jobs:
 
       - name: Validate Airlock Policy & Sandbox Readiness
         run: |
-          curl -fsSL https://raw.githubusercontent.com/bonjoski/airlock/main/install.sh | sh
+          curl -fsSL https://raw.githubusercontent.com/bonjoski/airlock/176416d9f864fef2d9cc4c18943d9c13600a34ae/install.sh | sh
           echo "$HOME/.airlock/bin" >> "$GITHUB_PATH"
           "$HOME/.airlock/bin/airlock" doctor
           "$HOME/.airlock/bin/airlock" config validate --config ./airlock.yaml
