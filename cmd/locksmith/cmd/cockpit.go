@@ -44,7 +44,15 @@ or adjacent to the locksmith binary.`,
 }
 
 func findCockpitBinary() (string, error) {
+	binName := "locksmith-cockpit"
+	if runtime.GOOS == "windows" {
+		binName = "locksmith-cockpit.exe"
+	}
+
 	// 1. Check PATH
+	if p, err := exec.LookPath(binName); err == nil {
+		return p, nil
+	}
 	if p, err := exec.LookPath("locksmith-cockpit"); err == nil {
 		return p, nil
 	}
@@ -52,9 +60,11 @@ func findCockpitBinary() (string, error) {
 	// 2. Check adjacent to current executable
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
-		candidate := filepath.Join(dir, "locksmith-cockpit")
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate, nil
+		for _, name := range []string{binName, "locksmith-cockpit"} {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate, nil
+			}
 		}
 	}
 

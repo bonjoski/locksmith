@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -35,7 +36,11 @@ func TestFindCockpitBinary_NotFound(t *testing.T) {
 
 func TestFindCockpitBinary_FromPATH(t *testing.T) {
 	tempDir := t.TempDir()
-	fakeBinary := filepath.Join(tempDir, "locksmith-cockpit")
+	binName := "locksmith-cockpit"
+	if runtime.GOOS == "windows" {
+		binName = "locksmith-cockpit.exe"
+	}
+	fakeBinary := filepath.Join(tempDir, binName)
 	if err := os.WriteFile(fakeBinary, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
 		t.Fatalf("failed to create fake binary: %v", err)
 	}
@@ -48,7 +53,7 @@ func TestFindCockpitBinary_FromPATH(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected binary to be found on PATH, got error: %v", err)
 	}
-	if path != fakeBinary {
+	if filepath.Clean(path) != filepath.Clean(fakeBinary) {
 		t.Errorf("expected %q, got %q", fakeBinary, path)
 	}
 }
