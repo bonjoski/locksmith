@@ -21,6 +21,11 @@ class Locksmith < Formula
         sha256 "5dfea3f56acd1bea336f0245c03405fafaf88c8d196527f9358272b905785f0e"
       end
 
+      resource "cockpit-arm64" do
+        url "https://github.com/bonjoski/locksmith/releases/download/v2.9.0/locksmith-cockpit-darwin-arm64"
+        sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+      end
+
       def install
         bin.install "locksmith-darwin-arm64" => "locksmith"
         resource("summon-arm64").stage do
@@ -28,6 +33,9 @@ class Locksmith < Formula
         end
         resource("git-credential-arm64").stage do
           bin.install "git-credential-locksmith-darwin-arm64" => "git-credential-locksmith"
+        end
+        resource("cockpit-arm64").stage do
+          bin.install "locksmith-cockpit-darwin-arm64" => "locksmith-cockpit"
         end
       end
     else
@@ -44,6 +52,11 @@ class Locksmith < Formula
         sha256 "36038fa52420de918d024af0e2525fb6efcff6bf8e65340edea21758ce694b97"
       end
 
+      resource "cockpit-amd64" do
+        url "https://github.com/bonjoski/locksmith/releases/download/v2.9.0/locksmith-cockpit-darwin-amd64"
+        sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+      end
+
       def install
         bin.install "locksmith-darwin-amd64" => "locksmith"
         resource("summon-amd64").stage do
@@ -51,6 +64,9 @@ class Locksmith < Formula
         end
         resource("git-credential-amd64").stage do
           bin.install "git-credential-locksmith-darwin-amd64" => "git-credential-locksmith"
+        end
+        resource("cockpit-amd64").stage do
+          bin.install "locksmith-cockpit-darwin-amd64" => "locksmith-cockpit"
         end
       end
     end
@@ -69,5 +85,6 @@ class Locksmith < Formula
 
   test do
     assert_match version.to_s, shell_output("#{bin}/locksmith --version 2>&1")
+    assert_predicate bin/"locksmith-cockpit", :exist?
   end
 end

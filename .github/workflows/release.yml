@@ -59,6 +59,21 @@ jobs:
           go-version: '1.26.9'
           cache: true
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Desktop Dependencies
+        run: |
+          cd desktop
+          npm ci
+
       - name: Configure and Launch GPG Agent
         run: |
           mkdir -p ~/.gnupg
@@ -124,6 +139,12 @@ jobs:
           codesign --verify --strict --verbose=4 bin/Summon-darwin-amd64.app
           codesign --verify --strict --verbose=4 bin/GitCredentialLocksmith-darwin-arm64.app
           codesign --verify --strict --verbose=4 bin/GitCredentialLocksmith-darwin-amd64.app
+          if [ -d bin/LocksmithCockpit-darwin-arm64.app ]; then
+            codesign --verify --strict --verbose=4 bin/LocksmithCockpit-darwin-arm64.app
+          fi
+          if [ -d bin/LocksmithCockpit-darwin-amd64.app ]; then
+            codesign --verify --strict --verbose=4 bin/LocksmithCockpit-darwin-amd64.app
+          fi
           echo "=== Gatekeeper assessment ==="
           spctl --assess --type execute --verbose bin/Locksmith-darwin-arm64.app || true
           spctl --assess --type execute --verbose bin/Locksmith-darwin-amd64.app || true
@@ -131,6 +152,12 @@ jobs:
           spctl --assess --type execute --verbose bin/Summon-darwin-amd64.app || true
           spctl --assess --type execute --verbose bin/GitCredentialLocksmith-darwin-arm64.app || true
           spctl --assess --type execute --verbose bin/GitCredentialLocksmith-darwin-amd64.app || true
+          if [ -d bin/LocksmithCockpit-darwin-arm64.app ]; then
+            spctl --assess --type execute --verbose bin/LocksmithCockpit-darwin-arm64.app || true
+          fi
+          if [ -d bin/LocksmithCockpit-darwin-amd64.app ]; then
+            spctl --assess --type execute --verbose bin/LocksmithCockpit-darwin-amd64.app || true
+          fi
           echo "=== Dynamic library dependencies ==="
           otool -L bin/locksmith-darwin-arm64
           otool -L bin/locksmith-darwin-amd64
@@ -138,6 +165,12 @@ jobs:
           otool -L bin/summon-locksmith-darwin-amd64
           otool -L bin/git-credential-locksmith-darwin-arm64
           otool -L bin/git-credential-locksmith-darwin-amd64
+          if [ -f bin/locksmith-cockpit-darwin-arm64 ]; then
+            otool -L bin/locksmith-cockpit-darwin-arm64
+          fi
+          if [ -f bin/locksmith-cockpit-darwin-amd64 ]; then
+            otool -L bin/locksmith-cockpit-darwin-amd64
+          fi
 
       - name: Notarize and Staple Release Apps
         run: make notarize && make staple
@@ -151,6 +184,7 @@ jobs:
             bin/Locksmith-*.zip
             bin/Summon-*.zip
             bin/GitCredentialLocksmith-*.zip
+            bin/LocksmithCockpit-*.zip
             bin/*.app
 
       - name: Generate SBOM

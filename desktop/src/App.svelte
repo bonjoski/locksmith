@@ -145,7 +145,7 @@
     </div>
 
     <div class="flex items-center space-x-3">
-      <span>Locksmith Cockpit v2.9.0</span>
+      <span>Locksmith Cockpit v2.10.0</span>
     </div>
   </footer>
 </main>

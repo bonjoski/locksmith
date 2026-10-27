@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- feat(cockpit): add desktop GUI control plane, IPC lease endpoints, and bump version to v2.10.0
 - fix(ci): pin airlock installer, restrict checkout ref, and bump version to v2.9.1
 - fix(ci): preset passphrase for subkey AD1D8BE8 and sign tag with 7BB5B44244E586B0!
 - fix(ci): enable loopback pinentry and preset passphrase in tag-on-green
 - fix(ci): launch gpg-agent and omit passphrase for unencrypted key in tag-on-green
-- fix(security): allowlist GO-2026-6809 stdlib crypto/x509 advisory in govulncheck guard
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
