@@ -149,12 +149,10 @@ release: ## Build release binaries for multiple architectures
 	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-arm64 >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 summon-locksmith-darwin-amd64 >> checksums.txt
 	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-arm64 ]; then \
-		cd $(BUILD_DIR) && shasum -a 256 locksmith-cockpit-darwin-arm64 >> checksums.txt; \
-		cd $(BUILD_DIR) && shasum -a 256 LocksmithCockpit-darwin-arm64.zip >> checksums.txt; \
+		cd $(BUILD_DIR) && shasum -a 256 locksmith-cockpit-darwin-arm64 >> checksums.txt && shasum -a 256 LocksmithCockpit-darwin-arm64.zip >> checksums.txt; \
 	fi
 	@if [ -f $(BUILD_DIR)/locksmith-cockpit-darwin-amd64 ]; then \
-		cd $(BUILD_DIR) && shasum -a 256 locksmith-cockpit-darwin-amd64 >> checksums.txt; \
-		cd $(BUILD_DIR) && shasum -a 256 LocksmithCockpit-darwin-amd64.zip >> checksums.txt; \
+		cd $(BUILD_DIR) && shasum -a 256 locksmith-cockpit-darwin-amd64 >> checksums.txt && shasum -a 256 LocksmithCockpit-darwin-amd64.zip >> checksums.txt; \
 	fi
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-arm64.zip >> checksums.txt
 	@cd $(BUILD_DIR) && shasum -a 256 Locksmith-darwin-amd64.zip >> checksums.txt
