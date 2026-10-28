@@ -293,12 +293,15 @@ staple: ## Staple notarization tickets to .app bundles
 
 gpg-sign: ## Sign all release artifacts with GPG
 	@echo "Signing release artifacts with GPG (Key: $(GPG_KEY_ID))..."
-	@for file in $(BUILD_DIR)/$(BINARY_NAME)-* $(BUILD_DIR)/summon-locksmith-darwin-* $(BUILD_DIR)/locksmith-cockpit-darwin-*; do \
+	@for file in $(BUILD_DIR)/$(BINARY_NAME)-* $(BUILD_DIR)/summon-locksmith-darwin-* $(BUILD_DIR)/git-credential-locksmith-*; do \
 		if [ -f "$$file" ]; then \
-			gpg --batch --no-tty --pinentry-mode loopback --detach-sign --armor --local-user $(GPG_KEY_ID) "$$file"; \
+			case "$$file" in \
+				*.asc) continue ;; \
+				*) gpg --batch --yes --no-tty --pinentry-mode loopback --detach-sign --armor --local-user $(GPG_KEY_ID) "$$file" ;; \
+			esac; \
 		fi; \
 	done
-	@gpg --batch --no-tty --pinentry-mode loopback --detach-sign --armor --local-user $(GPG_KEY_ID) $(BUILD_DIR)/checksums.txt
+	@gpg --batch --yes --no-tty --pinentry-mode loopback --detach-sign --armor --local-user $(GPG_KEY_ID) $(BUILD_DIR)/checksums.txt
 	@echo "✓ GPG signatures created (.asc files)"
 
 ## Summon provider
