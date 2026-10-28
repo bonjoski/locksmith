@@ -2,7 +2,7 @@ mod commands;
 pub mod ipc_client;
 mod tray;
 
-use commands::leases::{check_daemon_status, list_active_leases, request_ephemeral_lease, revoke_active_lease};
+use commands::leases::{check_daemon_status, list_active_leases, request_ephemeral_lease, restart_daemon, revoke_active_lease};
 use commands::audit::{get_audit_events, record_audit_event};
 use commands::vault::{delete_vault_secret, get_vault_secrets, reveal_secret_biometric};
 use commands::rotation::{get_access_control, get_rotation_rules, trigger_secret_rotation, update_access_control};
@@ -30,6 +30,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             check_daemon_status,
+            restart_daemon,
             list_active_leases,
             revoke_active_lease,
             request_ephemeral_lease,

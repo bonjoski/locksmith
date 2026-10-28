@@ -7,52 +7,7 @@ class VaultStore {
   revealingKey = $state<string | null>(null);
 
   constructor() {
-    this.secrets = [
-      {
-        key: "gitlab/glab/token",
-        secret_type: "oauth_token",
-        owner_application: "gitlab",
-        source_url: "https://gitlab.com/oauth/token",
-        created_at: new Date(Date.now() - 3600 * 1000).toISOString(),
-        expires_at: new Date(Date.now() + 1800 * 1000).toISOString(),
-        status: "StatusExpiring",
-        metadata: {
-          gitlab_refresh_token: "locksmith://gitlab/glab/oauth2_refresh_token",
-        },
-      },
-      {
-        key: "GH-Read",
-        secret_type: "token",
-        owner_application: "github",
-        source_url: "https://api.github.com",
-        created_at: new Date(Date.now() - 7200 * 1000).toISOString(),
-        expires_at: new Date(Date.now() + 86400 * 1000).toISOString(),
-        status: "StatusValid",
-        metadata: {
-          github_app_client_id: "locksmith://github/app/clientid",
-        },
-      },
-      {
-        key: "gh-test",
-        secret_type: "token",
-        owner_application: "github",
-        source_url: "https://api.github.com",
-        created_at: new Date(Date.now() - 14400 * 1000).toISOString(),
-        expires_at: new Date(Date.now() + 43200 * 1000).toISOString(),
-        status: "StatusValid",
-        metadata: {},
-      },
-      {
-        key: "aws/prod/api_key",
-        secret_type: "api_key",
-        owner_application: "aws",
-        source_url: "https://aws.amazon.com",
-        created_at: new Date(Date.now() - 86400 * 35 * 1000).toISOString(),
-        expires_at: new Date(Date.now() - 86400 * 5 * 1000).toISOString(),
-        status: "StatusExpired",
-        metadata: {},
-      },
-    ];
+    this.secrets = [];
   }
 
   async refresh() {
@@ -60,11 +15,9 @@ class VaultStore {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const list = await invoke<SecretItem[]>("get_vault_secrets");
-      if (list && list.length > 0) {
-        this.secrets = list;
-      }
+      this.secrets = Array.isArray(list) ? list : [];
     } catch (e) {
-      console.warn("Using local vault cache:", e);
+      console.warn("Error refreshing vault secrets:", e);
     } finally {
       this.loading = false;
     }
@@ -87,13 +40,8 @@ class VaultStore {
       }
       return null;
     } catch (e) {
-      // Local step-up fallback simulation
-      const val = `mock-revealed-${key.replace('/', '_')}-bio-pass`;
-      this.revealedSecrets = {
-        ...this.revealedSecrets,
-        [key]: val,
-      };
-      return val;
+      console.warn("Biometric reveal failed:", e);
+      return null;
     } finally {
       this.revealingKey = null;
     }

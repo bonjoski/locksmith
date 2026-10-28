@@ -11,48 +11,10 @@ class RotationStore {
   loading = $state<boolean>(false);
 
   constructor() {
-    this.rules = [
-      {
-        secret: "gitlab/glab/token",
-        rotator: "gitlab-oauth-refresh",
-        secret_type: "oauth_token",
-        owner_application: "gitlab",
-        source_url: "https://gitlab.com/oauth/token",
-        ttl: "1h",
-        metadata: {
-          gitlab_refresh_token: "locksmith://gitlab/glab/oauth2_refresh_token",
-        },
-      },
-      {
-        secret: "GH-Read",
-        rotator: "github-app-installation-token",
-        secret_type: "token",
-        owner_application: "github",
-        source_url: "https://api.github.com",
-        ttl: "24h",
-        metadata: {
-          github_app_client_id: "locksmith://github/app/clientid",
-        },
-      },
-      {
-        secret: "GL-*",
-        rotator: "gitlab-pat-self-rotate",
-        secret_type: "token",
-        owner_application: "gitlab",
-        ttl: "30d",
-        metadata: {},
-      },
-    ];
-
+    this.rules = [];
     this.accessControl = {
-      allow_binaries: [
-        "/usr/bin/git",
-        "/usr/local/bin/glab",
-        "/opt/homebrew/bin/gh",
-      ],
-      deny_binaries: [
-        "/tmp/malicious_runner",
-      ],
+      allow_binaries: [],
+      deny_binaries: [],
     };
   }
 
@@ -61,16 +23,14 @@ class RotationStore {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const rules = await invoke<RotationRuleItem[]>("get_rotation_rules");
-      if (rules && rules.length > 0) {
-        this.rules = rules;
-      }
+      this.rules = Array.isArray(rules) ? rules : [];
 
       const ac = await invoke<AccessControlItem>("get_access_control");
       if (ac) {
         this.accessControl = ac;
       }
     } catch (e) {
-      console.warn("Using local rotation config cache:", e);
+      console.warn("Error refreshing rotation config:", e);
     } finally {
       this.loading = false;
     }
@@ -87,7 +47,7 @@ class RotationStore {
       );
       this.rotationMessage = res.message;
     } catch (e: any) {
-      this.rotationMessage = `Secret '${secretName}' rotated successfully (mock). New lease valid for TTL.`;
+      this.rotationMessage = `Rotation failed for '${secretName}': ${e?.message || e?.toString() || e}`;
     } finally {
       this.rotatingSecret = null;
     }

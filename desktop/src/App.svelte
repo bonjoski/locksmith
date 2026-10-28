@@ -50,13 +50,29 @@
       <div class="flex items-center space-x-2">
         <StatusBadge
           status={leaseStore.daemonStatus.online ? "ONLINE" : "OFFLINE"}
-          label={leaseStore.daemonStatus.online ? "ETX Daemon Connected" : "Daemon Standalone / Mock"}
+          label={leaseStore.daemonStatus.online ? "ETX Daemon Connected" : "Daemon Offline"}
         />
         {#if leaseStore.daemonStatus.socket_path}
-          <span class="text-[11px] font-mono text-zinc-500 truncate max-w-[200px]" title={leaseStore.daemonStatus.socket_path}>
+          <span class="text-[11px] font-mono text-zinc-500 truncate max-w-[180px]" title={leaseStore.daemonStatus.socket_path}>
             {leaseStore.daemonStatus.socket_path.split('/').pop()}
           </span>
         {/if}
+        <button
+          onclick={async () => {
+            const ok = await leaseStore.restartDaemon();
+            if (ok) {
+              auditStore.refresh();
+              vaultStore.refresh();
+              rotationStore.refresh();
+            }
+          }}
+          disabled={leaseStore.isRestarting}
+          class="text-[11px] font-medium bg-zinc-800/90 hover:bg-zinc-700 disabled:opacity-50 text-zinc-300 border border-zinc-700 px-2 py-0.5 rounded transition-colors flex items-center space-x-1.5"
+          title="Restart background locksmith daemon process"
+        >
+          <span class={leaseStore.isRestarting ? "inline-block animate-spin" : ""}>🔄</span>
+          <span>{leaseStore.isRestarting ? "Restarting..." : "Restart Daemon"}</span>
+        </button>
       </div>
     </div>
 
@@ -145,7 +161,7 @@
     </div>
 
     <div class="flex items-center space-x-3">
-      <span>Locksmith Cockpit v3.0.0</span>
+      <span>Locksmith Cockpit v3.0.1</span>
     </div>
   </footer>
 </main>

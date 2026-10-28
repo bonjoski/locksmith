@@ -358,10 +358,16 @@ mod tests {
     async fn test_live_daemon_ping() {
         let client = LocksmithClient::new();
         if client.is_alive() {
-            let res = client.ping().await;
-            println!("Daemon ping result: {:?}", res);
-            assert!(res.is_ok(), "Expected live ping to succeed");
-            assert_eq!(res.unwrap(), "PONG");
+            let mut last_res = Err("init".to_string());
+            for _ in 0..5 {
+                last_res = client.ping().await;
+                if last_res.is_ok() {
+                    break;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            }
+            assert!(last_res.is_ok(), "Expected live ping to succeed: {:?}", last_res);
+            assert_eq!(last_res.unwrap(), "PONG");
         }
     }
 }

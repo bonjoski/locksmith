@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Command;
+use super::binary::find_locksmith_binary;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretItem {
@@ -23,8 +24,8 @@ pub struct BiometricRevealResponse {
 
 #[tauri::command]
 pub async fn get_vault_secrets() -> Result<Vec<SecretItem>, String> {
-    // Attempt to invoke `locksmith list --details`
-    let output = Command::new("locksmith")
+    let bin = find_locksmith_binary();
+    let output = Command::new(&bin)
         .args(&["list", "--details"])
         .output();
 
@@ -32,65 +33,16 @@ pub async fn get_vault_secrets() -> Result<Vec<SecretItem>, String> {
         if out.status.success() {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let parsed = parse_locksmith_list_details(&stdout);
-            if !parsed.is_empty() {
-                return Ok(parsed);
+            return Ok(parsed);
+        } else {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            if !stderr.is_empty() {
+                return Err(format!("locksmith list error: {}", stderr));
             }
         }
     }
 
-    // Fallback if locksmith CLI is not in system PATH or no secrets returned yet:
-    // Return standard configured secrets reflecting current ~/.locksmith/config.yml
-    let now = chrono_timestamp_now();
-    Ok(vec![
-        SecretItem {
-            key: "gitlab/glab/token".to_string(),
-            secret_type: "oauth_token".to_string(),
-            owner_application: "gitlab".to_string(),
-            source_url: "https://gitlab.com/oauth/token".to_string(),
-            created_at: now.clone(),
-            expires_at: in_hours(1),
-            status: "StatusExpiring".to_string(),
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("gitlab_refresh_token".to_string(), "locksmith://gitlab/glab/oauth2_refresh_token".to_string());
-                m
-            },
-        },
-        SecretItem {
-            key: "GH-Read".to_string(),
-            secret_type: "token".to_string(),
-            owner_application: "github".to_string(),
-            source_url: "https://api.github.com".to_string(),
-            created_at: now.clone(),
-            expires_at: in_hours(24),
-            status: "StatusValid".to_string(),
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("github_app_client_id".to_string(), "locksmith://github/app/clientid".to_string());
-                m
-            },
-        },
-        SecretItem {
-            key: "gh-test".to_string(),
-            secret_type: "token".to_string(),
-            owner_application: "github".to_string(),
-            source_url: "https://api.github.com".to_string(),
-            created_at: now.clone(),
-            expires_at: in_hours(18),
-            status: "StatusValid".to_string(),
-            metadata: HashMap::new(),
-        },
-        SecretItem {
-            key: "aws/prod/api_key".to_string(),
-            secret_type: "api_key".to_string(),
-            owner_application: "aws".to_string(),
-            source_url: "https://aws.amazon.com".to_string(),
-            created_at: past_days(35),
-            expires_at: past_days(5),
-            status: "StatusExpired".to_string(),
-            metadata: HashMap::new(),
-        },
-    ])
+    Ok(vec![])
 }
 
 fn parse_locksmith_list_details(output: &str) -> Vec<SecretItem> {
@@ -153,6 +105,9 @@ pub fn sanitize_secret_key(key: &str) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Secret key cannot be empty".to_string());
     }
+    if trimmed.starts_with('-') {
+        return Err("Secret key cannot start with a dash".to_string());
+    }
     if trimmed.contains('\0') || trimmed.contains('\n') || trimmed.contains('\r') {
         return Err("Secret key contains invalid control characters".to_string());
     }
@@ -165,9 +120,10 @@ pub fn sanitize_secret_key(key: &str) -> Result<String, String> {
 #[tauri::command]
 pub async fn reveal_secret_biometric(key: String) -> Result<BiometricRevealResponse, String> {
     let safe_key = sanitize_secret_key(&key)?;
+    let bin = find_locksmith_binary();
 
-    // Attempt biometric read via `locksmith get <key>`
-    let output = Command::new("locksmith")
+    // Biometric read via `locksmith get <key>`
+    let output = Command::new(&bin)
         .args(&["get", &safe_key])
         .output();
 
@@ -181,28 +137,26 @@ pub async fn reveal_secret_biometric(key: String) -> Result<BiometricRevealRespo
             });
         } else {
             let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            if !err.is_empty() {
-                return Ok(BiometricRevealResponse {
-                    success: false,
-                    value: None,
-                    error: Some(err),
-                });
-            }
+            return Ok(BiometricRevealResponse {
+                success: false,
+                value: None,
+                error: Some(if err.is_empty() { "Failed to retrieve secret".to_string() } else { err }),
+            });
         }
     }
 
-    // Emulated step-up response if CLI is not in PATH or for testing
     Ok(BiometricRevealResponse {
-        success: true,
-        value: Some(format!("glpat-mock-token-{}", &safe_key.replace('/', "-"))),
-        error: None,
+        success: false,
+        value: None,
+        error: Some(format!("Could not execute locksmith binary at {:?}", bin)),
     })
 }
 
 #[tauri::command]
 pub async fn delete_vault_secret(key: String) -> Result<bool, String> {
     let safe_key = sanitize_secret_key(&key)?;
-    let output = Command::new("locksmith")
+    let bin = find_locksmith_binary();
+    let output = Command::new(&bin)
         .args(&["delete", &safe_key])
         .output();
 
@@ -210,33 +164,6 @@ pub async fn delete_vault_secret(key: String) -> Result<bool, String> {
         Ok(out) => Ok(out.status.success()),
         Err(e) => Err(format!("Failed to execute delete: {}", e)),
     }
-}
-
-fn chrono_timestamp_now() -> String {
-    use std::time::SystemTime;
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format!("{}T00:00:00Z", now)
-}
-
-fn in_hours(h: u64) -> String {
-    use std::time::SystemTime;
-    let exp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() + (h * 3600);
-    format!("{}T00:00:00Z", exp)
-}
-
-fn past_days(d: u64) -> String {
-    use std::time::SystemTime;
-    let exp = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs().saturating_sub(d * 86400);
-    format!("{}T00:00:00Z", exp)
 }
 
 #[cfg(test)]
@@ -312,6 +239,10 @@ Metadata:
         assert!(sanitize_secret_key("key\0injected").is_err());
         assert!(sanitize_secret_key("key\ninjected").is_err());
         assert!(sanitize_secret_key("   ").is_err());
+
+        // Flag injection attempts
+        assert!(sanitize_secret_key("--dangerous-flag").is_err());
+        assert!(sanitize_secret_key("-rf").is_err());
 
         // Valid hierarchical keys
         assert_eq!(sanitize_secret_key("gitlab/glab/token").unwrap(), "gitlab/glab/token");

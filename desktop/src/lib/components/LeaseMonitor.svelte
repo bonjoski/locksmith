@@ -1,14 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { leaseStore } from "../stores/leaseStore.svelte";
+  import { vaultStore } from "../stores/vaultStore.svelte";
   import StatusBadge from "./StatusBadge.svelte";
   import type { ActiveLeaseItem } from "../types/ipc";
 
   let nowMs = $state(Date.now());
   let showRequestModal = $state(false);
-  let testSecretName = $state("gitlab/glab/token");
+  let testSecretName = $state("");
   let testTTL = $state(300);
   let testMaxUses = $state(5);
+
+  $effect(() => {
+    if (showRequestModal && !testSecretName && vaultStore.secrets.length > 0) {
+      testSecretName = vaultStore.secrets[0].key;
+    }
+  });
 
   onMount(() => {
     const timer = setInterval(() => {
@@ -222,15 +229,25 @@
       <div class="space-y-3 text-xs">
         <div>
           <label for="secret-select" class="block text-zinc-400 mb-1">Secret Key</label>
-          <select
-            id="secret-select"
-            bind:value={testSecretName}
-            class="w-full bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1.5 text-zinc-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
-          >
-            <option value="gitlab/glab/token">gitlab/glab/token (OAuth Token)</option>
-            <option value="GH-Read">GH-Read (App Installation Token)</option>
-            <option value="aws/prod/api_key">aws/prod/api_key (API Key)</option>
-          </select>
+          {#if vaultStore.secrets.length > 0}
+            <select
+              id="secret-select"
+              bind:value={testSecretName}
+              class="w-full bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1.5 text-zinc-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+            >
+              {#each vaultStore.secrets as s}
+                <option value={s.key}>{s.key} ({s.secret_type || 'secret'})</option>
+              {/each}
+            </select>
+          {:else}
+            <input
+              id="secret-select"
+              type="text"
+              bind:value={testSecretName}
+              placeholder="e.g. github/app/token"
+              class="w-full bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1.5 text-zinc-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+            />
+          {/if}
         </div>
 
         <div>

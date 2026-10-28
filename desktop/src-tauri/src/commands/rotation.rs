@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use super::binary::find_locksmith_binary;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RotationRuleItem {
@@ -39,59 +40,16 @@ fn get_config_path() -> PathBuf {
 pub async fn get_rotation_rules() -> Result<Vec<RotationRuleItem>, String> {
     let path = get_config_path();
     if !path.exists() {
-        return Ok(get_default_rules());
+        return Ok(vec![]);
     }
 
     let content = fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read config.yml: {}", e))?;
 
     let rules = parse_yaml_rotation_rules(&content);
-    if rules.is_empty() {
-        Ok(get_default_rules())
-    } else {
-        Ok(rules)
-    }
+    Ok(rules)
 }
 
-fn get_default_rules() -> Vec<RotationRuleItem> {
-    vec![
-        RotationRuleItem {
-            secret: "gitlab/glab/token".to_string(),
-            rotator: "gitlab-oauth-refresh".to_string(),
-            secret_type: "oauth_token".to_string(),
-            owner_application: "gitlab".to_string(),
-            source_url: Some("https://gitlab.com/oauth/token".to_string()),
-            ttl: "1h".to_string(),
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("gitlab_refresh_token".to_string(), "locksmith://gitlab/glab/oauth2_refresh_token".to_string());
-                m
-            },
-        },
-        RotationRuleItem {
-            secret: "GH-Read".to_string(),
-            rotator: "github-app-installation-token".to_string(),
-            secret_type: "token".to_string(),
-            owner_application: "github".to_string(),
-            source_url: Some("https://api.github.com".to_string()),
-            ttl: "24h".to_string(),
-            metadata: {
-                let mut m = HashMap::new();
-                m.insert("github_app_client_id".to_string(), "locksmith://github/app/clientid".to_string());
-                m
-            },
-        },
-        RotationRuleItem {
-            secret: "GL-*".to_string(),
-            rotator: "gitlab-pat-self-rotate".to_string(),
-            secret_type: "token".to_string(),
-            owner_application: "gitlab".to_string(),
-            source_url: None,
-            ttl: "30d".to_string(),
-            metadata: HashMap::new(),
-        },
-    ]
-}
 
 fn parse_yaml_rotation_rules(yaml: &str) -> Vec<RotationRuleItem> {
     let mut rules = Vec::new();
@@ -179,8 +137,10 @@ fn parse_yaml_rotation_rules(yaml: &str) -> Vec<RotationRuleItem> {
 
 #[tauri::command]
 pub async fn trigger_secret_rotation(secret_name: String) -> Result<RotationResult, String> {
-    let output = Command::new("locksmith")
-        .args(&["rotate", &secret_name])
+    let safe_name = crate::commands::vault::sanitize_secret_key(&secret_name)?;
+    let bin = find_locksmith_binary();
+    let output = Command::new(&bin)
+        .args(&["rotate", &safe_name])
         .output();
 
     if let Ok(out) = output {
@@ -199,29 +159,22 @@ pub async fn trigger_secret_rotation(secret_name: String) -> Result<RotationResu
         }
     }
 
-    // Emulated success for development
     Ok(RotationResult {
-        success: true,
-        message: format!("Secret '{}' rotated successfully via handler. New TTL active.", secret_name),
+        success: false,
+        message: format!("Failed to execute locksmith binary at {:?}", bin),
     })
 }
 
 #[tauri::command]
 pub async fn get_access_control() -> Result<AccessControlItem, String> {
     let path = get_config_path();
-    let default_ac = AccessControlItem {
-        allow_binaries: vec![
-            "/usr/bin/git".to_string(),
-            "/usr/local/bin/glab".to_string(),
-            "/opt/homebrew/bin/gh".to_string(),
-        ],
-        deny_binaries: vec![
-            "/tmp/malicious_runner".to_string(),
-        ],
+    let empty_ac = AccessControlItem {
+        allow_binaries: vec![],
+        deny_binaries: vec![],
     };
 
     if !path.exists() {
-        return Ok(default_ac);
+        return Ok(empty_ac);
     }
 
     let content = fs::read_to_string(&path).unwrap_or_default();
@@ -251,14 +204,10 @@ pub async fn get_access_control() -> Result<AccessControlItem, String> {
         }
     }
 
-    if allow.is_empty() && deny.is_empty() {
-        Ok(default_ac)
-    } else {
-        Ok(AccessControlItem {
-            allow_binaries: allow,
-            deny_binaries: deny,
-        })
-    }
+    Ok(AccessControlItem {
+        allow_binaries: allow,
+        deny_binaries: deny,
+    })
 }
 
 pub fn sanitize_binary_path(path: &str) -> Result<String, String> {
@@ -395,5 +344,14 @@ rotation:
         // Legitimate absolute path is accepted
         let valid = "/usr/local/bin/glab";
         assert_eq!(sanitize_binary_path(valid).unwrap(), "/usr/local/bin/glab");
+    }
+
+    #[tokio::test]
+    async fn test_adversarial_rotation_secret_name_injection_blocked() {
+        assert!(trigger_secret_rotation("--help".to_string()).await.is_err());
+        assert!(trigger_secret_rotation("-rf".to_string()).await.is_err());
+        assert!(trigger_secret_rotation("foo\0bar".to_string()).await.is_err());
+        assert!(trigger_secret_rotation("../../etc/shadow".to_string()).await.is_err());
+        assert!(trigger_secret_rotation("   ".to_string()).await.is_err());
     }
 }

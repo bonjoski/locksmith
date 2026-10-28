@@ -27,76 +27,12 @@ fn get_audit_file_path() -> PathBuf {
     }
 }
 
-fn seed_initial_audit_events_if_needed(path: &PathBuf) {
-    if path.exists() {
-        return;
-    }
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64;
-
-    let seeds = vec![
-        AuditEvent {
-            id: "aud-001".to_string(),
-            timestamp_ms: now - 3600_000,
-            secret_name: "gitlab/glab/token".to_string(),
-            client_pid: 84392,
-            binary_path: "/usr/local/bin/glab".to_string(),
-            binary_hash: "a4f89d31b2...e81".to_string(),
-            identity: "mcp:cursor".to_string(),
-            outcome: "GRANTED".to_string(),
-            reason: Some("Valid session token".to_string()),
-        },
-        AuditEvent {
-            id: "aud-002".to_string(),
-            timestamp_ms: now - 1800_000,
-            secret_name: "GH-Read".to_string(),
-            client_pid: 85210,
-            binary_path: "/usr/bin/curl".to_string(),
-            binary_hash: "7bc32f01aa...c44".to_string(),
-            identity: "spiffe://aegisbox.internal/agent/sandbox".to_string(),
-            outcome: "DENIED".to_string(),
-            reason: Some("Binary not in access_control.allow_binaries".to_string()),
-        },
-        AuditEvent {
-            id: "aud-003".to_string(),
-            timestamp_ms: now - 900_000,
-            secret_name: "aws/prod/api_key".to_string(),
-            client_pid: 86421,
-            binary_path: "/opt/homebrew/bin/aws".to_string(),
-            binary_hash: "55ee1248ab...9f0".to_string(),
-            identity: "spiffe://aegisbox.internal/workload/deployer".to_string(),
-            outcome: "GRANTED".to_string(),
-            reason: Some("Biometric step-up approved".to_string()),
-        },
-        AuditEvent {
-            id: "aud-004".to_string(),
-            timestamp_ms: now - 300_000,
-            secret_name: "aws/prod/api_key".to_string(),
-            client_pid: 86421,
-            binary_path: "/opt/homebrew/bin/aws".to_string(),
-            binary_hash: "55ee1248ab...9f0".to_string(),
-            identity: "spiffe://aegisbox.internal/workload/deployer".to_string(),
-            outcome: "REVOKED".to_string(),
-            reason: Some("TTL expired after 300s window".to_string()),
-        },
-    ];
-
-    if let Ok(mut file) = OpenOptions::new().create(true).write(true).open(path) {
-        for event in seeds {
-            if let Ok(line) = serde_json::to_string(&event) {
-                let _ = writeln!(file, "{}", line);
-            }
-        }
-    }
-}
-
 #[tauri::command]
 pub async fn get_audit_events(limit: Option<usize>) -> Result<Vec<AuditEvent>, String> {
     let path = get_audit_file_path();
-    seed_initial_audit_events_if_needed(&path);
+    if !path.exists() {
+        return Ok(vec![]);
+    }
 
     let file = File::open(&path).map_err(|e| format!("Could not open audit log: {}", e))?;
     let reader = BufReader::new(file);

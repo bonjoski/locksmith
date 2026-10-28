@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Locksmith Cockpit",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "identifier": "com.bonjoski.locksmith.desktop",
   "build": {
     "beforeBuildCommand": "npm run build",
