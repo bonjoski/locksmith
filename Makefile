@@ -387,9 +387,9 @@ vet: ## Run go vet
 
 # Tool checks and installation
 define install_if_missing
-	@if [ ! -f $(GOBIN)/$(1) ]; then \
+	@if [ ! -f $(GOBIN)/$(1) ] && ! command -v $(1) >/dev/null 2>&1; then \
 		echo "Installing $(1)..."; \
-		$(2); \
+		GOBIN="$(GOBIN)" $(2); \
 	fi
 endef
 
@@ -402,27 +402,27 @@ lint: ## Run golangci-lint (installs if missing)
 		echo ""; \
 	fi
 	@echo "Running golangci-lint..."
-	@$(GOBIN)/golangci-lint run --build-tags locksmith_admin
+	@if [ -x "$(GOBIN)/golangci-lint" ]; then "$(GOBIN)/golangci-lint" run --build-tags locksmith_admin; else golangci-lint run --build-tags locksmith_admin; fi
 
 govulncheck: ## Run govulncheck (installs if missing)
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck..."
-	@$(GOBIN)/govulncheck -tags locksmith_admin ./...
+	@if [ -x "$(GOBIN)/govulncheck" ]; then "$(GOBIN)/govulncheck" -tags locksmith_admin ./...; else govulncheck -tags locksmith_admin ./...; fi
 
 govulncheck-ci: ## Run govulncheck with CI policy guard
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck CI guard..."
-	@GOVULNCHECK_BIN="$(GOBIN)/govulncheck" bash ./scripts/security/govulncheck-guard.sh
+	@GOVULNCHECK_BIN="$$(if [ -x "$(GOBIN)/govulncheck" ]; then echo "$(GOBIN)/govulncheck"; else which govulncheck; fi)" bash ./scripts/security/govulncheck-guard.sh
 
 gosec: ## Run gosec (installs if missing)
 	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION))
 	@echo "Running gosec..."
-	@$(GOBIN)/gosec -tags locksmith_admin -severity high -exclude=G115 ./...
+	@if [ -x "$(GOBIN)/gosec" ]; then "$(GOBIN)/gosec" -tags locksmith_admin -severity high -exclude=G115 ./...; else gosec -tags locksmith_admin -severity high -exclude=G115 ./...; fi
 
 gitleaks: ## Run Gitleaks secret scanning
 	$(call install_if_missing,gitleaks,go install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION))
 	@echo "Running Gitleaks..."
-	@$(GOBIN)/gitleaks git --redact --exit-code 1 . && echo "No secrets found."
+	@if [ -x "$(GOBIN)/gitleaks" ]; then "$(GOBIN)/gitleaks" git --redact --exit-code 1 . && echo "No secrets found."; else gitleaks git --redact --exit-code 1 . && echo "No secrets found."; fi
 
 trufflehog: gitleaks ## Backward-compatible alias for legacy hooks
 
