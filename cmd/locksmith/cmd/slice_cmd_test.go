@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"os/exec"
+	"runtime"
 	"testing"
 	"time"
 
@@ -28,6 +29,9 @@ func seedTestSecret(key, val string) {
 }
 
 func TestRunCommandWithSliceFlag(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("File descriptor inheritance (ExtraFiles / FD 3) is not supported on Windows")
+	}
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not available, skipping")
 	}
@@ -66,6 +70,9 @@ sys.exit(0)
 }
 
 func TestSliceSubcommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("File descriptor inheritance (ExtraFiles / FD 3) is not supported on Windows")
+	}
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not available, skipping")
 	}

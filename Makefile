@@ -10,8 +10,8 @@ GPG_KEY_ID=7BB5B44244E586B0
 VERSION=$(shell grep "Version =" pkg/locksmith/version.go | cut -d '"' -f 2)
 
 # Path configuration
-GOPATH=$(shell go env GOPATH)
-GOBIN=$(GOPATH)/bin
+GOPATH ?= $(HOME)/go
+GOBIN ?= $(GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
 # Tool versions
@@ -344,9 +344,15 @@ check: fmt tidy verify-deps argus-scan vet lint govulncheck-ci gosec gitleaks se
 
 argus-scan: ## Scan dependencies for hallucinated or slopsquatted packages using Argus
 	@echo "Checking/Installing Argus..."
-	@bash ./scripts/dev/install-argus.sh
+	@GOBIN="$(GOBIN)" bash ./scripts/dev/install-argus.sh
 	@echo "Running Argus dependency provenance scan..."
-	@$(GOBIN)/argus scan go.sum
+	@if [ -x "$(GOBIN)/argus" ]; then \
+		"$(GOBIN)/argus" scan --threshold 60 go.sum; \
+	elif command -v argus >/dev/null 2>&1; then \
+		argus scan --threshold 60 go.sum; \
+	else \
+		go run github.com/bonjoski/argus/cmd/argus@v0.8.2 scan --threshold 60 go.sum; \
+	fi
 
 test: ## Run unit tests
 	@echo "Running tests..."

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -31,6 +32,9 @@ func setupSliceTestLocksmith(t *testing.T, secrets map[string]string) *Locksmith
 }
 
 func TestRunSliceExplicitKey(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("File descriptor inheritance (ExtraFiles / FD 3) is not supported on Windows")
+	}
 	ls := setupSliceTestLocksmith(t, map[string]string{
 		"production/db_password": "SuperSecretPasswordValue",
 	})
@@ -45,6 +49,9 @@ func TestRunSliceExplicitKey(t *testing.T) {
 }
 
 func TestRunSlicePythonChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("File descriptor inheritance (ExtraFiles / FD 3) is not supported on Windows")
+	}
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not available in PATH, skipping python child test")
 	}
@@ -92,6 +99,9 @@ sys.exit(0)
 }
 
 func TestRunSliceNodeChild(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("File descriptor inheritance (ExtraFiles / FD 3) is not supported on Windows")
+	}
 	if _, err := exec.LookPath("node"); err != nil {
 		t.Skip("node not available in PATH, skipping node child test")
 	}
@@ -139,6 +149,9 @@ process.exit(0);
 }
 
 func TestRunSliceEnvFileResolution(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("File descriptor inheritance (ExtraFiles / FD 3) is not supported on Windows")
+	}
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 not available")
 	}
