@@ -1,10 +1,9 @@
 module github.com/bonjoski/locksmith/v2
 
-go 1.26.0
-
-toolchain go1.26.9
+go 1.27.3
 
 require (
+	github.com/bonjoski/shield v0.0.0-00010101000000-000000000000
 	github.com/danieljoos/wincred v1.2.3
 	github.com/julian-bruyers/winhello-go v1.1.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -15,6 +14,8 @@ require (
 	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+replace github.com/bonjoski/shield => ../shield
 
 require (
 	github.com/godbus/dbus/v5 v5.2.4 // indirect

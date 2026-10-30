@@ -272,3 +272,29 @@ func TestIntegrationsDoctorWithCustomPathFlag(t *testing.T) {
 		t.Fatalf("expected output to include openai_api_key finding, got: %s", out)
 	}
 }
+
+func TestIntegrationsDoctorWithAIFlag(t *testing.T) {
+	outBuf, _ := setupTest()
+	defer func() {
+		integrationsDoctorAI = false
+		integrationsDoctorPaths = nil
+	}()
+
+	customFile := filepath.Join(t.TempDir(), "ai.env")
+	if err := os.WriteFile(customFile, []byte("OPENAI_API_KEY=sk-test-secret-key-1234567890abcdef\n"), 0600); err != nil {
+		t.Fatalf("failed to write custom path file: %v", err)
+	}
+
+	rootCmd.SetArgs([]string{"integrations", "doctor", "--ai", "--path", customFile})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("integrations doctor --ai --path failed: %v", err)
+	}
+
+	out := outBuf.String()
+	if !strings.Contains(out, "Detected 1 plaintext token field(s)") {
+		t.Fatalf("expected plaintext finding in output, got: %s", out)
+	}
+	if !strings.Contains(out, "[Shield Protected AI Advisory]") {
+		t.Fatalf("expected Shield AI Advisory in output, got: %s", out)
+	}
+}
