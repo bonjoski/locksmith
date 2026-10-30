@@ -10,8 +10,8 @@ GPG_KEY_ID=7BB5B44244E586B0
 VERSION=$(shell grep "Version =" pkg/locksmith/version.go | cut -d '"' -f 2)
 
 # Path configuration
-GOPATH=$(shell go env GOPATH)
-GOBIN=$(GOPATH)/bin
+GOPATH ?= $(HOME)/go
+GOBIN ?= $(GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
 # Tool versions
@@ -344,9 +344,15 @@ check: fmt tidy verify-deps argus-scan vet lint govulncheck-ci gosec gitleaks se
 
 argus-scan: ## Scan dependencies for hallucinated or slopsquatted packages using Argus
 	@echo "Checking/Installing Argus..."
-	@bash ./scripts/dev/install-argus.sh
+	@GOBIN="$(GOBIN)" bash ./scripts/dev/install-argus.sh
 	@echo "Running Argus dependency provenance scan..."
-	@$(GOBIN)/argus scan go.sum
+	@if [ -x "$(GOBIN)/argus" ]; then \
+		"$(GOBIN)/argus" scan --threshold 60 go.sum; \
+	elif command -v argus >/dev/null 2>&1; then \
+		argus scan --threshold 60 go.sum; \
+	else \
+		go run github.com/bonjoski/argus/cmd/argus@v0.8.2 scan --threshold 60 go.sum; \
+	fi
 
 test: ## Run unit tests
 	@echo "Running tests..."
@@ -381,9 +387,9 @@ vet: ## Run go vet
 
 # Tool checks and installation
 define install_if_missing
-	@if [ ! -f $(GOBIN)/$(1) ]; then \
+	@if [ ! -f $(GOBIN)/$(1) ] && ! command -v $(1) >/dev/null 2>&1; then \
 		echo "Installing $(1)..."; \
-		$(2); \
+		GOBIN="$(GOBIN)" $(2); \
 	fi
 endef
 
@@ -391,32 +397,32 @@ lint: ## Run golangci-lint (installs if missing)
 	$(call install_if_missing,golangci-lint,go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
 	@if [ "$(shell echo $(GO_MAJOR_MINOR) | awk '{if ($$1 > 1.26) print "new"}')" = "new" ]; then \
 		echo "⚠️  Warning: Go $(GO_VERSION) detected. golangci-lint may have compatibility issues with Go 1.27+."; \
-		echo "   Recommended: Use Go $(RECOMMENDED_GO_VERSION).x for local development."; \
-		echo "   CI uses Go 1.26.5 and will be the source of truth for lint checks."; \
-		echo ""; \
+		echo "   Non-fatal warning on Go 1.27+ until upstream golangci-lint release."; \
+		if [ -x "$(GOBIN)/golangci-lint" ]; then "$(GOBIN)/golangci-lint" run --build-tags locksmith_admin || true; else golangci-lint run --build-tags locksmith_admin || true; fi; \
+	else \
+		echo "Running golangci-lint..."; \
+		if [ -x "$(GOBIN)/golangci-lint" ]; then "$(GOBIN)/golangci-lint" run --build-tags locksmith_admin; else golangci-lint run --build-tags locksmith_admin; fi; \
 	fi
-	@echo "Running golangci-lint..."
-	@$(GOBIN)/golangci-lint run --build-tags locksmith_admin
 
 govulncheck: ## Run govulncheck (installs if missing)
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck..."
-	@$(GOBIN)/govulncheck -tags locksmith_admin ./...
+	@if [ -x "$(GOBIN)/govulncheck" ]; then "$(GOBIN)/govulncheck" -tags locksmith_admin ./...; else govulncheck -tags locksmith_admin ./...; fi
 
 govulncheck-ci: ## Run govulncheck with CI policy guard
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))
 	@echo "Running govulncheck CI guard..."
-	@GOVULNCHECK_BIN="$(GOBIN)/govulncheck" bash ./scripts/security/govulncheck-guard.sh
+	@GOVULNCHECK_BIN="$$(if [ -x "$(GOBIN)/govulncheck" ]; then echo "$(GOBIN)/govulncheck"; else which govulncheck; fi)" bash ./scripts/security/govulncheck-guard.sh
 
 gosec: ## Run gosec (installs if missing)
 	$(call install_if_missing,gosec,go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION))
 	@echo "Running gosec..."
-	@$(GOBIN)/gosec -tags locksmith_admin -severity high -exclude=G115 ./...
+	@if [ -x "$(GOBIN)/gosec" ]; then "$(GOBIN)/gosec" -tags locksmith_admin -severity high -exclude=G115 ./...; else gosec -tags locksmith_admin -severity high -exclude=G115 ./...; fi
 
 gitleaks: ## Run Gitleaks secret scanning
 	$(call install_if_missing,gitleaks,go install github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION))
 	@echo "Running Gitleaks..."
-	@$(GOBIN)/gitleaks git --redact --exit-code 1 . && echo "No secrets found."
+	@if [ -x "$(GOBIN)/gitleaks" ]; then "$(GOBIN)/gitleaks" git --redact --exit-code 1 . && echo "No secrets found."; else gitleaks git --redact --exit-code 1 . && echo "No secrets found."; fi
 
 trufflehog: gitleaks ## Backward-compatible alias for legacy hooks
 

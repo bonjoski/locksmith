@@ -1,10 +1,9 @@
 module github.com/bonjoski/locksmith/v2
 
-go 1.26.0
-
-toolchain go1.26.9
+go 1.27.3
 
 require (
+	github.com/bonjoski/shield v0.1.0
 	github.com/danieljoos/wincred v1.2.3
 	github.com/julian-bruyers/winhello-go v1.1.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0

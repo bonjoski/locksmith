@@ -92,6 +92,11 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	ownerApplication = ""
 	sourceURL = ""
 	addGit = false
+	envFile = ""
+	sliceKey = ""
+	sliceCmdEnvFile = ""
+	integrationsDoctorPaths = nil
+	integrationsDoctorAI = false
 
 	cfg = &locksmith.Config{
 		Auth: locksmith.AuthConfig{RequireBiometrics: false},

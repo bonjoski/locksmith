@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"os/signal"
 	"strings"
+
+	"github.com/bonjoski/locksmith/v2/pkg/slice"
 )
 
 type integrationSpec struct {
@@ -56,6 +58,190 @@ func (l *Locksmith) Run(args []string, envFile string) (int, error) {
 	}
 
 	return runCommandWithEnv(args[0], args[1:], env)
+}
+
+// RunSlice executes a command with secrets injected into an anonymous inherited file descriptor (FD 3)
+// instead of setting plaintext environment variables.
+func (l *Locksmith) RunSlice(args []string, sliceKey string, envFile string) (int, error) {
+	if len(args) == 0 {
+		return 1, fmt.Errorf("no command specified")
+	}
+
+	var envFileVars map[string]string
+	if envFile != "" {
+		var err error
+		envFileVars, err = parseEnvFile(envFile)
+		if err != nil {
+			return 1, fmt.Errorf("failed to read env file: %w", err)
+		}
+	}
+
+	payload, cleanSliceKey, err := l.resolveSlicePayload(sliceKey, os.Environ(), envFileVars)
+	if err != nil {
+		return 1, err
+	}
+	defer slice.ExplicitBzero(payload)
+
+	sl, err := slice.Create(payload)
+	// Active memory zeroization: zero out heap payload immediately after committing to slice descriptor
+	slice.ExplicitBzero(payload)
+	if err != nil {
+		return 1, fmt.Errorf("failed to create memory slice: %w", err)
+	}
+	defer sl.Close()
+
+	env := buildSliceEnvironment(os.Environ(), envFileVars, cleanSliceKey)
+
+	return runCommandWithSlice(args[0], args[1:], env, sl)
+}
+
+func (l *Locksmith) fetchAndZeroSecret(secretKey string) ([]byte, error) {
+	valBytes, err := l.Get(secretKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret '%s': %w", secretKey, err)
+	}
+	payload := make([]byte, len(valBytes))
+	copy(payload, valBytes)
+	slice.ExplicitBzero(valBytes)
+	return payload, nil
+}
+
+func collectSecretReferences(hostEnv []string, envFileVars map[string]string) map[string]string {
+	resolved := make(map[string]string)
+	for _, item := range hostEnv {
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) == 2 {
+			resolved[parts[0]] = parts[1]
+		}
+	}
+	for k, v := range envFileVars {
+		resolved[k] = v
+	}
+
+	secretRefs := make(map[string]string)
+	for k, v := range resolved {
+		if strings.HasPrefix(k, "LOCKSMITH_SECRET_") {
+			newKey := strings.TrimPrefix(k, "LOCKSMITH_SECRET_")
+			secretRefs[newKey] = v
+		} else if strings.HasPrefix(v, "locksmith://") {
+			secretRefs[k] = strings.TrimPrefix(v, "locksmith://")
+		}
+	}
+	return secretRefs
+}
+
+func (l *Locksmith) formatMultiSecretPayload(secretRefs map[string]string) ([]byte, error) {
+	var fetchedSecrets [][]byte
+	defer func() {
+		for _, s := range fetchedSecrets {
+			slice.ExplicitBzero(s)
+		}
+	}()
+
+	var buf strings.Builder
+	for envVar, secretKey := range secretRefs {
+		valBytes, err := l.Get(secretKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get secret '%s': %w", secretKey, err)
+		}
+		fetchedSecrets = append(fetchedSecrets, valBytes)
+		buf.WriteString(fmt.Sprintf("%s=%s\n", envVar, string(valBytes)))
+	}
+	return []byte(buf.String()), nil
+}
+
+func (l *Locksmith) resolveSlicePayload(sliceKey string, hostEnv []string, envFileVars map[string]string) ([]byte, string, error) {
+	if sliceKey != "" && sliceKey != "true" && sliceKey != "*" {
+		payload, err := l.fetchAndZeroSecret(sliceKey)
+		return payload, sliceKey, err
+	}
+
+	secretRefs := collectSecretReferences(hostEnv, envFileVars)
+	if len(secretRefs) == 0 {
+		return nil, "", fmt.Errorf("no secrets specified to slice (specify a secret key or configure LOCKSMITH_SECRET_* / env file)")
+	}
+
+	if len(secretRefs) == 1 {
+		var singleKey string
+		for _, ref := range secretRefs {
+			singleKey = ref
+			break
+		}
+		payload, err := l.fetchAndZeroSecret(singleKey)
+		return payload, singleKey, err
+	}
+
+	payload, err := l.formatMultiSecretPayload(secretRefs)
+	return payload, "", err
+}
+
+func buildSliceEnvironment(hostEnv []string, envFileVars map[string]string, sliceKey string) []string {
+	envMap := make(map[string]string)
+	for _, item := range hostEnv {
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) == 2 {
+			k, v := parts[0], parts[1]
+			if strings.HasPrefix(k, "LOCKSMITH_SECRET_") || strings.HasPrefix(v, "locksmith://") {
+				continue
+			}
+			envMap[k] = v
+		}
+	}
+
+	for k, v := range envFileVars {
+		if strings.HasPrefix(k, "LOCKSMITH_SECRET_") || strings.HasPrefix(v, "locksmith://") {
+			continue
+		}
+		envMap[k] = v
+	}
+
+	envMap["LOCKSMITH_FD"] = "3"
+	if sliceKey != "" {
+		envMap["LOCKSMITH_SECRET_NAME"] = sliceKey
+	}
+
+	out := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		out = append(out, fmt.Sprintf("%s=%s", k, v))
+	}
+	return out
+}
+
+func runCommandWithSlice(command string, args []string, env []string, sl slice.Slice) (int, error) {
+	cmd := exec.Command(command, args...) // #nosec G204 // nosem
+	cmd.Env = env
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.ExtraFiles = []*os.File{sl.File()}
+
+	// Forward signals to child process
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, forwardedSignals...)
+	go func() {
+		for sig := range sigChan {
+			if cmd.Process != nil {
+				_ = cmd.Process.Signal(sig)
+			}
+		}
+	}()
+	defer signal.Stop(sigChan)
+
+	if err := cmd.Start(); err != nil {
+		return 1, fmt.Errorf("failed to start command: %w", err)
+	}
+
+	// Close parent descriptor now that child has inherited it
+	_ = sl.Close()
+
+	if err := cmd.Wait(); err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			return exitError.ExitCode(), nil
+		}
+		return 1, err
+	}
+
+	return 0, nil
 }
 
 // RunIntegration executes a configured integration command with locksmith-backed env vars.

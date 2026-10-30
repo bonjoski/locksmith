@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
+	"github.com/bonjoski/shield/pkg/provider"
+	"github.com/bonjoski/shield/pkg/shield"
 	"github.com/spf13/cobra"
 )
 
@@ -24,6 +27,7 @@ const integrationMigrateSecretTTL = 30 * 24 * time.Hour
 
 var integrationsDoctorPaths []string
 var integrationsAliasShell string
+var integrationsDoctorAI bool
 
 var integrationsAliasesCmd = &cobra.Command{
 	Use:   "aliases [integration|all]",
@@ -74,6 +78,9 @@ var integrationsDoctorCmd = &cobra.Command{
 			for _, note := range integrationDoctorNotes(target) {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", note)
 			}
+			if integrationsDoctorAI {
+				_ = runShieldDoctorAdvisory(cmd, summary, findings)
+			}
 			return nil
 		}
 
@@ -82,8 +89,64 @@ var integrationsDoctorCmd = &cobra.Command{
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "- PLAINTEXT [%s] %s (%s)\n", finding.Integration, finding.FilePath, finding.KeyPath)
 		}
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Run 'locksmith integrations scrub <integration|all>' to remove these fields.")
+
+		if integrationsDoctorAI {
+			if err := runShieldDoctorAdvisory(cmd, summary, findings); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
+}
+
+func runShieldDoctorAdvisory(cmd *cobra.Command, summary []string, findings []locksmith.IntegrationPlaintextFinding) error {
+	shieldEngine := shield.NewEngine(shield.DefaultConfig())
+	var rawPrompt strings.Builder
+	rawPrompt.WriteString("Audit report summary:\n")
+	for _, s := range summary {
+		rawPrompt.WriteString(s + "\n")
+	}
+	if len(findings) == 0 {
+		rawPrompt.WriteString("Status: Clean. No plaintext credentials found.\n")
+	} else {
+		rawPrompt.WriteString(fmt.Sprintf("Status: Detected %d plaintext token finding(s).\n", len(findings)))
+		for _, f := range findings {
+			rawPrompt.WriteString(fmt.Sprintf("Finding: integration=%s, path=%s, key=%s\n", f.Integration, f.FilePath, f.KeyPath))
+			if content, err := os.ReadFile(f.FilePath); err == nil {
+				rawPrompt.WriteString("Snippet:\n")
+				rawPrompt.Write(content)
+				rawPrompt.WriteString("\n")
+			}
+		}
+	}
+	rawPrompt.WriteString("\nProvide security remediation recommendations.")
+
+	redacted, _, err := shieldEngine.Redact(rawPrompt.String())
+	if err != nil {
+		return fmt.Errorf("shield redaction failed: %w", err)
+	}
+	if err := shieldEngine.FailClosedWireGuard([]byte(redacted)); err != nil {
+		return fmt.Errorf("fail-closed wire guard blocked payload: %w", err)
+	}
+
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	prov := provider.NewFromEnv()
+	resp, err := prov.Complete(ctx, provider.Request{
+		Model: "auto",
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: redacted},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("shield ai completion failed: %w", err)
+	}
+
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\n[Shield Protected AI Advisory]")
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), resp.Content)
+	return nil
 }
 
 var integrationsMigrateCmd = &cobra.Command{
@@ -220,6 +283,7 @@ func init() {
 	integrationsCmd.AddCommand(integrationsAliasesCmd)
 	integrationsCmd.AddCommand(integrationsMigrateCmd)
 	integrationsDoctorCmd.Flags().StringArrayVar(&integrationsDoctorPaths, "path", nil, "Additional file or directory path to scan (repeatable)")
+	integrationsDoctorCmd.Flags().BoolVar(&integrationsDoctorAI, "ai", false, "Use Shield-protected AI inference to analyze findings and suggest remediation")
 	integrationsAliasesCmd.Flags().StringVar(&integrationsAliasShell, "shell", "auto", "Shell format for alias suggestions: auto|bash|zsh|fish|powershell|cmd")
 }
 

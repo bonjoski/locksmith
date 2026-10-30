@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-GOBIN="${GOBIN:-$(go env GOPATH)/bin}"
+GOBIN="${GOBIN:-$HOME/go/bin}"
 mkdir -p "$GOBIN"
 
-if command -v argus >/dev/null 2>&1; then
+if [ -x "$GOBIN/argus" ] || command -v argus >/dev/null 2>&1; then
     exit 0
 fi
 
