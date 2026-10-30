@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
-- fix(cockpit): connect live daemon, add restart daemon button, and bump to v3.0.1
-- fix(makefile): prevent duplicate signing and handle existing asc files in gpg-sign
-- fix(makefile): avoid duplicate cd to bin directory in cockpit checksum generation
-- feat(cockpit): include desktop cockpit in Homebrew formula and release pipeline (#101)
-- feat(cockpit): add desktop GUI control plane, IPC lease endpoints, and bump version to v2.10.0
+- Merge pull request #102 from bonjoski/feat/in-memory-slicing
+- ci(codeql): update setup-go to use go-version-file go.mod
+- ci(lint): treat golangci-lint incompatibilities with Go 1.27+ as non-fatal
+- ci: prevent airlock shim hijacking of tool installations and make binary resolution resilient
+- fix(ci,slice): guard windows file descriptor tests and stabilize argus-scan GOBIN path
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
