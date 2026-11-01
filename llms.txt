@@ -1,0 +1,22 @@
+# Locksmith
+
+> Biometric Hardware Secrets Vault & Model Context Protocol (MCP) Server.
+
+## Core Capabilities
+- Native Hardware Biometrics: Bridges developer and agent workflows with Apple Secure Enclave (Touch ID / Apple Watch), Windows Hello, and Linux TPM2/Secret Service.
+- Model Context Protocol (MCP) Server: Provides structured `get_secret` and `list_secrets` tools for Claude, Antigravity, and Cursor with prompt-time biometric verification.
+- Ephemeral Execution Injection: CyberArk Summon provider (`summon-locksmith`) and `locksmith run` inject secrets into process environments without disk persistence.
+- In-Memory Secret Slicing: Fragments secrets into non-contiguous memory slices with automatic memory zeroization on lease expiration.
+- Git Credential Helper: Intercepts git HTTPS auth via biometric enclave prompts.
+
+## CLI Usage
+- `locksmith add <KEY>`: Prompts and encrypts secret in the platform enclave.
+- `locksmith get <KEY>`: Prompts for biometric unlock and outputs secret.
+- `locksmith list`: Lists stored secret keys (values redacted).
+- `locksmith run --secret <KEY> -- <command>`: Executes command with ephemeral secret injected.
+- `locksmith mcp`: Launches stdio Model Context Protocol server.
+- `locksmith slice --key <KEY>`: Uses in-memory slicing for ephemeral key management.
+
+## Sockets & Paths
+- IPC Socket: `~/.locksmith/locksmith.sock`
+- Documentation: `docs/knowledge-base/05-locksmith.md` in repo `spanreed`
