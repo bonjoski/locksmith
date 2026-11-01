@@ -436,6 +436,24 @@ Add Locksmith to your `claude_desktop_config.json` or Cursor MCP settings:
 > [!IMPORTANT]
 > When an AI agent requests a secret, you will be prompted for biometrics on your hardware. The AI cannot bypass this gate.
 
+### Sovereign Certificate Authority (`locksmith ca`)
+
+Locksmith includes a hardware-anchored local Certificate Authority (CA) to secure local loopback IPC and proxy connections without leaving open unencrypted HTTP ports.
+
+```bash
+# 1. Initialize Root CA and install into macOS System Trust Store
+locksmith ca init --trust
+
+# 2. Issue a trusted TLS server certificate for local daemons (Shield, Aegisbox)
+locksmith ca issue --domain 127.0.0.1 --domain localhost
+
+# 3. Issue a client certificate for agent mutual TLS (mTLS)
+locksmith ca issue --client --name agent-client
+
+# 4. Inspect CA status and validity
+locksmith ca status
+```
+
 ### Summon Integration
 
 Locksmith can be used as a [Summon](https://cyberark.github.io/summon) provider to inject biometric-protected secrets into processes:

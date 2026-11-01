@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- Merge pull request #104 from bonjoski/feat/agent-invariants
+- docs: establish AGENTS.md instructions and llms.txt context index
+- ci(release,fuzz): update setup-go to use go-version-file go.mod
 - Merge pull request #102 from bonjoski/feat/in-memory-slicing
 - ci(codeql): update setup-go to use go-version-file go.mod
-- ci(lint): treat golangci-lint incompatibilities with Go 1.27+ as non-fatal
-- ci: prevent airlock shim hijacking of tool installations and make binary resolution resilient
-- fix(ci,slice): guard windows file descriptor tests and stabilize argus-scan GOBIN path
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

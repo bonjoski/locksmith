@@ -51,8 +51,8 @@ func main() {
 		}
 		// Skip strings marked with gosec ignore comment (//#nosec) if present in the same line – not directly available here, but this placeholder shows intent
 		e := calculateEntropy(arg)
-		if e < threshold {
-			fmt.Printf("[Low Entropy Gate] Suspicious string found (entropy: %.2f): %s\n", e, arg)
+		if e > threshold {
+			fmt.Printf("[High Entropy Gate] Suspicious secret string found (entropy: %.2f): %s\n", e, arg)
 			found = true
 		}
 	}
