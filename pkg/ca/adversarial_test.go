@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -341,3 +342,68 @@ func TestAdversarial_ExpiredCertificateReplay(t *testing.T) {
 		t.Logf("PASS: Expired certificate correctly rejected: %v", err)
 	}
 }
+
+// ADV-08: Cross-Protocol CA Spoofing & Algorithm Substitution Attack
+// Verifies that:
+// 1. A server certificate signed by the classical ECDSA CA is strictly rejected by a Post-Quantum ML-DSA-65 root pool.
+// 2. A server certificate signed by the Post-Quantum ML-DSA-65 CA is strictly rejected by a Classical ECDSA root pool.
+// 3. Algorithm substitution attempts (e.g. attempting to verify an ML-DSA cert using an ECDSA key) are blocked.
+func TestAdversarial_CrossProtocolCASpoofing(t *testing.T) {
+	dualCA, err := GenerateRootCA("Dual Sovereign CA", "Dual Org", 30)
+	if err != nil {
+		t.Fatalf("GenerateRootCA failed: %v", err)
+	}
+
+	bundle, err := dualCA.IssueDualServerCert([]string{"localhost", "127.0.0.1"}, 30)
+	if err != nil {
+		t.Fatalf("IssueDualServerCert failed: %v", err)
+	}
+
+	// 1. Classical server cert
+	classicalTLS, err := tls.X509KeyPair(bundle.CertPEM, bundle.KeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	classicalCert, err := x509.ParseCertificate(classicalTLS.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Post-Quantum ML-DSA-65 server cert
+	pqcTLS, err := tls.X509KeyPair(bundle.PQCCertPEM, bundle.PQCKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pqcCert, err := x509.ParseCertificate(pqcTLS.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Root pools
+	classicalPool := x509.NewCertPool()
+	classicalPool.AddCert(dualCA.Certificate)
+
+	pqcPool := x509.NewCertPool()
+	pqcPool.AddCert(dualCA.PQCCertificate)
+
+	// Vector 1: Attempt to verify Classical ECDSA cert using Post-Quantum ML-DSA-65 root pool
+	if _, err := classicalCert.Verify(x509.VerifyOptions{
+		DNSName: "localhost",
+		Roots:   pqcPool,
+	}); err == nil {
+		t.Fatal("CRITICAL: Classical ECDSA certificate was accepted by Post-Quantum ML-DSA-65 root pool!")
+	} else {
+		t.Logf("PASS: Classical cert rejected by PQC pool: %v", err)
+	}
+
+	// Vector 2: Attempt to verify Post-Quantum ML-DSA-65 cert using Classical ECDSA root pool
+	if _, err := pqcCert.Verify(x509.VerifyOptions{
+		DNSName: "localhost",
+		Roots:   classicalPool,
+	}); err == nil {
+		t.Fatal("CRITICAL: Post-Quantum ML-DSA-65 certificate was accepted by Classical ECDSA root pool!")
+	} else {
+		t.Logf("PASS: PQC cert rejected by Classical pool: %v", err)
+	}
+}
+

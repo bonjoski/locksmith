@@ -137,3 +137,89 @@ func TestIssueClientCertAndVerification(t *testing.T) {
 		t.Fatalf("client certificate verification failed: %v", err)
 	}
 }
+
+func TestDualRootCAGeneration(t *testing.T) {
+	dualCA, err := GenerateRootCA("Dual Sovereign CA", "Dual Org", 30)
+	if err != nil {
+		t.Fatalf("GenerateRootCA failed: %v", err)
+	}
+
+	if dualCA.Certificate == nil || dualCA.PrivateKey == nil {
+		t.Fatal("expected classical Certificate and PrivateKey")
+	}
+	if dualCA.PQCCertificate == nil || dualCA.PQCPrivateKey == nil {
+		t.Fatal("expected post-quantum PQCCertificate and PQCPrivateKey")
+	}
+	if dualCA.PQCCertificate.SignatureAlgorithm != x509.MLDSA65 {
+		t.Errorf("expected ML-DSA-65 signature algorithm, got: %s", dualCA.PQCCertificate.SignatureAlgorithm)
+	}
+}
+
+func TestDualRootReload(t *testing.T) {
+	dualCA, err := GenerateRootCA("Dual Sovereign CA", "Dual Org", 30)
+	if err != nil {
+		t.Fatalf("GenerateRootCA failed: %v", err)
+	}
+
+	reloaded, err := LoadDualCA(dualCA.CertPEM, dualCA.KeyPEM, dualCA.PQCCertPEM, dualCA.PQCKeyPEM)
+	if err != nil {
+		t.Fatalf("LoadDualCA failed: %v", err)
+	}
+	if reloaded.PQCCertificate == nil {
+		t.Fatal("expected non-nil PQCCertificate after LoadDualCA")
+	}
+}
+
+func TestDualRootServerCertIssuance(t *testing.T) {
+	dualCA, err := GenerateRootCA("Dual Sovereign CA", "Dual Org", 30)
+	if err != nil {
+		t.Fatalf("GenerateRootCA failed: %v", err)
+	}
+
+	bundle, err := dualCA.IssueDualServerCert([]string{"127.0.0.1", "localhost"}, 30)
+	if err != nil {
+		t.Fatalf("IssueDualServerCert failed: %v", err)
+	}
+
+	if len(bundle.CertPEM) == 0 || len(bundle.KeyPEM) == 0 {
+		t.Fatal("expected non-empty classical cert and key")
+	}
+	if len(bundle.PQCCertPEM) == 0 || len(bundle.PQCKeyPEM) == 0 {
+		t.Fatal("expected non-empty PQC cert and key")
+	}
+
+	pqcPool := x509.NewCertPool()
+	pqcPool.AddCert(dualCA.PQCCertificate)
+
+	pqcServerTLS, err := tls.X509KeyPair(bundle.PQCCertPEM, bundle.PQCKeyPEM)
+	if err != nil {
+		t.Fatalf("failed to parse PQC server keypair into tls.X509KeyPair: %v", err)
+	}
+	pqcServerCert, err := x509.ParseCertificate(pqcServerTLS.Certificate[0])
+	if err != nil {
+		t.Fatalf("failed to parse PQC server cert: %v", err)
+	}
+
+	if _, err := pqcServerCert.Verify(x509.VerifyOptions{
+		DNSName: "localhost",
+		Roots:   pqcPool,
+	}); err != nil {
+		t.Fatalf("PQC server certificate verification failed: %v", err)
+	}
+}
+
+func TestDualRootClientCertIssuance(t *testing.T) {
+	dualCA, err := GenerateRootCA("Dual Sovereign CA", "Dual Org", 30)
+	if err != nil {
+		t.Fatalf("GenerateRootCA failed: %v", err)
+	}
+
+	clientBundle, err := dualCA.IssueDualClientCert("agent-pqc", 30)
+	if err != nil {
+		t.Fatalf("IssueDualClientCert failed: %v", err)
+	}
+	if len(clientBundle.PQCCertPEM) == 0 {
+		t.Fatal("expected non-empty PQC client cert")
+	}
+}
+

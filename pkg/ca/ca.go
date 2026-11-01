@@ -6,6 +6,7 @@ package ca
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -24,20 +25,41 @@ import (
 
 const (
 	DefaultCAName         = "Bonjoski Sovereign Root CA"
+	DefaultPQCCAName      = "Bonjoski Sovereign Post-Quantum Root CA (ML-DSA-65)"
 	DefaultCAOrganization = "Bonjoski Sovereign AI Security Fabric"
 	DefaultCAValidityDays = 3650 // 10 years
 	DefaultCertValidity   = 365  // 1 year
 )
 
-// CA represents a loaded Certificate Authority capable of signing TLS certificates.
+// CA represents a dual-root Certificate Authority capable of signing both
+// classical ECDSA and post-quantum ML-DSA-65 (NIST FIPS 204) certificates.
 type CA struct {
-	Certificate *x509.Certificate
-	PrivateKey  *ecdsa.PrivateKey
-	CertPEM     []byte
-	KeyPEM      []byte
+	// Classical Root (ECDSA P-256) - trusted by macOS Keychain, curl, browsers
+	Certificate    *x509.Certificate
+	PrivateKey     *ecdsa.PrivateKey
+	CertPEM        []byte
+	KeyPEM         []byte
+
+	// Post-Quantum Root (ML-DSA-65 / NIST FIPS 204)
+	PQCCertificate *x509.Certificate
+	PQCPrivateKey  *mldsa.PrivateKey
+	PQCCertPEM     []byte
+	PQCKeyPEM      []byte
+
+	// Dual-Root concatenated bundle (Classical + PQC)
+	DualCertPEM    []byte
 }
 
-// GenerateRootCA creates a new self-signed Root Certificate Authority.
+// IssuedCertBundle represents a dual-issued certificate set.
+type IssuedCertBundle struct {
+	CertPEM     []byte // Classical ECDSA certificate
+	KeyPEM      []byte // Classical ECDSA private key
+	PQCCertPEM  []byte // Post-Quantum ML-DSA-65 certificate (FIPS 204)
+	PQCKeyPEM   []byte // Post-Quantum ML-DSA-65 private key (PKCS#8 PEM)
+	DualCertPEM []byte // Concatenated certificate bundle
+}
+
+// GenerateRootCA creates a new self-signed dual-root Certificate Authority (ECDSA + ML-DSA-65).
 func GenerateRootCA(commonName, organization string, validityDays int) (*CA, error) {
 	if commonName == "" {
 		commonName = DefaultCAName
@@ -49,19 +71,20 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 		validityDays = DefaultCAValidityDays
 	}
 
+	notBefore := time.Now().Add(-1 * time.Hour)
+	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+
+	// 1. Classical ECDSA P-256 Root CA
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate CA private key: %w", err)
 	}
 
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate serial number: %w", err)
 	}
-
-	notBefore := time.Now().Add(-1 * time.Hour)
-	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
 
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
@@ -101,11 +124,70 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 		Bytes: keyDER,
 	})
 
+	// 2. Post-Quantum ML-DSA-65 Root CA (NIST FIPS 204)
+	pqcPrivKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate ML-DSA-65 CA private key: %w", err)
+	}
+
+	pqcSerialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate PQC serial number: %w", err)
+	}
+
+	pqcCommonName := commonName + " (Post-Quantum ML-DSA-65)"
+	pqcTemplate := x509.Certificate{
+		SerialNumber: pqcSerialNumber,
+		Subject: pkix.Name{
+			CommonName:   pqcCommonName,
+			Organization: []string{organization},
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		MaxPathLenZero:        false,
+		SignatureAlgorithm:    x509.MLDSA65,
+	}
+
+	pqcCertDER, err := x509.CreateCertificate(rand.Reader, &pqcTemplate, &pqcTemplate, pqcPrivKey.Public(), pqcPrivKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create self-signed PQC CA certificate: %w", err)
+	}
+
+	pqcCert, err := x509.ParseCertificate(pqcCertDER)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse generated PQC CA certificate: %w", err)
+	}
+
+	pqcCertPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: pqcCertDER,
+	})
+
+	pqcKeyDER, err := x509.MarshalPKCS8PrivateKey(pqcPrivKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal PQC CA private key: %w", err)
+	}
+	pqcKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: pqcKeyDER,
+	})
+
+	// 3. Concatenated Dual-Root Bundle (Classical + PQC)
+	dualCertPEM := append(certPEM, pqcCertPEM...)
+
 	return &CA{
-		Certificate: cert,
-		PrivateKey:  privKey,
-		CertPEM:     certPEM,
-		KeyPEM:      keyPEM,
+		Certificate:    cert,
+		PrivateKey:     privKey,
+		CertPEM:        certPEM,
+		KeyPEM:         keyPEM,
+		PQCCertificate: pqcCert,
+		PQCPrivateKey:  pqcPrivKey,
+		PQCCertPEM:     pqcCertPEM,
+		PQCKeyPEM:      pqcKeyPEM,
+		DualCertPEM:    dualCertPEM,
 	}, nil
 }
 
@@ -131,6 +213,8 @@ func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
 	}
 
 	var privKey *ecdsa.PrivateKey
+	var pqcPrivKey *mldsa.PrivateKey
+
 	if keyBlock.Type == "EC PRIVATE KEY" {
 		privKey, err = x509.ParseECPrivateKey(keyBlock.Bytes)
 		if err != nil {
@@ -141,13 +225,25 @@ func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
 		}
-		var ok bool
-		privKey, ok = pkcs8Key.(*ecdsa.PrivateKey)
-		if !ok {
-			return nil, errors.New("private key is not an ECDSA key")
+		if ec, ok := pkcs8Key.(*ecdsa.PrivateKey); ok {
+			privKey = ec
+		} else if pqc, ok := pkcs8Key.(*mldsa.PrivateKey); ok {
+			pqcPrivKey = pqc
+		} else {
+			return nil, errors.New("private key is neither ECDSA nor ML-DSA")
 		}
 	} else {
 		return nil, fmt.Errorf("unsupported private key block type: %s", keyBlock.Type)
+	}
+
+	if pqcPrivKey != nil {
+		return &CA{
+			PQCCertificate: cert,
+			PQCPrivateKey:  pqcPrivKey,
+			PQCCertPEM:     certPEM,
+			PQCKeyPEM:      keyPEM,
+			DualCertPEM:    certPEM,
+		}, nil
 	}
 
 	return &CA{
@@ -155,7 +251,29 @@ func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
 		PrivateKey:  privKey,
 		CertPEM:     certPEM,
 		KeyPEM:      keyPEM,
+		DualCertPEM: certPEM,
 	}, nil
+}
+
+// LoadDualCA parses both classical and post-quantum Root CAs into a unified Dual CA instance.
+func LoadDualCA(certPEM, keyPEM, pqcCertPEM, pqcKeyPEM []byte) (*CA, error) {
+	classicalCA, err := LoadCA(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load classical CA: %w", err)
+	}
+
+	if len(pqcCertPEM) > 0 && len(pqcKeyPEM) > 0 {
+		pqcCA, err := LoadCA(pqcCertPEM, pqcKeyPEM)
+		if err == nil && pqcCA.PQCCertificate != nil {
+			classicalCA.PQCCertificate = pqcCA.PQCCertificate
+			classicalCA.PQCPrivateKey = pqcCA.PQCPrivateKey
+			classicalCA.PQCCertPEM = pqcCA.PQCCertPEM
+			classicalCA.PQCKeyPEM = pqcCA.PQCKeyPEM
+			classicalCA.DualCertPEM = append(classicalCA.CertPEM, pqcCA.PQCCertPEM...)
+		}
+	}
+
+	return classicalCA, nil
 }
 
 // IssueServerCert signs a new TLS server certificate for the provided hostnames and IP addresses.
@@ -193,11 +311,16 @@ func (c *CA) IssueServerCert(hosts []string, validityDays int) (certPEM, keyPEM 
 	}
 
 	cn := hosts[0]
+	org := DefaultCAOrganization
+	if len(c.Certificate.Subject.Organization) > 0 {
+		org = c.Certificate.Subject.Organization[0]
+	}
+
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			CommonName:   cn,
-			Organization: []string{c.Certificate.Subject.Organization[0]},
+			Organization: []string{org},
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -231,6 +354,114 @@ func (c *CA) IssueServerCert(hosts []string, validityDays int) (certPEM, keyPEM 
 	return certPEM, keyPEM, nil
 }
 
+// IssuePQCServerCert signs a post-quantum ML-DSA-65 server certificate.
+func (c *CA) IssuePQCServerCert(hosts []string, validityDays int) (certPEM, keyPEM []byte, err error) {
+	if c.PQCCertificate == nil || c.PQCPrivateKey == nil {
+		return nil, nil, errors.New("post-quantum ML-DSA-65 CA is not initialized")
+	}
+	if len(hosts) == 0 {
+		hosts = []string{"127.0.0.1", "localhost"}
+	}
+	if validityDays <= 0 {
+		validityDays = DefaultCertValidity
+	}
+
+	srvKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate ML-DSA-65 server private key: %w", err)
+	}
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	notBefore := time.Now().Add(-1 * time.Hour)
+	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
+
+	var dnsNames []string
+	var ipAddresses []net.IP
+
+	for _, host := range hosts {
+		if ip := net.ParseIP(host); ip != nil {
+			ipAddresses = append(ipAddresses, ip)
+		} else {
+			dnsNames = append(dnsNames, host)
+		}
+	}
+
+	cn := hosts[0]
+	org := DefaultCAOrganization
+	if len(c.PQCCertificate.Subject.Organization) > 0 {
+		org = c.PQCCertificate.Subject.Organization[0]
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName:   cn,
+			Organization: []string{org},
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+		DNSNames:              dnsNames,
+		IPAddresses:           ipAddresses,
+		SignatureAlgorithm:    x509.MLDSA65,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, c.PQCCertificate, srvKey.Public(), c.PQCPrivateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to sign PQC server certificate: %w", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certDER,
+	})
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(srvKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal PQC server private key: %w", err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyDER,
+	})
+
+	return certPEM, keyPEM, nil
+}
+
+// IssueDualServerCert signs both classical ECDSA and post-quantum ML-DSA-65 server certificates.
+func (c *CA) IssueDualServerCert(hosts []string, validityDays int) (*IssuedCertBundle, error) {
+	classicalCertPEM, classicalKeyPEM, err := c.IssueServerCert(hosts, validityDays)
+	if err != nil {
+		return nil, err
+	}
+
+	bundle := &IssuedCertBundle{
+		CertPEM:     classicalCertPEM,
+		KeyPEM:      classicalKeyPEM,
+		DualCertPEM: classicalCertPEM,
+	}
+
+	if c.PQCCertificate != nil && c.PQCPrivateKey != nil {
+		pqcCertPEM, pqcKeyPEM, err := c.IssuePQCServerCert(hosts, validityDays)
+		if err != nil {
+			return nil, fmt.Errorf("failed to issue PQC server certificate: %w", err)
+		}
+		bundle.PQCCertPEM = pqcCertPEM
+		bundle.PQCKeyPEM = pqcKeyPEM
+		bundle.DualCertPEM = append(classicalCertPEM, pqcCertPEM...)
+	}
+
+	return bundle, nil
+}
+
 // IssueClientCert signs a new TLS client certificate for mutual TLS (mTLS) authentication.
 func (c *CA) IssueClientCert(clientIdentity string, validityDays int) (certPEM, keyPEM []byte, err error) {
 	if clientIdentity == "" {
@@ -254,11 +485,16 @@ func (c *CA) IssueClientCert(clientIdentity string, validityDays int) (certPEM, 
 	notBefore := time.Now().Add(-1 * time.Hour)
 	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
 
+	org := DefaultCAOrganization
+	if len(c.Certificate.Subject.Organization) > 0 {
+		org = c.Certificate.Subject.Organization[0]
+	}
+
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			CommonName:   clientIdentity,
-			Organization: []string{c.Certificate.Subject.Organization[0]},
+			Organization: []string{org},
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -290,6 +526,100 @@ func (c *CA) IssueClientCert(clientIdentity string, validityDays int) (certPEM, 
 	return certPEM, keyPEM, nil
 }
 
+// IssuePQCClientCert signs a post-quantum ML-DSA-65 client certificate.
+func (c *CA) IssuePQCClientCert(clientIdentity string, validityDays int) (certPEM, keyPEM []byte, err error) {
+	if c.PQCCertificate == nil || c.PQCPrivateKey == nil {
+		return nil, nil, errors.New("post-quantum ML-DSA-65 CA is not initialized")
+	}
+	if clientIdentity == "" {
+		clientIdentity = "agent-client"
+	}
+	if validityDays <= 0 {
+		validityDays = DefaultCertValidity
+	}
+
+	clientKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate ML-DSA-65 client private key: %w", err)
+	}
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	notBefore := time.Now().Add(-1 * time.Hour)
+	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
+
+	org := DefaultCAOrganization
+	if len(c.PQCCertificate.Subject.Organization) > 0 {
+		org = c.PQCCertificate.Subject.Organization[0]
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName:   clientIdentity,
+			Organization: []string{org},
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+		SignatureAlgorithm:    x509.MLDSA65,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, c.PQCCertificate, clientKey.Public(), c.PQCPrivateKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to sign PQC client certificate: %w", err)
+	}
+
+	certPEM = pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certDER,
+	})
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(clientKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal PQC client private key: %w", err)
+	}
+	keyPEM = pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyDER,
+	})
+
+	return certPEM, keyPEM, nil
+}
+
+// IssueDualClientCert signs both classical ECDSA and post-quantum ML-DSA-65 client certificates.
+func (c *CA) IssueDualClientCert(clientIdentity string, validityDays int) (*IssuedCertBundle, error) {
+	classicalCertPEM, classicalKeyPEM, err := c.IssueClientCert(clientIdentity, validityDays)
+	if err != nil {
+		return nil, err
+	}
+
+	bundle := &IssuedCertBundle{
+		CertPEM:     classicalCertPEM,
+		KeyPEM:      classicalKeyPEM,
+		DualCertPEM: classicalCertPEM,
+	}
+
+	if c.PQCCertificate != nil && c.PQCPrivateKey != nil {
+		pqcCertPEM, pqcKeyPEM, err := c.IssuePQCClientCert(clientIdentity, validityDays)
+		if err != nil {
+			return nil, fmt.Errorf("failed to issue PQC client certificate: %w", err)
+		}
+		bundle.PQCCertPEM = pqcCertPEM
+		bundle.PQCKeyPEM = pqcKeyPEM
+		bundle.DualCertPEM = append(classicalCertPEM, pqcCertPEM...)
+	}
+
+	return bundle, nil
+}
+
 // TrustInSystemTrustStore installs the Root CA certificate into the macOS login keychain.
 func TrustInSystemTrustStore(certPath string) error {
 	if runtime.GOOS != "darwin" {
@@ -302,7 +632,6 @@ func TrustInSystemTrustStore(certPath string) error {
 	}
 	loginKeychain := filepath.Join(homeDir, "Library", "Keychains", "login.keychain-db")
 	if _, err := os.Stat(loginKeychain); os.IsNotExist(err) {
-		// Fallback for older macOS
 		loginKeychain = filepath.Join(homeDir, "Library", "Keychains", "login.keychain")
 	}
 

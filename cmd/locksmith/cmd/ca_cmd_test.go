@@ -20,13 +20,23 @@ func TestCACliCommands(t *testing.T) {
 		t.Fatalf("ca init failed: %v, output: %s %s", err, outBuf.String(), errBuf.String())
 	}
 
-	if !strings.Contains(outBuf.String(), "Successfully initialized Root CA") {
+	if !strings.Contains(outBuf.String(), "Successfully initialized Sovereign Dual-Root CA") {
 		t.Errorf("unexpected output from ca init: %s", outBuf.String())
 	}
 
 	rootCertPath := filepath.Join(tempHome, ".locksmith", "ca", "root-ca.crt")
 	if _, err := os.Stat(rootCertPath); os.IsNotExist(err) {
 		t.Fatalf("expected root-ca.crt to exist at %s", rootCertPath)
+	}
+
+	rootPQCCertPath := filepath.Join(tempHome, ".locksmith", "ca", "root-ca-pqc.crt")
+	if _, err := os.Stat(rootPQCCertPath); os.IsNotExist(err) {
+		t.Fatalf("expected root-ca-pqc.crt to exist at %s", rootPQCCertPath)
+	}
+
+	rootDualCertPath := filepath.Join(tempHome, ".locksmith", "ca", "root-ca-dual.crt")
+	if _, err := os.Stat(rootDualCertPath); os.IsNotExist(err) {
+		t.Fatalf("expected root-ca-dual.crt to exist at %s", rootDualCertPath)
 	}
 
 	// 2. Test ca status
@@ -39,7 +49,7 @@ func TestCACliCommands(t *testing.T) {
 		t.Fatalf("ca status failed: %v, output: %s", err, statusBuf.String())
 	}
 
-	if !strings.Contains(statusBuf.String(), "Sovereign Certificate Authority Status") {
+	if !strings.Contains(statusBuf.String(), "Sovereign Dual-Root Certificate Authority Status") {
 		t.Errorf("unexpected output from ca status: %s", statusBuf.String())
 	}
 
