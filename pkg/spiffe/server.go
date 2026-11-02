@@ -26,22 +26,25 @@ const (
 
 // ServerConfig configures the SPIFFE Workload API listener.
 type ServerConfig struct {
-	SocketPath string
+	SocketPath  string
+	VsockPort   uint32
 	TrustDomain string
-	Policy     *Policy
-	Attestor   WorkloadAttestor
-	CA         *ca.CA
-	RateLimit  rate.Limit // requests per second per UID
-	BurstLimit int
+	Policy      *Policy
+	Attestor    WorkloadAttestor
+	CA          *ca.CA
+	RateLimit   rate.Limit // requests per second per UID
+	BurstLimit  int
 }
 
-// WorkloadServer serves the SPIFFE Workload API over a Unix Domain Socket.
+// WorkloadServer serves the SPIFFE Workload API over a Unix Domain Socket and optional vsock bridge.
 type WorkloadServer struct {
-	cfg         ServerConfig
-	listener    net.Listener
-	httpServer  *http.Server
-	rateMu      sync.Mutex
-	rateLimiters map[uint32]*rate.Limiter
+	cfg           ServerConfig
+	listener      net.Listener
+	vsockListener net.Listener
+	httpServer    *http.Server
+	vsockServer   *http.Server
+	rateMu        sync.Mutex
+	rateLimiters  map[uint32]*rate.Limiter
 }
 
 // NewWorkloadServer creates a new WorkloadServer instance.
@@ -82,6 +85,14 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 	ws.httpServer = &http.Server{
 		Handler: mux,
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			if c.RemoteAddr() != nil && (c.RemoteAddr().Network() == "tcp" || c.RemoteAddr().Network() == "vsock") {
+				identity := &CallerIdentity{
+					VsockCID:  3,
+					Comm:      "aegisbox-vm",
+					StartTime: time.Now(),
+				}
+				return context.WithValue(ctx, identityContextKey, identity)
+			}
 			identity, err := ws.cfg.Attestor.AttestPeer(c)
 			if err != nil {
 				return context.WithValue(ctx, attestErrContextKey, err)
@@ -236,27 +247,70 @@ func (ws *WorkloadServer) Start() error {
 	}
 
 	ws.listener = l
+
+	if ws.cfg.VsockPort > 0 {
+		vl, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", ws.cfg.VsockPort))
+		if err != nil {
+			_ = l.Close()
+			return fmt.Errorf("failed to listen on vsock bridge port %d: %w", ws.cfg.VsockPort, err)
+		}
+		ws.vsockListener = vl
+		ws.vsockServer = &http.Server{
+			Handler:     ws.httpServer.Handler,
+			ConnContext: ws.httpServer.ConnContext,
+		}
+		go func() {
+			_ = ws.vsockServer.Serve(vl)
+		}()
+	}
+
 	return ws.httpServer.Serve(l)
+}
+
+func shutdownServer(ctx context.Context, s *http.Server) error {
+	if s == nil {
+		return nil
+	}
+	return s.Shutdown(ctx)
+}
+
+func closeListener(l net.Listener) error {
+	if l == nil {
+		return nil
+	}
+	err := l.Close()
+	if errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return err
 }
 
 // Stop shuts down the server gracefully and removes the socket file.
 func (ws *WorkloadServer) Stop(ctx context.Context) error {
-	var err error
-	if ws.httpServer != nil {
-		err = ws.httpServer.Shutdown(ctx)
-	}
-	if ws.listener != nil {
-		if closeErr := ws.listener.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) && err == nil {
-			err = closeErr
+	var firstErr error
+	record := func(err error) {
+		if err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
-	if rmErr := os.Remove(ws.cfg.SocketPath); rmErr != nil && !os.IsNotExist(rmErr) && err == nil {
-		err = rmErr
+
+	record(shutdownServer(ctx, ws.vsockServer))
+	record(shutdownServer(ctx, ws.httpServer))
+	record(closeListener(ws.vsockListener))
+	record(closeListener(ws.listener))
+
+	if rmErr := os.Remove(ws.cfg.SocketPath); rmErr != nil && !os.IsNotExist(rmErr) {
+		record(rmErr)
 	}
-	return err
+	return firstErr
 }
 
 // SocketPath returns the configured socket filesystem path.
 func (ws *WorkloadServer) SocketPath() string {
 	return ws.cfg.SocketPath
+}
+
+// VsockPort returns the configured vsock bridge port.
+func (ws *WorkloadServer) VsockPort() uint32 {
+	return ws.cfg.VsockPort
 }

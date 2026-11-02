@@ -163,7 +163,7 @@ func testCACliServeSpiffeHelp(t *testing.T) {
 	}
 
 	out := buf.String()
-	for _, expected := range []string{"--socket", "--trust-domain", "--rate-limit", "--policy"} {
+	for _, expected := range []string{"--socket", "--vsock-port", "--trust-domain", "--rate-limit", "--policy"} {
 		if !strings.Contains(out, expected) {
 			t.Errorf("expected %s flag in ca serve-spiffe help output", expected)
 		}

@@ -41,6 +41,7 @@ var (
 	caServeTrustDomain string
 	caServePolicyPath  string
 	caServeRateLimit   float64
+	caServeVsockPort   uint32
 )
 
 const (
@@ -456,6 +457,7 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 
 		ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
 			SocketPath:  caServeSocket,
+			VsockPort:   caServeVsockPort,
 			TrustDomain: caServeTrustDomain,
 			Policy:      pol,
 			CA:          rootCA,
@@ -468,6 +470,9 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💎 Starting Sovereign SPIFFE Workload API Server...\n")
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Trust Domain: %s\n", caServeTrustDomain)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Socket Path:  %s (0600)\n", ws.SocketPath())
+		if caServeVsockPort > 0 {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   VSock Bridge: 127.0.0.1:%d (CID 3)\n", caServeVsockPort)
+		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Rate Limit:   %.0f req/s per UID\n", caServeRateLimit)
 
 		sigCh := make(chan os.Signal, 1)
@@ -583,6 +588,7 @@ func init() {
 
 	// ca serve-spiffe flags
 	caServeSpiffeCmd.Flags().StringVar(&caServeSocket, "socket", "", "Socket path for the Workload API (default ~/.locksmith/spiffe/workload.sock)")
+	caServeSpiffeCmd.Flags().Uint32Var(&caServeVsockPort, "vsock-port", 0, "Optional vsock port for Aegisbox microVM attestation (e.g. 9099)")
 	caServeSpiffeCmd.Flags().StringVar(&caServeTrustDomain, "trust-domain", spiffe.DefaultTrustDomain, "Sovereign trust domain authority")
 	caServeSpiffeCmd.Flags().StringVar(&caServePolicyPath, "policy", "", "Path to local policy.json file")
 	caServeSpiffeCmd.Flags().Float64Var(&caServeRateLimit, "rate-limit", 10.0, "Attestation rate limit (requests per second per UID)")

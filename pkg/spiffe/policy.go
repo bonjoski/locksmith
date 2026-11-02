@@ -17,12 +17,14 @@ type PolicyRule struct {
 	SPIFFEPattern   string   `json:"spiffe_pattern"`
 	AllowedUIDs     []uint32 `json:"allowed_uids,omitempty"`
 	AllowedBinaries []string `json:"allowed_binaries,omitempty"`
+	AllowedCIDs     []uint32 `json:"allowed_cids,omitempty"`
 }
 
 // Policy manages workload identity access control lists.
 type Policy struct {
 	TrustDomain string       `json:"trust_domain"`
 	AllowedUIDs []uint32     `json:"allowed_uids"`
+	AllowedCIDs []uint32     `json:"allowed_cids,omitempty"`
 	Rules       []PolicyRule `json:"rules,omitempty"`
 }
 
@@ -73,13 +75,29 @@ func (p *Policy) isUIDAllowed(uid uint32) bool {
 	return false
 }
 
+func (p *Policy) isCIDAllowed(cid uint32) bool {
+	if len(p.AllowedCIDs) == 0 {
+		return true // default: all guest microVMs allowed unless restricted
+	}
+	for _, allowed := range p.AllowedCIDs {
+		if allowed == cid {
+			return true
+		}
+	}
+	return false
+}
+
 // Authorize validates whether identity is permitted to receive the requested SPIFFE ID.
 func (p *Policy) Authorize(identity *CallerIdentity, requestedID *ca.SPIFFEID) error {
 	if identity == nil {
 		return ErrAttestationFailed
 	}
 
-	if !p.isUIDAllowed(identity.UID) {
+	if identity.VsockCID > 0 {
+		if !p.isCIDAllowed(identity.VsockCID) {
+			return fmt.Errorf("%w: caller vsock CID %d is not in allowed CIDs %v", ErrUnauthorizedWorkload, identity.VsockCID, p.AllowedCIDs)
+		}
+	} else if !p.isUIDAllowed(identity.UID) {
 		return fmt.Errorf("%w: caller UID %d is not in allowed UIDs %v", ErrUnauthorizedWorkload, identity.UID, p.AllowedUIDs)
 	}
 
@@ -105,12 +123,17 @@ func (p *Policy) ResolveSPIFFEID(identity *CallerIdentity, requested string) (*c
 		return parsed, nil
 	}
 
-	comm := identity.Comm
-	if comm == "" {
-		comm = "app"
+	var defaultURI string
+	if identity != nil && identity.VsockCID > 0 {
+		defaultURI = fmt.Sprintf("spiffe://%s/vm/cid/%d", p.TrustDomain, identity.VsockCID)
+	} else {
+		comm := "app"
+		if identity != nil && identity.Comm != "" {
+			comm = identity.Comm
+		}
+		cleanComm := strings.ToLower(strings.ReplaceAll(comm, " ", "-"))
+		defaultURI = fmt.Sprintf("spiffe://%s/workload/%s", p.TrustDomain, cleanComm)
 	}
-	cleanComm := strings.ToLower(strings.ReplaceAll(comm, " ", "-"))
-	defaultURI := fmt.Sprintf("spiffe://%s/workload/%s", p.TrustDomain, cleanComm)
 
 	parsed, err := ca.ParseSPIFFEID(defaultURI)
 	if err != nil {

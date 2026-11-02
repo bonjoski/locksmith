@@ -18,6 +18,7 @@ import (
 func newUnixHTTPClient(sockPath string) *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
+			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				return (&net.Dialer{}).DialContext(ctx, "unix", sockPath)
 			},
@@ -156,4 +157,51 @@ func TestWorkloadServer_EndToEnd(t *testing.T) {
 	if _, err := os.Stat(sockPath); !os.IsNotExist(err) {
 		t.Errorf("expected socket file %s to be removed after Stop", sockPath)
 	}
+}
+
+func TestWorkloadServer_VsockBridge(t *testing.T) {
+	rootCA, err := ca.GenerateRootCA("Test Dual CA", "Bonjoski Test Org", 30)
+	if err != nil {
+		t.Fatalf("failed to generate root CA: %v", err)
+	}
+
+	sockPath := shortTempSock(t, "vsock-test")
+	ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
+		SocketPath:  sockPath,
+		VsockPort:   19099,
+		TrustDomain: "bonjoski.local",
+		CA:          rootCA,
+	})
+	if err != nil {
+		t.Fatalf("failed to create workload server with vsock: %v", err)
+	}
+
+	go func() {
+		_ = ws.Start()
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Test request over vsock bridge port
+	resp, err := http.Get("http://127.0.0.1:19099/v1/svid")
+	if err != nil {
+		t.Fatalf("GET /v1/svid over vsock failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK from vsock svid, got %d", resp.StatusCode)
+	}
+
+	var svid spiffe.SVIDResponse
+	if err := json.NewDecoder(resp.Body).Decode(&svid); err != nil {
+		t.Fatalf("failed decoding svid response: %v", err)
+	}
+	if svid.SPIFFEID != "spiffe://bonjoski.local/vm/cid/3" {
+		t.Errorf("expected vm CID 3 SPIFFE ID, got: %s", svid.SPIFFEID)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = ws.Stop(ctx)
 }

@@ -46,6 +46,25 @@ func TestPolicy_Authorize(t *testing.T) {
 	if err := pol.Authorize(nil, validID); err == nil {
 		t.Errorf("expected nil identity to be rejected, got nil")
 	}
+
+	// 5. Vsock CID authorization
+	vmIdentity := &spiffe.CallerIdentity{
+		VsockCID: 3,
+		Comm:     "aegisbox-vm",
+	}
+	if err := pol.Authorize(vmIdentity, validID); err != nil {
+		t.Errorf("expected vsock identity to be authorized by default, got: %v", err)
+	}
+
+	// 6. Restrictive AllowedCIDs
+	pol.AllowedCIDs = []uint32{4, 5}
+	if err := pol.Authorize(vmIdentity, validID); err == nil {
+		t.Errorf("expected CID 3 to be rejected when AllowedCIDs=[4,5]")
+	}
+	vmIdentity.VsockCID = 4
+	if err := pol.Authorize(vmIdentity, validID); err != nil {
+		t.Errorf("expected CID 4 to be authorized, got: %v", err)
+	}
 }
 
 func TestPolicy_ResolveSPIFFEID(t *testing.T) {
@@ -72,5 +91,15 @@ func TestPolicy_ResolveSPIFFEID(t *testing.T) {
 	}
 	if defaultResolved.String() != "spiffe://bonjoski.local/workload/my-agent" {
 		t.Errorf("got %q, want spiffe://bonjoski.local/workload/my-agent", defaultResolved.String())
+	}
+
+	// Default fallback derivation for vsock microVM
+	vmIdentity := &spiffe.CallerIdentity{VsockCID: 3}
+	vmResolved, err := pol.ResolveSPIFFEID(vmIdentity, "")
+	if err != nil {
+		t.Fatalf("unexpected error resolving vm ID: %v", err)
+	}
+	if vmResolved.String() != "spiffe://bonjoski.local/vm/cid/3" {
+		t.Errorf("got %q, want spiffe://bonjoski.local/vm/cid/3", vmResolved.String())
 	}
 }
