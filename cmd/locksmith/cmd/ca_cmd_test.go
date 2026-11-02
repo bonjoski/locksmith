@@ -12,7 +12,14 @@ func TestCACliCommands(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
 
-	// 1. Test ca init
+	testCACliInit(t, tempHome)
+	testCACliStatus(t)
+	testCACliIssueServer(t, tempHome)
+	testCACliIssueClient(t, tempHome)
+	testCACliIssueSPIFFE(t, tempHome)
+}
+
+func testCACliInit(t *testing.T, tempHome string) {
 	outBuf, errBuf := setupTest()
 	rootCmd.SetArgs([]string{"ca", "init", "--days", "30"})
 
@@ -24,22 +31,15 @@ func TestCACliCommands(t *testing.T) {
 		t.Errorf("unexpected output from ca init: %s", outBuf.String())
 	}
 
-	rootCertPath := filepath.Join(tempHome, ".locksmith", "ca", "root-ca.crt")
-	if _, err := os.Stat(rootCertPath); os.IsNotExist(err) {
-		t.Fatalf("expected root-ca.crt to exist at %s", rootCertPath)
+	for _, name := range []string{"root-ca.crt", "root-ca-pqc.crt", "root-ca-dual.crt"} {
+		p := filepath.Join(tempHome, ".locksmith", "ca", name)
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			t.Fatalf("expected %s to exist at %s", name, p)
+		}
 	}
+}
 
-	rootPQCCertPath := filepath.Join(tempHome, ".locksmith", "ca", "root-ca-pqc.crt")
-	if _, err := os.Stat(rootPQCCertPath); os.IsNotExist(err) {
-		t.Fatalf("expected root-ca-pqc.crt to exist at %s", rootPQCCertPath)
-	}
-
-	rootDualCertPath := filepath.Join(tempHome, ".locksmith", "ca", "root-ca-dual.crt")
-	if _, err := os.Stat(rootDualCertPath); os.IsNotExist(err) {
-		t.Fatalf("expected root-ca-dual.crt to exist at %s", rootDualCertPath)
-	}
-
-	// 2. Test ca status
+func testCACliStatus(t *testing.T) {
 	statusBuf := new(bytes.Buffer)
 	rootCmd.SetOut(statusBuf)
 	rootCmd.SetErr(statusBuf)
@@ -52,8 +52,9 @@ func TestCACliCommands(t *testing.T) {
 	if !strings.Contains(statusBuf.String(), "Sovereign Dual-Root Certificate Authority Status") {
 		t.Errorf("unexpected output from ca status: %s", statusBuf.String())
 	}
+}
 
-	// 3. Test ca issue server
+func testCACliIssueServer(t *testing.T, tempHome string) {
 	serverBuf := new(bytes.Buffer)
 	rootCmd.SetOut(serverBuf)
 	rootCmd.SetErr(serverBuf)
@@ -68,8 +69,9 @@ func TestCACliCommands(t *testing.T) {
 	if _, err := os.Stat(serverCertPath); os.IsNotExist(err) {
 		t.Fatalf("expected server cert at %s", serverCertPath)
 	}
+}
 
-	// 4. Test ca issue client
+func testCACliIssueClient(t *testing.T, tempHome string) {
 	clientBuf := new(bytes.Buffer)
 	rootCmd.SetOut(clientBuf)
 	rootCmd.SetErr(clientBuf)
@@ -83,5 +85,34 @@ func TestCACliCommands(t *testing.T) {
 
 	if _, err := os.Stat(clientCertPath); os.IsNotExist(err) {
 		t.Fatalf("expected client cert at %s", clientCertPath)
+	}
+}
+
+func testCACliIssueSPIFFE(t *testing.T, tempHome string) {
+	spiffeBuf := new(bytes.Buffer)
+	rootCmd.SetOut(spiffeBuf)
+	rootCmd.SetErr(spiffeBuf)
+	svidCertPath := filepath.Join(tempHome, "test-svid.crt")
+	svidKeyPath := filepath.Join(tempHome, "test-svid.key")
+	rootCmd.SetArgs([]string{
+		"ca", "issue",
+		"--spiffe", "spiffe://bonjoski.local/ns/dev/sa/worker-api",
+		"--ttl", "15m",
+		"--out-cert", svidCertPath,
+		"--out-key", svidKeyPath,
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("ca issue spiffe failed: %v, output: %s", err, spiffeBuf.String())
+	}
+
+	if _, err := os.Stat(svidCertPath); os.IsNotExist(err) {
+		t.Fatalf("expected spiffe svid cert at %s", svidCertPath)
+	}
+	if _, err := os.Stat(svidKeyPath); os.IsNotExist(err) {
+		t.Fatalf("expected spiffe svid key at %s", svidKeyPath)
+	}
+	if !strings.Contains(spiffeBuf.String(), "spiffe://bonjoski.local/ns/dev/sa/worker-api") {
+		t.Errorf("expected spiffe ID in command output: %s", spiffeBuf.String())
 	}
 }

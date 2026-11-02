@@ -24,6 +24,8 @@ var (
 	caOutCert     string
 	caOutKey      string
 	caUntrust     bool
+	caSpiffeID    string
+	caTTL         time.Duration
 )
 
 const (
@@ -156,11 +158,12 @@ Use --trust to automatically install the classical Root CA into the macOS system
 
 var caIssueCmd = &cobra.Command{
 	Use:   "issue",
-	Short: "Issue dual TLS server or client certificates (ECDSA + ML-DSA-65) signed by the Root CA",
+	Short: "Issue dual TLS server, client, or ephemeral SPIFFE SVID certificates (ECDSA + ML-DSA-65) signed by the Root CA",
 	Long: `Generate and sign X.509 certificates using the sovereign Dual-Root CA.
 Produces both classical ECDSA and post-quantum ML-DSA-65 certificates.
 Defaults to generating server certificates for 127.0.0.1 and localhost.
-Use --client to issue mTLS agent authentication certificates.`,
+Use --client to issue mTLS agent authentication certificates.
+Use --spiffe to issue short-lived ephemeral SPIFFE X.509-SVIDs (with --ttl).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rootCA, err := loadRootCA()
 		if err != nil {
@@ -175,7 +178,28 @@ Use --client to issue mTLS agent authentication certificates.`,
 		var bundle *ca.IssuedCertBundle
 		var certType, baseName string
 
-		if caIsClient {
+		if caSpiffeID != "" {
+			certType = "SPIFFE SVID"
+			spiffeID, err := ca.ParseSPIFFEID(caSpiffeID)
+			if err != nil {
+				return fmt.Errorf("invalid --spiffe argument: %w", err)
+			}
+			pathParts := strings.Split(strings.Trim(spiffeID.Path(), "/"), "/")
+			baseName = "svid"
+			if len(pathParts) > 0 && pathParts[len(pathParts)-1] != "" {
+				baseName = fmt.Sprintf("svid-%s", pathParts[len(pathParts)-1])
+			}
+
+			profile := &ca.SVIDProfile{
+				SPIFFEID: spiffeID,
+				Hosts:    caServerHosts,
+				TTL:      caTTL,
+			}
+			bundle, err = rootCA.IssueDualSVID(profile)
+			if err != nil {
+				return fmt.Errorf("failed to issue dual SPIFFE SVID certificates: %w", err)
+			}
+		} else if caIsClient {
 			certType = "client"
 			if caClientName == "" {
 				caClientName = "agent-client"
@@ -227,11 +251,24 @@ Use --client to issue mTLS agent authentication certificates.`,
 			_ = os.WriteFile(dualCertPath, bundle.DualCertPEM, 0644)
 		}
 
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💎 Successfully issued dual %s certificates (valid %d days):\n", certType, caDays)
-		if !caIsClient {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   SANs:               %s\n", strings.Join(caServerHosts, ", "))
+		if caSpiffeID != "" {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💎 Successfully issued dual %s certificates:\n", certType)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   SPIFFE ID:          %s\n", caSpiffeID)
+			ttlDisplay := caTTL
+			if ttlDisplay <= 0 {
+				ttlDisplay = ca.DefaultSVIDTTL
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Validity (TTL):     %s\n", ttlDisplay)
+			if len(caServerHosts) > 0 {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   SANs:               %s\n", strings.Join(caServerHosts, ", "))
+			}
 		} else {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Identity:           %s\n", caClientName)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💎 Successfully issued dual %s certificates (valid %d days):\n", certType, caDays)
+			if !caIsClient {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   SANs:               %s\n", strings.Join(caServerHosts, ", "))
+			} else {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Identity:           %s\n", caClientName)
+			}
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Classical Cert:     %s\n", outCert)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Classical Key:      %s\n", outKey)
@@ -382,6 +419,8 @@ func init() {
 	caIssueCmd.Flags().IntVar(&caDays, "days", ca.DefaultCertValidity, "Validity duration in days for the issued certificate")
 	caIssueCmd.Flags().StringVar(&caOutCert, "out-cert", "", "Output path for the certificate file")
 	caIssueCmd.Flags().StringVar(&caOutKey, "out-key", "", "Output path for the private key file")
+	caIssueCmd.Flags().StringVar(&caSpiffeID, "spiffe", "", "Issue an ephemeral SPIFFE X.509-SVID (e.g. spiffe://bonjoski.local/ns/dev/sa/api)")
+	caIssueCmd.Flags().DurationVar(&caTTL, "ttl", 0, "Ephemeral certificate validity duration (e.g. 15m, 1h, 24h)")
 
 	// ca trust flags
 	caTrustCmd.Flags().BoolVar(&caUntrust, "untrust", false, "Remove the Classical Root CA from the macOS trust store")

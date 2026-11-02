@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- feat(ca): implement sovereign dual-root CA (ECDSA + ML-DSA-65) (v3.1.2)
 - feat(ca): add sovereign Certificate Authority and bump version to v3.1.1
 - Merge pull request #104 from bonjoski/feat/agent-invariants
 - docs: establish AGENTS.md instructions and llms.txt context index
 - ci(release,fuzz): update setup-go to use go-version-file go.mod
-- Merge pull request #102 from bonjoski/feat/in-memory-slicing
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
