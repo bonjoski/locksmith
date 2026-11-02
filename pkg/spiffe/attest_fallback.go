@@ -3,7 +3,6 @@
 package spiffe
 
 import (
-	"errors"
 	"net"
 	"os"
 )
