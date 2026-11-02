@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,26 +15,32 @@ import (
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/ca"
+	"github.com/bonjoski/locksmith/v2/pkg/spiffe"
 	"github.com/spf13/cobra"
+	"golang.org/x/time/rate"
 )
 
 var (
-	caCommonName   string
-	caOrg          string
-	caDays         int
-	caAutoTrust    bool
-	caServerHosts  []string
-	caClientName   string
-	caIsClient     bool
-	caOutCert      string
-	caOutKey       string
-	caUntrust      bool
-	caSpiffeID     string
-	caTTL          time.Duration
-	caExportOutDir string
-	caExportFormat string
-	caExportName   string
-	caExportRenew  bool
+	caCommonName       string
+	caOrg              string
+	caDays             int
+	caAutoTrust        bool
+	caServerHosts      []string
+	caClientName       string
+	caIsClient         bool
+	caOutCert          string
+	caOutKey           string
+	caUntrust          bool
+	caSpiffeID         string
+	caTTL              time.Duration
+	caExportOutDir     string
+	caExportFormat     string
+	caExportName       string
+	caExportRenew      bool
+	caServeSocket      string
+	caServeTrustDomain string
+	caServePolicyPath  string
+	caServeRateLimit   float64
 )
 
 const (
@@ -425,6 +433,62 @@ Supports atomic rotation and background auto-renewal with --renew.`,
 	},
 }
 
+var caServeSpiffeCmd = &cobra.Command{
+	Use:   "serve-spiffe",
+	Short: "Start the sovereign SPIFFE Workload API Unix domain socket daemon",
+	Long: `Start the local SPIFFE Workload API daemon listening on a Unix domain socket.
+Provides zero-dependency X.509-SVID issuance and attestation for local developer containers,
+microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin LOCAL_PEERCRED, Linux SO_PEERCRED).`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rootCA, err := loadRootCA()
+		if err != nil {
+			return err
+		}
+
+		if caServeTrustDomain == "" {
+			caServeTrustDomain = spiffe.DefaultTrustDomain
+		}
+
+		pol, err := spiffe.LoadPolicy(caServePolicyPath, caServeTrustDomain)
+		if err != nil {
+			return fmt.Errorf("failed loading spiffe policy: %w", err)
+		}
+
+		ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
+			SocketPath:  caServeSocket,
+			TrustDomain: caServeTrustDomain,
+			Policy:      pol,
+			CA:          rootCA,
+			RateLimit:   rate.Limit(caServeRateLimit),
+		})
+		if err != nil {
+			return fmt.Errorf("failed creating workload server: %w", err)
+		}
+
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💎 Starting Sovereign SPIFFE Workload API Server...\n")
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Trust Domain: %s\n", caServeTrustDomain)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Socket Path:  %s (0600)\n", ws.SocketPath())
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Rate Limit:   %.0f req/s per UID\n", caServeRateLimit)
+
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+		go func() {
+			<-sigCh
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nShutting down SPIFFE Workload API server...")
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = ws.Stop(ctx)
+		}()
+
+		if err := ws.Start(); err != nil && err != http.ErrServerClosed {
+			return fmt.Errorf("server error: %w", err)
+		}
+
+		return nil
+	},
+}
+
 func getKeychainSecretPEM(key string) []byte {
 	if ls == nil {
 		return nil
@@ -487,6 +551,7 @@ func init() {
 	caCmd.AddCommand(caTrustCmd)
 	caCmd.AddCommand(caStatusCmd)
 	caCmd.AddCommand(caContainerExportCmd)
+	caCmd.AddCommand(caServeSpiffeCmd)
 
 	// ca init flags
 	caInitCmd.Flags().StringVar(&caCommonName, "common-name", ca.DefaultCAName, "Common Name for the Root CA")
@@ -515,4 +580,10 @@ func init() {
 	caContainerExportCmd.Flags().DurationVar(&caTTL, "ttl", ca.DefaultSVIDTTL, "Ephemeral certificate validity duration (e.g. 15m, 1h, 2h)")
 	caContainerExportCmd.Flags().StringSliceVar(&caServerHosts, "domain", nil, "Optional SAN domain names and IP addresses")
 	caContainerExportCmd.Flags().BoolVar(&caExportRenew, "renew", false, "Run background auto-renewal loop to refresh certs at half-TTL")
+
+	// ca serve-spiffe flags
+	caServeSpiffeCmd.Flags().StringVar(&caServeSocket, "socket", "", "Socket path for the Workload API (default ~/.locksmith/spiffe/workload.sock)")
+	caServeSpiffeCmd.Flags().StringVar(&caServeTrustDomain, "trust-domain", spiffe.DefaultTrustDomain, "Sovereign trust domain authority")
+	caServeSpiffeCmd.Flags().StringVar(&caServePolicyPath, "policy", "", "Path to local policy.json file")
+	caServeSpiffeCmd.Flags().Float64Var(&caServeRateLimit, "rate-limit", 10.0, "Attestation rate limit (requests per second per UID)")
 }

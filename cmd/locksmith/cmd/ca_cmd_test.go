@@ -18,6 +18,7 @@ func TestCACliCommands(t *testing.T) {
 	testCACliIssueClient(t, tempHome)
 	testCACliIssueSPIFFE(t, tempHome)
 	testCACliContainerExport(t, tempHome)
+	testCACliServeSpiffeHelp(t)
 }
 
 func testCACliInit(t *testing.T, tempHome string) {
@@ -148,5 +149,23 @@ func testCACliContainerExport(t *testing.T, tempHome string) {
 
 	if !strings.Contains(exportBuf.String(), "Successfully exported container certificates") {
 		t.Errorf("unexpected output from container-export: %s", exportBuf.String())
+	}
+}
+
+func testCACliServeSpiffeHelp(t *testing.T) {
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"ca", "serve-spiffe", "--help"})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("ca serve-spiffe --help failed: %v", err)
+	}
+
+	out := buf.String()
+	for _, expected := range []string{"--socket", "--trust-domain", "--rate-limit", "--policy"} {
+		if !strings.Contains(out, expected) {
+			t.Errorf("expected %s flag in ca serve-spiffe help output", expected)
+		}
 	}
 }

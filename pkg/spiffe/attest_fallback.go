@@ -1,0 +1,26 @@
+//go:build !darwin && !linux
+
+package spiffe
+
+import (
+	"errors"
+	"net"
+	"os"
+)
+
+// FallbackAttestor provides a fallback attestor for non-Unix operating systems.
+type FallbackAttestor struct{}
+
+// NewAttestor creates a platform-appropriate WorkloadAttestor.
+func NewAttestor() WorkloadAttestor {
+	return &FallbackAttestor{}
+}
+
+// AttestPeer provides fallback attestation using process owner UID.
+func (f *FallbackAttestor) AttestPeer(conn net.Conn) (*CallerIdentity, error) {
+	return &CallerIdentity{
+		PID: os.Getpid(),
+		UID: uint32(os.Getuid()),
+		GID: uint32(os.Getgid()),
+	}, nil
+}
