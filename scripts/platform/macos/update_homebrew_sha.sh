@@ -12,7 +12,7 @@ set -euo pipefail
 VERSION=$(grep 'const Version =' pkg/locksmith/version.go | sed -E 's/.*"(.+)".*/\1/')
 REPO="bonjoski/locksmith"
 FORMULA="Formula/locksmith.rb"
-TAP_DIR="../homebrew-locksmith"
+TAP_DIR="../homebrew-tap"
 TMPDIR=$(mktemp -d)
 
 echo "==> Updating to version ${VERSION}..."
