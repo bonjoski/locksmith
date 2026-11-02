@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -405,5 +406,115 @@ func TestAdversarial_CrossProtocolCASpoofing(t *testing.T) {
 	} else {
 		t.Logf("PASS: PQC cert rejected by Classical pool: %v", err)
 	}
+}
+
+// ADV-SPIFFE-05: Insecure Directory Permissions & Permissive ACL Lockdown
+// If a container export directory exists with permissive 0777 or 0755 permissions,
+// Locksmith must forcefully clamp permissions to 0700 and ensure private keys are 0600.
+func TestAdversarial_ContainerExport_PermissiveDirChmod(t *testing.T) {
+	rootCA, err := GenerateRootCA("Dual Root", "Bonjoski", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tempDir := t.TempDir()
+	certsDir := filepath.Join(tempDir, "shared_certs")
+	if err := os.MkdirAll(certsDir, 0777); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Chmod(certsDir, 0777)
+
+	spiffeID, _ := ParseSPIFFEID("spiffe://bonjoski.local/ns/dev/sa/insecure-worker")
+	opts := &ExportOptions{
+		OutDir:  certsDir,
+		Format:  FormatDocker,
+		Profile: &SVIDProfile{SPIFFEID: spiffeID, TTL: 15 * time.Minute},
+	}
+
+	if err := rootCA.ExportContainerCerts(opts); err != nil {
+		t.Fatalf("ExportContainerCerts failed: %v", err)
+	}
+
+	dirInfo, err := os.Stat(certsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm()&0077 != 0 {
+		t.Fatalf("CRITICAL SECURITY FLAW: Directory retained group/world permissions: %o", dirInfo.Mode().Perm())
+	}
+
+	keyInfo, err := os.Stat(filepath.Join(certsDir, "tls.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keyInfo.Mode().Perm() != 0600 {
+		t.Fatalf("CRITICAL SECURITY FLAW: Private key permissions are %o, expected 0600", keyInfo.Mode().Perm())
+	}
+	t.Logf("PASS: Directory and private key permissions strictly secured: dir=%o, key=%o", dirInfo.Mode().Perm(), keyInfo.Mode().Perm())
+}
+
+// ADV-SPIFFE-08: Symlink Traversal & Arbitrary File Overwrite Prevention
+// An attacker places a symlink in the export directory pointing to a victim file.
+// Locksmith must detect the symlink and abort without following or truncating the victim target.
+func TestAdversarial_ContainerExport_SymlinkHijack(t *testing.T) {
+	rootCA, _ := GenerateRootCA("Dual Root", "Bonjoski", 30)
+	tempDir := t.TempDir()
+
+	// 1. Create a sensitive victim file that must not be overwritten
+	victimFile := filepath.Join(tempDir, "victim_secret.txt")
+	originalContent := "TOP_SECRET_CREDENTIALS"
+	if err := os.WriteFile(victimFile, []byte(originalContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Attacker prepares export directory with symlink targeting the victim file
+	certsDir := filepath.Join(tempDir, "certs")
+	if err := os.MkdirAll(certsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	symlinkKeyPath := filepath.Join(certsDir, "tls.key")
+	if err := os.Symlink(victimFile, symlinkKeyPath); err != nil {
+		t.Fatal(err)
+	}
+
+	spiffeID, _ := ParseSPIFFEID("spiffe://bonjoski.local/ns/dev/sa/symlink-attacker")
+	opts := &ExportOptions{
+		OutDir:  certsDir,
+		Format:  FormatDocker,
+		Profile: &SVIDProfile{SPIFFEID: spiffeID, TTL: 15 * time.Minute},
+	}
+
+	// 3. Export must abort with ErrSymlinkAttackDetected
+	err := rootCA.ExportContainerCerts(opts)
+	if err == nil {
+		t.Fatal("CRITICAL SECURITY VULNERABILITY: Export followed symlink and overwrote target file!")
+	}
+	if !errors.Is(err, ErrSymlinkAttackDetected) {
+		t.Fatalf("expected ErrSymlinkAttackDetected, got: %v", err)
+	}
+
+	// 4. Verify victim file content is pristine
+	content, readErr := os.ReadFile(victimFile)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(content) != originalContent {
+		t.Fatalf("CRITICAL: Victim file content was corrupted! got %q", string(content))
+	}
+	t.Logf("PASS: Symlink attack detected and victim file remained intact.")
+}
+
+// ADV-SPIFFE-07: In-Memory Key Zeroization Verification
+// Asserts that ZeroBytes thoroughly wipes cryptographic byte buffers.
+func TestAdversarial_ContainerExport_Zeroization(t *testing.T) {
+	secretBuffer := []byte("CRITICAL_EPHEMERAL_PRIVATE_KEY_MATERIAL")
+	ZeroBytes(secretBuffer)
+
+	for i, b := range secretBuffer {
+		if b != 0 {
+			t.Fatalf("CRITICAL: Memory byte at index %d was not zeroed: %x", i, b)
+		}
+	}
+	t.Logf("PASS: In-memory key buffer successfully zeroized.")
 }
 

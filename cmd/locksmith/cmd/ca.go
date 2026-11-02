@@ -3,10 +3,13 @@ package cmd
 import (
 	"crypto/sha256"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/ca"
@@ -14,18 +17,22 @@ import (
 )
 
 var (
-	caCommonName  string
-	caOrg         string
-	caDays        int
-	caAutoTrust   bool
-	caServerHosts []string
-	caClientName  string
-	caIsClient    bool
-	caOutCert     string
-	caOutKey      string
-	caUntrust     bool
-	caSpiffeID    string
-	caTTL         time.Duration
+	caCommonName   string
+	caOrg          string
+	caDays         int
+	caAutoTrust    bool
+	caServerHosts  []string
+	caClientName   string
+	caIsClient     bool
+	caOutCert      string
+	caOutKey       string
+	caUntrust      bool
+	caSpiffeID     string
+	caTTL          time.Duration
+	caExportOutDir string
+	caExportFormat string
+	caExportName   string
+	caExportRenew  bool
 )
 
 const (
@@ -344,6 +351,80 @@ var caStatusCmd = &cobra.Command{
 	},
 }
 
+var caContainerExportCmd = &cobra.Command{
+	Use:     "container-export",
+	Aliases: []string{"export"},
+	Short:   "Export short-lived container certificates and trust bundles for Docker, Envoy, or K3s",
+	Long: `Generate and atomically export short-lived X.509 SVID certificates into a container mount directory.
+Enforces strict 0700 directory permissions and 0600 private key permissions.
+Supports atomic rotation and background auto-renewal with --renew.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if caExportOutDir == "" {
+			return errors.New("--out-dir is required for container-export")
+		}
+
+		rootCA, err := loadRootCA()
+		if err != nil {
+			return err
+		}
+
+		var spiffeID *ca.SPIFFEID
+		if caSpiffeID != "" {
+			spiffeID, err = ca.ParseSPIFFEID(caSpiffeID)
+			if err != nil {
+				return fmt.Errorf("invalid --spiffe argument: %w", err)
+			}
+		} else {
+			defaultName := caExportName
+			if defaultName == "" {
+				defaultName = "workload"
+			}
+			spiffeID, _ = ca.ParseSPIFFEID(fmt.Sprintf("spiffe://bonjoski.local/ns/dev/sa/%s", defaultName))
+		}
+
+		profile := &ca.SVIDProfile{
+			SPIFFEID: spiffeID,
+			Hosts:    caServerHosts,
+			TTL:      caTTL,
+		}
+
+		opts := &ca.ExportOptions{
+			OutDir:  caExportOutDir,
+			Format:  ca.ExportFormat(caExportFormat),
+			Name:    caExportName,
+			Profile: profile,
+		}
+
+		if err := rootCA.ExportContainerCerts(opts); err != nil {
+			return fmt.Errorf("container export failed: %w", err)
+		}
+
+		files, _ := ca.ResolveFilenames(opts.Format, opts.Name)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💎 Successfully exported container certificates (%s format):\n", opts.Format)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Directory:   %s (0700)\n", opts.OutDir)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Certificate: %s\n", filepath.Join(opts.OutDir, files.CertName))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Private Key: %s (0600)\n", filepath.Join(opts.OutDir, files.KeyName))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Trust Root:  %s\n", filepath.Join(opts.OutDir, files.CAName))
+
+		if caExportRenew {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "🔄 Starting background auto-renewal loop (renewing at half TTL)...\n")
+			stopCh := make(chan struct{})
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+			go func() {
+				<-sigCh
+				close(stopCh)
+			}()
+
+			return rootCA.AutoRotateLoop(opts, stopCh, func() {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "✔ [%s] Ephemeral SVID certificates atomically rotated in %s\n", time.Now().Format("15:04:05"), opts.OutDir)
+			})
+		}
+
+		return nil
+	},
+}
+
 func getKeychainSecretPEM(key string) []byte {
 	if ls == nil {
 		return nil
@@ -405,6 +486,7 @@ func init() {
 	caCmd.AddCommand(caIssueCmd)
 	caCmd.AddCommand(caTrustCmd)
 	caCmd.AddCommand(caStatusCmd)
+	caCmd.AddCommand(caContainerExportCmd)
 
 	// ca init flags
 	caInitCmd.Flags().StringVar(&caCommonName, "common-name", ca.DefaultCAName, "Common Name for the Root CA")
@@ -424,4 +506,13 @@ func init() {
 
 	// ca trust flags
 	caTrustCmd.Flags().BoolVar(&caUntrust, "untrust", false, "Remove the Classical Root CA from the macOS trust store")
+
+	// ca container-export flags
+	caContainerExportCmd.Flags().StringVar(&caExportOutDir, "out-dir", "", "Target directory for exported container certificates (required)")
+	caContainerExportCmd.Flags().StringVar(&caExportFormat, "format", "docker", "Export format: docker, envoy, or k3s")
+	caContainerExportCmd.Flags().StringVar(&caExportName, "name", "", "Workload service name for file naming (e.g. backend)")
+	caContainerExportCmd.Flags().StringVar(&caSpiffeID, "spiffe", "", "SPIFFE ID for the workload certificate")
+	caContainerExportCmd.Flags().DurationVar(&caTTL, "ttl", ca.DefaultSVIDTTL, "Ephemeral certificate validity duration (e.g. 15m, 1h, 2h)")
+	caContainerExportCmd.Flags().StringSliceVar(&caServerHosts, "domain", nil, "Optional SAN domain names and IP addresses")
+	caContainerExportCmd.Flags().BoolVar(&caExportRenew, "renew", false, "Run background auto-renewal loop to refresh certs at half-TTL")
 }

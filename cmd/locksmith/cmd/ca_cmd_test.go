@@ -17,6 +17,7 @@ func TestCACliCommands(t *testing.T) {
 	testCACliIssueServer(t, tempHome)
 	testCACliIssueClient(t, tempHome)
 	testCACliIssueSPIFFE(t, tempHome)
+	testCACliContainerExport(t, tempHome)
 }
 
 func testCACliInit(t *testing.T, tempHome string) {
@@ -114,5 +115,38 @@ func testCACliIssueSPIFFE(t *testing.T, tempHome string) {
 	}
 	if !strings.Contains(spiffeBuf.String(), "spiffe://bonjoski.local/ns/dev/sa/worker-api") {
 		t.Errorf("expected spiffe ID in command output: %s", spiffeBuf.String())
+	}
+}
+
+func testCACliContainerExport(t *testing.T, tempHome string) {
+	exportBuf := new(bytes.Buffer)
+	rootCmd.SetOut(exportBuf)
+	rootCmd.SetErr(exportBuf)
+	exportDir := filepath.Join(tempHome, "docker-certs")
+	rootCmd.SetArgs([]string{
+		"ca", "container-export",
+		"--name", "api-gateway",
+		"--spiffe", "spiffe://bonjoski.local/ns/dev/sa/gateway",
+		"--out-dir", exportDir,
+		"--format", "docker",
+		"--ttl", "2h",
+	})
+
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("ca container-export failed: %v, output: %s", err, exportBuf.String())
+	}
+
+	certPath := filepath.Join(exportDir, "api-gateway.crt")
+	keyPath := filepath.Join(exportDir, "api-gateway.key")
+	caPath := filepath.Join(exportDir, "ca.crt")
+
+	for _, p := range []string{certPath, keyPath, caPath} {
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			t.Fatalf("expected exported file to exist at %s", p)
+		}
+	}
+
+	if !strings.Contains(exportBuf.String(), "Successfully exported container certificates") {
+		t.Errorf("unexpected output from container-export: %s", exportBuf.String())
 	}
 }
