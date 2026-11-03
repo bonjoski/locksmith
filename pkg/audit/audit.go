@@ -160,7 +160,7 @@ func WriteEvent(path string, ev Event) error {
 		return fmt.Errorf("audit: failed to create directory %q: %w", dir, err)
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("audit: failed to open log file %q: %w", path, err)
 	}
@@ -172,6 +172,10 @@ func WriteEvent(path string, ev Event) error {
 	defer func() {
 		_ = unlockFile(f)
 	}()
+
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		return fmt.Errorf("audit: failed to seek to end of %q: %w", path, err)
+	}
 
 	line, err := json.Marshal(ev)
 	if err != nil {

@@ -26,7 +26,9 @@ func newAuditTestBackend() *auditTestBackend {
 func (b *auditTestBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.store[account] = data
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	b.store[account] = cp
 	return nil
 }
 
@@ -37,7 +39,9 @@ func (b *auditTestBackend) Get(service, account string, useBiometrics bool, prom
 	if !ok {
 		return nil, os.ErrNotExist
 	}
-	return d, nil
+	cp := make([]byte, len(d))
+	copy(cp, d)
+	return cp, nil
 }
 
 func (b *auditTestBackend) Delete(service, account string, useBiometrics bool, prompt string) error {

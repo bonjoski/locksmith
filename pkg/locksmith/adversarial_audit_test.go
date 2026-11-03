@@ -34,6 +34,7 @@ func TestAdversarial_ZeroKnowledge_NoSecretExfiltrationInAudit(t *testing.T) {
 		Cache:   cache,
 		Options: Options{
 			AuditIdentity: "adv-tester",
+			BypassCache:   true,
 		},
 	}
 
@@ -55,7 +56,7 @@ func TestAdversarial_ZeroKnowledge_NoSecretExfiltrationInAudit(t *testing.T) {
 
 		val, err := ls.Get(k)
 		if err != nil || string(val) != v {
-			t.Fatalf("failed to retrieve canary secret %q: %v", k, err)
+			t.Fatalf("failed to retrieve canary secret %q: got %q, want %q, err=%v", k, string(val), v, err)
 		}
 	}
 
