@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bonjoski/locksmith/v2/pkg/audit"
 	"github.com/bonjoski/locksmith/v2/pkg/native"
 	"github.com/bonjoski/locksmith/v2/pkg/rotator"
 )
@@ -29,6 +30,9 @@ type Options struct {
 	// Binary access control
 	AllowBinaries []string
 	DenyBinaries  []string
+	// Audit tracking options
+	AuditIdentity string
+	DisableAudit  bool
 }
 
 func (o *Options) getPrompt(defaultPrompt, key string) string {
@@ -147,9 +151,26 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 	return valueCopy, nil
 }
 
+func (l *Locksmith) auditLog(key string, outcome audit.Outcome, reason string) {
+	if key == MasterKeyAccount || (l != nil && l.Options.DisableAudit) {
+		return
+	}
+	identity := ""
+	if l != nil {
+		identity = l.Options.AuditIdentity
+	}
+	_ = audit.Log(audit.Event{
+		SecretName: key,
+		Identity:   identity,
+		Outcome:    outcome,
+		Reason:     reason,
+	})
+}
+
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
 	secret, err := l.getSecretNoRotate(key)
 	if err != nil {
+		l.auditLog(key, audit.OutcomeDenied, err.Error())
 		return nil, err
 	}
 
@@ -158,14 +179,25 @@ func (l *Locksmith) getSecret(key string) (*Secret, error) {
 	}
 
 	if !secret.IsExpired() {
+		reason := "Vault secret retrieved"
+		if secret.SecretType != "" {
+			reason = fmt.Sprintf("Vault secret retrieved (type: %s)", secret.SecretType)
+		}
+		l.auditLog(key, audit.OutcomeGranted, reason)
 		return secret, nil
 	}
 
+	return l.handleExpiredSecret(key, secret)
+}
+
+func (l *Locksmith) handleExpiredSecret(key string, secret *Secret) (*Secret, error) {
 	if NormalizeSecretType(secret.SecretType) != SecretTypeOAuthToken {
+		l.auditLog(key, audit.OutcomeGranted, "Vault secret retrieved (expired non-oauth)")
 		return secret, nil
 	}
 
 	if !l.hasRotationRuleForKey(key) {
+		l.auditLog(key, audit.OutcomeGranted, "Vault secret retrieved (expired, no rotation rule)")
 		return secret, nil
 	}
 
@@ -174,13 +206,17 @@ func (l *Locksmith) getSecret(key string) (*Secret, error) {
 		if strings.Contains(errMsg, "rotation unavailable in this compile profile") {
 			return secret, nil
 		}
+		l.auditLog(key, audit.OutcomeDenied, fmt.Sprintf("secret '%s' is expired and rotation failed: %v", key, err))
 		return nil, fmt.Errorf("secret '%s' is expired and automatic oauth rotation failed: %w", key, err)
 	}
 
 	rotated, err := l.getSecretNoRotate(key)
 	if err != nil {
+		l.auditLog(key, audit.OutcomeDenied, fmt.Sprintf("secret '%s' rotated but retrieval failed: %v", key, err))
 		return nil, fmt.Errorf("secret '%s' rotated but retrieval failed: %w", key, err)
 	}
+
+	l.auditLog(key, audit.OutcomeGranted, "Vault secret retrieved after auto-rotation")
 	return rotated, nil
 }
 

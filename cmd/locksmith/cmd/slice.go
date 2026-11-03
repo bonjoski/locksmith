@@ -12,6 +12,11 @@ var sliceCmd = &cobra.Command{
 	Long: `Execute a command with secrets injected via an anonymous inherited file descriptor (FD 3)
 residing exclusively in memory, leaving zero plaintext footprint in process environment tables.`,
 	Args: cobra.MinimumNArgs(1),
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if ls != nil && ls.Options.AuditIdentity == "" {
+			ls.Options.AuditIdentity = "cli:slice"
+		}
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		defer func() {
 			sliceCmdEnvFile = ""

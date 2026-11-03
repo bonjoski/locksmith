@@ -1,10 +1,15 @@
 package cmd
 
 import (
+	"bufio"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bonjoski/locksmith/v2/pkg/audit"
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 )
 
@@ -286,5 +291,70 @@ func TestCredentialGet_CacheMiss_ReturnsEmpty(t *testing.T) {
 	}
 	if strings.Contains(outStr, "username=") {
 		t.Errorf("Expected empty output when credential doesn't exist, got: %q", outStr)
+	}
+}
+
+func TestCredentialGet_AuditLoggingContract(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditFile := filepath.Join(tmpDir, "git_credential_audit.jsonl")
+	t.Setenv("LOCKSMITH_AUDIT_PATH", auditFile)
+
+	outBuf, _ := setupTest()
+
+	mc := ls.Cache.(*mockCache)
+	_ = mc.Set("git/github.com/auditeduser", locksmith.Secret{
+		Value:     []byte("supersecretpassword"),
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}, locksmith.DefaultCacheTTL)
+
+	stdin := "protocol=https\nhost=github.com\nusername=auditeduser\n\n"
+	rootCmd.SetIn(strings.NewReader(stdin))
+	rootCmd.SetOut(outBuf)
+	rootCmd.SetArgs([]string{"credential", "get"})
+
+	err := rootCmd.Execute()
+	if err != nil {
+		t.Fatalf("Failed to execute credential get: %v", err)
+	}
+
+	// Verify audit log
+	f, err := os.Open(auditFile)
+	if err != nil {
+		t.Fatalf("CONTRACT VIOLATION: Git credential helper did not produce an audit file at %s: %v", auditFile, err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	var events []audit.Event
+	for scanner.Scan() {
+		var ev audit.Event
+		if err := json.Unmarshal(scanner.Bytes(), &ev); err == nil {
+			events = append(events, ev)
+		}
+	}
+
+	if len(events) == 0 {
+		t.Fatal("CONTRACT VIOLATION: No audit events logged for git credential lookup!")
+	}
+
+	var found bool
+	for _, ev := range events {
+		if ev.SecretName == "git/github.com/auditeduser" {
+			found = true
+			if ev.Identity != "git-credential" {
+				t.Errorf("Expected identity 'git-credential', got %q", ev.Identity)
+			}
+			if ev.Outcome != audit.OutcomeGranted {
+				t.Errorf("Expected outcome GRANTED, got %s", ev.Outcome)
+			}
+			// Zero knowledge check
+			if strings.Contains(ev.Reason, "supersecretpassword") {
+				t.Error("CRITICAL: Secret value leaked in audit reason field!")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("CONTRACT VIOLATION: Expected audit entry for 'git/github.com/auditeduser' not found!")
 	}
 }

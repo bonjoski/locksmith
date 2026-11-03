@@ -1,2 +1,4 @@
 35af9be50b2d6b002e2488b735b9ceaedd7657e4:cmd/locksmith/cmd/integrations_cmd_test.go:generic-api-key:284
 35af9be50b2d6b002e2488b735b9ceaedd7657e4:pkg/locksmith/slice_integration_test.go:generic-api-key:147
+c4678ddd469974f6edb522b7074b5ebdc6207e35:pkg/locksmith/adversarial_audit_test.go:gitlab-pat:43
+9479aecfe86c667a84b91ee635047cf5e23e9d1d:pkg/locksmith/adversarial_audit_test.go:gitlab-pat:43
