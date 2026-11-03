@@ -3,6 +3,7 @@ package ca_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -86,8 +87,10 @@ func TestExportContainerCerts_Formats(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to stat export dir: %v", err)
 			}
-			if dirInfo.Mode().Perm() != 0700 {
-				t.Errorf("export dir perm = %o, want 0700", dirInfo.Mode().Perm())
+			if runtime.GOOS != "windows" {
+				if dirInfo.Mode().Perm() != 0700 {
+					t.Errorf("export dir perm = %o, want 0700", dirInfo.Mode().Perm())
+				}
 			}
 
 			// Verify certificate file
@@ -96,8 +99,10 @@ func TestExportContainerCerts_Formats(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected certificate at %s: %v", certPath, err)
 			}
-			if certInfo.Mode().Perm() != 0644 {
-				t.Errorf("cert perm = %o, want 0644", certInfo.Mode().Perm())
+			if runtime.GOOS != "windows" {
+				if certInfo.Mode().Perm() != 0644 {
+					t.Errorf("cert perm = %o, want 0644", certInfo.Mode().Perm())
+				}
 			}
 
 			// Verify key file (must be strictly 0600)
@@ -106,8 +111,10 @@ func TestExportContainerCerts_Formats(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected key at %s: %v", keyPath, err)
 			}
-			if keyInfo.Mode().Perm() != 0600 {
-				t.Errorf("key perm = %o, want 0600", keyInfo.Mode().Perm())
+			if runtime.GOOS != "windows" {
+				if keyInfo.Mode().Perm() != 0600 {
+					t.Errorf("key perm = %o, want 0600", keyInfo.Mode().Perm())
+				}
 			}
 
 			// Verify CA root certificate file

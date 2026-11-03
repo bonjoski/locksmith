@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -41,7 +42,11 @@ func parseCert(t *testing.T, pemData string) *x509.Certificate {
 }
 
 func shortTempSock(t *testing.T, prefix string) string {
-	f, err := os.CreateTemp("/tmp", prefix+"-*.sock")
+	dir := "/tmp"
+	if runtime.GOOS == "windows" {
+		dir = os.TempDir()
+	}
+	f, err := os.CreateTemp(dir, prefix+"-*.sock")
 	if err != nil {
 		t.Fatal(err)
 	}
