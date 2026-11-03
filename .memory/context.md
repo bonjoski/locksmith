@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- test(windows): adapt export permissions and temp socket paths for windows runners
+- fix(audit): resolve Windows file locking, path resolution, and test isolation
+- feat(audit): implement core zero-trust audit pipeline, contract tests, and bump to v3.2.1
 - chore(homebrew): update formula to v3.2.0 with release checksums
 - ci: remove deprecated locksmith-homebrew sync steps from release workflow
-- fix(spiffe): remove unused errors import in non-unix fallback attestor
-- chore(release): bump locksmith version to v3.2.0 and update changelog
-- feat(spiffe): add vsock listener and microVM CID attestation to Workload API
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
