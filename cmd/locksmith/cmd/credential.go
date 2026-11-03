@@ -17,6 +17,9 @@ var credentialCmd = &cobra.Command{
 	Long:  "Acts as a Git credential helper by reading key=value pairs from stdin and returning matching credentials on stdout.",
 	Args:  cobra.ExactArgs(1),
 	PreRun: func(cmd *cobra.Command, args []string) {
+		if ls != nil && ls.Options.AuditIdentity == "" {
+			ls.Options.AuditIdentity = "git-credential"
+		}
 		// No special OnlyCached mode needed - cache expiry will trigger biometric refresh
 		// which is acceptable UX (once per hour). This prevents the bug where expired cache
 		// caused git to prompt for password re-entry when credential was already in keychain.

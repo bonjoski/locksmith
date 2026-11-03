@@ -36,6 +36,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error initializing locksmith: %v\n", err)
 		os.Exit(1)
 	}
+	ls.Options.AuditIdentity = "summon"
 
 	// Retrieve secret (will trigger biometric auth)
 	value, err := ls.Get(secretID)

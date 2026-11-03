@@ -6,6 +6,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.1] - 2026-11-03
+
+### Added
+- **Core Zero-Trust Audit Logging Pipeline (`pkg/audit`):**
+  - Thread-safe, cross-process advisory locked atomic JSONL logger writing to `~/.locksmith/audit.jsonl`.
+  - Automatic attribution capturing verified caller PID, binary executable path, executable SHA-256 digest, and contextual workload identity.
+  - Strict zero-knowledge invariant: secret values, passwords, and private tokens are never written to disk or audit reasons.
+- **Access Point Instrumentation:**
+  - Vault retrievals, auto-rotations, and denials in `pkg/locksmith/locksmith.go`.
+  - Git credential helper queries (`identity: "git-credential"`).
+  - GPG Pinentry passphrase lookups (`identity: "gpg:pinentry"`).
+  - CLI commands (`get`, `run`, `slice`), Summon provider (`summon`), and MCP server (`mcp:tools`).
+  - ETX lease checkouts, client revocations, and TTL/process liveness death events in `pkg/locksmith/lease_manager.go`.
+- **Mandatory Audit Contract & Adversarial Test Coverage:**
+  - `pkg/locksmith/adversarial_audit_test.go`:
+    - `ADV-AUDIT-01`: Zero-knowledge payload leak prevention across high-entropy API keys and RSA/EC private keys.
+    - `ADV-AUDIT-02`: Non-repudiation enforcement proving every vault lookup produces an immutable audit record.
+    - `ADV-AUDIT-03`: PID and binary impersonation defense ensuring socket peer credentials cannot be forged by untrusted payloads.
+    - `ADV-AUDIT-04`: High-throughput concurrent race and line corruption stress tests.
+  - `pkg/locksmith/audit_integration_test.go`: End-to-end integration tests for `Get`, `LeaseManager`, and process liveness expiration.
+  - Contract assertions in `cmd/locksmith/cmd/credential_cmd_test.go` and `pkg/agent/agent_test.go`.
+
 ## [3.2.0] - 2026-11-01
 
 ### Added

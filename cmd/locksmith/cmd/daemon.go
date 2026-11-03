@@ -34,8 +34,11 @@ monitoring, and memory sanitization.`,
 			daemonSocketPath = locksmith.DefaultSocketPath()
 		}
 
-		if daemonHeadless && ls != nil {
-			ls.Options.RequireBiometrics = false
+		if ls != nil {
+			ls.Options.DisableAudit = true
+			if daemonHeadless {
+				ls.Options.RequireBiometrics = false
+			}
 		}
 
 		lmOpts := locksmith.LeaseManagerOptions{

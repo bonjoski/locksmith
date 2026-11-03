@@ -18,6 +18,11 @@ var getCmd = &cobra.Command{
 	Use:   "get <key>",
 	Short: "Retrieve a secret",
 	Args:  cobra.ExactArgs(1),
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if ls != nil && ls.Options.AuditIdentity == "" {
+			ls.Options.AuditIdentity = "cli:get"
+		}
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		key := args[0]
 

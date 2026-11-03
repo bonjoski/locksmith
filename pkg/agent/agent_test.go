@@ -1,16 +1,19 @@
 package agent
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
 	"encoding/pem"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bonjoski/locksmith/v2/pkg/audit"
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
 	"golang.org/x/crypto/ssh"
 )
@@ -248,4 +251,80 @@ func (m *mockAgentBackend) List(service string, useBiometrics bool, prompt strin
 		keys = append(keys, k)
 	}
 	return keys, nil
+}
+
+func TestPinentry_AuditLoggingContract(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditFile := filepath.Join(tmpDir, "pinentry_audit.jsonl")
+	t.Setenv("LOCKSMITH_AUDIT_PATH", auditFile)
+
+	mockBackend := &mockAgentBackend{
+		secrets: make(map[string][]byte),
+	}
+	secretPayload, _ := json.Marshal(locksmith.Secret{
+		Value:     []byte("test-gpg-passphrase-canary"),
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	mockBackend.secrets["gpg/passphrase"] = secretPayload
+
+	mockCache := &mockAgentCache{
+		secrets: make(map[string]locksmith.Secret),
+	}
+
+	ls := &locksmith.Locksmith{
+		Service: "test-service",
+		Backend: mockBackend,
+		Cache:   mockCache,
+	}
+
+	// Simulate GPG assuan session: SETDESC -> GETPIN -> BYE
+	input := "SETDESC test key\nGETPIN\nBYE\n"
+	inBuf := strings.NewReader(input)
+	outBuf := &bytes.Buffer{}
+
+	err := RunPinentryWithIO(inBuf, outBuf, ls)
+	if err != nil {
+		t.Fatalf("RunPinentryWithIO failed: %v", err)
+	}
+
+	outStr := outBuf.String()
+	if !strings.Contains(outStr, "D test-gpg-passphrase-canary") {
+		t.Fatalf("expected passphrase in pinentry output, got: %s", outStr)
+	}
+
+	// Assert audit event was written
+	f, err := os.Open(auditFile)
+	if err != nil {
+		t.Fatalf("CONTRACT VIOLATION: Pinentry did not write to audit log at %s: %v", auditFile, err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	var events []audit.Event
+	for scanner.Scan() {
+		var ev audit.Event
+		if err := json.Unmarshal(scanner.Bytes(), &ev); err == nil {
+			events = append(events, ev)
+		}
+	}
+
+	if len(events) == 0 {
+		t.Fatal("CONTRACT VIOLATION: Zero audit events logged for GPG pinentry retrieval!")
+	}
+
+	ev := events[0]
+	if ev.SecretName != "gpg/passphrase" {
+		t.Errorf("expected secret_name 'gpg/passphrase', got %s", ev.SecretName)
+	}
+	if ev.Identity != "gpg:pinentry" {
+		t.Errorf("expected identity 'gpg:pinentry', got %s", ev.Identity)
+	}
+	if ev.Outcome != audit.OutcomeGranted {
+		t.Errorf("expected outcome GRANTED, got %s", ev.Outcome)
+	}
+	// Zero-knowledge assertion
+	if strings.Contains(ev.Reason, "test-gpg-passphrase-canary") {
+		t.Error("CRITICAL: Passphrase leaked into audit reason field!")
+	}
 }

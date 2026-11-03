@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore(homebrew): update formula to v3.2.0 with release checksums
 - ci: remove deprecated locksmith-homebrew sync steps from release workflow
 - fix(spiffe): remove unused errors import in non-unix fallback attestor
 - chore(release): bump locksmith version to v3.2.0 and update changelog
 - feat(spiffe): add vsock listener and microVM CID attestation to Workload API
-- feat(spiffe): implement sovereign Workload API daemon, peer attestation, and anti-PID-recycling policy
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

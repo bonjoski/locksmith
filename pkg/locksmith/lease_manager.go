@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bonjoski/locksmith/v2/pkg/audit"
 	"github.com/bonjoski/locksmith/v2/pkg/protocol"
 )
 
@@ -18,6 +19,7 @@ type ActiveLease struct {
 	SecretName       string    `json:"secret_name"`
 	ClientPID        int       `json:"client_pid"`
 	ProcessStartTime int64     `json:"process_start_time"`
+	ClientBinaryPath string    `json:"client_binary_path,omitempty"`
 	ClientBinaryHash string    `json:"client_binary_hash"`
 	SpiffeID         string    `json:"spiffe_id,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -111,12 +113,14 @@ func normalizeSpiffeRequest(req *protocol.LeaseRequest, peer *protocol.PeerCrede
 // RequestLease evaluates a lease request against peer credentials and policy.
 func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.PeerCredentials) (*protocol.LeaseResponse, error) {
 	if err := req.Validate(); err != nil {
+		lm.logLeaseDenied(req, peer, err.Error())
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
 	}
 
 	normalizeSpiffeRequest(req, peer)
 
 	if err := validatePeerCreds(req, peer); err != nil {
+		lm.logLeaseDenied(req, peer, err.Error())
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
 	}
 
@@ -124,23 +128,27 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 	defer lm.mu.Unlock()
 
 	if lm.closed {
+		lm.logLeaseDenied(req, peer, "lease manager is shutting down")
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: "lease manager is shutting down"}, nil
 	}
 
 	if req.SessionTicket != "" {
 		if err := lm.verifySessionTicket(req.SessionTicket, req.SecretName); err != nil {
+			lm.logLeaseDenied(req, peer, err.Error())
 			return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
 		}
 	}
 
 	secretBytes, err := lm.fetchSecret(req.SecretName)
 	if err != nil {
+		lm.logLeaseDenied(req, peer, err.Error())
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
 	}
 
 	ttl := lm.calculateTTL(req.LeaseTTL)
 	leaseID, err := generateLeaseID()
 	if err != nil {
+		lm.logLeaseDenied(req, peer, "failed to generate lease ID")
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: "failed to generate lease ID"}, nil
 	}
 
@@ -149,10 +157,12 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 
 	peerPID := 0
 	peerStartTime := int64(0)
+	peerExePath := ""
 	peerExeHash := ""
 	if peer != nil {
 		peerPID = peer.PID
 		peerStartTime = peer.StartTime
+		peerExePath = peer.ExePath
 		peerExeHash = peer.ExeHash
 	}
 
@@ -161,6 +171,7 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 		SecretName:       req.SecretName,
 		ClientPID:        peerPID,
 		ProcessStartTime: peerStartTime,
+		ClientBinaryPath: peerExePath,
 		ClientBinaryHash: peerExeHash,
 		SpiffeID:         req.SpiffeID,
 		CreatedAt:        now,
@@ -186,6 +197,7 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 	}
 
 	lm.activeLeases[leaseID] = active
+	lm.logLeaseGranted(req, peer, ttl)
 
 	return &protocol.LeaseResponse{
 		Status:        protocol.StatusGranted,
@@ -289,6 +301,7 @@ func (lm *LeaseManager) RevokeLease(req *protocol.RevokeRequest, peer *protocol.
 
 	lm.revokeLocked(lease)
 	delete(lm.activeLeases, req.LeaseID)
+	lm.logLeaseRevoked(lease, "Lease revoked by client")
 
 	return &protocol.RevokeResponse{Success: true}, nil
 }
@@ -387,26 +400,105 @@ func (lm *LeaseManager) watchLeaseLiveness(leaseID string, pid int, startTime in
 		case now := <-ticker.C:
 			// Check expiration
 			if now.After(expiresAt) {
-				lm.expireLease(leaseID)
+				lm.expireLease(leaseID, "Lease TTL expired")
 				return
 			}
 
 			// Check process liveness
 			if !isProcessAlive(pid, startTime) {
-				lm.expireLease(leaseID)
+				lm.expireLease(leaseID, "Client process terminated")
 				return
 			}
 		}
 	}
 }
 
-func (lm *LeaseManager) expireLease(leaseID string) {
+func (lm *LeaseManager) expireLease(leaseID string, reason string) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 	if lease, exists := lm.activeLeases[leaseID]; exists {
 		lm.revokeLocked(lease)
 		delete(lm.activeLeases, leaseID)
+		lm.logLeaseRevoked(lease, reason)
 	}
+}
+
+func (lm *LeaseManager) logLeaseGranted(req *protocol.LeaseRequest, peer *protocol.PeerCredentials, ttl time.Duration) {
+	identity := req.SpiffeID
+	peerPID := 0
+	peerPath := ""
+	peerHash := ""
+	if peer != nil {
+		peerPID = peer.PID
+		peerPath = peer.ExePath
+		peerHash = peer.ExeHash
+		if identity == "" {
+			identity = fmt.Sprintf("pid:%d", peer.PID)
+		}
+	}
+	if identity == "" {
+		identity = "etx:lease"
+	}
+	_ = audit.Log(audit.Event{
+		SecretName: req.SecretName,
+		ClientPID:  peerPID,
+		BinaryPath: peerPath,
+		BinaryHash: peerHash,
+		Identity:   identity,
+		Outcome:    audit.OutcomeGranted,
+		Reason:     fmt.Sprintf("ETX lease granted (TTL: %s)", ttl),
+	})
+}
+
+func (lm *LeaseManager) logLeaseDenied(req *protocol.LeaseRequest, peer *protocol.PeerCredentials, reason string) {
+	secretName := ""
+	identity := ""
+	peerPID := 0
+	peerPath := ""
+	peerHash := ""
+	if req != nil {
+		secretName = req.SecretName
+		identity = req.SpiffeID
+	}
+	if peer != nil {
+		peerPID = peer.PID
+		peerPath = peer.ExePath
+		peerHash = peer.ExeHash
+		if identity == "" {
+			identity = fmt.Sprintf("pid:%d", peer.PID)
+		}
+	}
+	if identity == "" {
+		identity = "etx:lease"
+	}
+	_ = audit.Log(audit.Event{
+		SecretName: secretName,
+		ClientPID:  peerPID,
+		BinaryPath: peerPath,
+		BinaryHash: peerHash,
+		Identity:   identity,
+		Outcome:    audit.OutcomeDenied,
+		Reason:     reason,
+	})
+}
+
+func (lm *LeaseManager) logLeaseRevoked(lease *ActiveLease, reason string) {
+	if lease == nil {
+		return
+	}
+	identity := lease.SpiffeID
+	if identity == "" {
+		identity = fmt.Sprintf("pid:%d", lease.ClientPID)
+	}
+	_ = audit.Log(audit.Event{
+		SecretName: lease.SecretName,
+		ClientPID:  lease.ClientPID,
+		BinaryPath: lease.ClientBinaryPath,
+		BinaryHash: lease.ClientBinaryHash,
+		Identity:   identity,
+		Outcome:    audit.OutcomeRevoked,
+		Reason:     reason,
+	})
 }
 
 // Close stops all active lease monitors.

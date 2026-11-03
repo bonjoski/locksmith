@@ -26,6 +26,7 @@ Biometric authentication is strictly enforced for all tool calls.`,
 			RequireBiometrics: true,
 			PromptMessage:     "AI is requesting access to '%s'. Touch ID to permit.",
 			BypassCache:       true,
+			AuditIdentity:     "mcp:tools",
 		}
 		lsMcp, err := locksmith.NewWithOptions(opts)
 		if err != nil {

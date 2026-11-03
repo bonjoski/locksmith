@@ -4,7 +4,10 @@ package locksmith
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/audit"
 )
 
 // Set stores a secret in the keychain using the default biometric requirement from options
@@ -61,7 +64,29 @@ func (l *Locksmith) SetWithContext(
 func (l *Locksmith) Delete(key string) error {
 	_ = l.Cache.Delete(key)
 	prompt := l.Options.getPrompt("Authentication required to delete secret '%s'", key)
-	return l.Backend.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
+	err := l.Backend.Delete(l.Service, key, l.Options.RequireBiometrics, prompt)
+	if key != MasterKeyAccount && (l == nil || !l.Options.DisableAudit) {
+		identity := ""
+		if l != nil {
+			identity = l.Options.AuditIdentity
+		}
+		if err != nil {
+			_ = audit.Log(audit.Event{
+				SecretName: key,
+				Identity:   identity,
+				Outcome:    audit.OutcomeDenied,
+				Reason:     fmt.Sprintf("Failed to delete secret: %v", err),
+			})
+		} else {
+			_ = audit.Log(audit.Event{
+				SecretName: key,
+				Identity:   identity,
+				Outcome:    audit.OutcomeRevoked,
+				Reason:     "Secret deleted from vault",
+			})
+		}
+	}
+	return err
 }
 
 func zeroBytes(b []byte) {

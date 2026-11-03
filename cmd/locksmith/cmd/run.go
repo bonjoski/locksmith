@@ -24,6 +24,11 @@ Memory Slicing (--slice):
     locksmith run --slice my-secret-key -- python3 -c "import os; print(os.fdopen(int(os.environ['LOCKSMITH_FD'])).read())"
     locksmith run --slice --env-file .env -- my-agent`,
 	Args: cobra.MinimumNArgs(1),
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if ls != nil && ls.Options.AuditIdentity == "" {
+			ls.Options.AuditIdentity = "cli:run"
+		}
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		defer func() {
 			envFile = ""
