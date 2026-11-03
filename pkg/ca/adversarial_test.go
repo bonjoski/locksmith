@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -257,6 +258,10 @@ func TestAdversarial_PrivateKeyFilePermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows NTFS does not support POSIX file permission bits")
+	}
+
 	info, err := os.Stat(keyPath)
 	if err != nil {
 		t.Fatal(err)
@@ -433,6 +438,10 @@ func TestAdversarial_ContainerExport_PermissiveDirChmod(t *testing.T) {
 
 	if err := rootCA.ExportContainerCerts(opts); err != nil {
 		t.Fatalf("ExportContainerCerts failed: %v", err)
+	}
+
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows NTFS does not support POSIX directory permission bits")
 	}
 
 	dirInfo, err := os.Stat(certsDir)

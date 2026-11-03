@@ -11,6 +11,7 @@ import (
 func TestCACliCommands(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+	t.Setenv("USERPROFILE", tempHome)
 
 	testCACliInit(t, tempHome)
 	testCACliStatus(t)
