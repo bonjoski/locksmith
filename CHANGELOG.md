@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.2] - 2026-11-04
+
+### Security & Hardening (GHSA-wfmr-rw42-3rv7)
+- **Mandatory Enclave Sealing for Sovereign CA Root Keys:**
+  - Hardware enclave storage (Apple Keychain / TPM) is now enforced during `locksmith ca init`. Platform enclave failure is fatal by default to prevent silent plaintext disk leakage.
+  - Plaintext disk private keys (`root-ca.key`, `root-ca-pqc.key`) are purged on successful keychain import and never written to disk without `--allow-unsealed-disk-keys`.
+  - Prominent stderr warnings on `loadRootCA()` if private keys are loaded from unsealed disk storage.
+- **RFC 5280 Critical Name Constraints Enforcement:**
+  - Root CAs (ECDSA P-256 and PQC ML-DSA-65) now enforce `critical` `NameConstraints`:
+    - DNS: `localhost`, `.localhost`, `local`, `.local`, `internal`, `.internal`
+    - IP Ranges: `127.0.0.0/8`, `::1/128`
+    - URI Domains: `bonjoski.local`, `local.dev`
+  - Strict pre-issuance validation in `IssueServerCert` and `IssuePQCServerCert` returns `ErrForbiddenHostname` for public domains or external IPs.
+  - SVID issuance verifies trust domain URI against CA permitted URI domains.
+  - `locksmith ca trust` guards the system trust store, rejecting unconstrained root CAs without `--force-unconstrained`.
+- **SPIFFE Loopback TCP Bridge Attestation & MicroVM Pinned Lineage:**
+  - Eliminated unattested `VsockCID: 3` synthesis over loopback TCP connections.
+  - Loopback TCP bridge requests require pre-shared `X-Locksmith-Bridge-Token` authentication (`--bridge-token`).
+  - Empty `AllowedCIDs` fails closed by default.
+  - MicroVM SVID derivation is strictly pinned to `spiffe://<td/vm/cid/<cid>` unless authorized by an explicit rule.
+- **SPIFFE Policy Rule Engine:**
+  - Authorizes caller identities against glob patterns, UID constraints, CID constraints, and binary provenance (SHA-256 hash digests, absolute executable paths, and process comm names).
+- **Concurrency & Memory Safety:**
+  - Fixed concurrent data race in `AuthZeroizeHook` (`pkg/slice/slice.go`) with read-write mutex synchronization.
+
 ## [3.2.1] - 2026-11-03
 
 ### Added
