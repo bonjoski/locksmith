@@ -170,11 +170,16 @@ func TestWorkloadServer_VsockBridge(t *testing.T) {
 		t.Fatalf("failed to generate root CA: %v", err)
 	}
 
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.AllowedCIDs = []uint32{3}
+
 	sockPath := shortTempSock(t, "vsock-test")
 	ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
 		SocketPath:  sockPath,
 		VsockPort:   19099,
+		BridgeToken: "test-secret-bridge-token",
 		TrustDomain: "bonjoski.local",
+		Policy:      pol,
 		CA:          rootCA,
 	})
 	if err != nil {
@@ -187,10 +192,24 @@ func TestWorkloadServer_VsockBridge(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Test request over vsock bridge port
-	resp, err := http.Get("http://127.0.0.1:19099/v1/svid")
+	// 1. Unauthenticated request over TCP bridge must be rejected with 403 Forbidden
+	unauthResp, err := http.Get("http://127.0.0.1:19099/v1/svid")
 	if err != nil {
-		t.Fatalf("GET /v1/svid over vsock failed: %v", err)
+		t.Fatalf("GET /v1/svid failed: %v", err)
+	}
+	unauthResp.Body.Close()
+	if unauthResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for unauthenticated TCP bridge request, got %d", unauthResp.StatusCode)
+	}
+
+	// 2. Authenticated request with bridge token succeeds
+	req, _ := http.NewRequest("GET", "http://127.0.0.1:19099/v1/svid", nil)
+	req.Header.Set("X-Locksmith-Bridge-Token", "test-secret-bridge-token")
+	req.Header.Set("X-Locksmith-CID", "3")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("authenticated GET /v1/svid failed: %v", err)
 	}
 	defer resp.Body.Close()
 

@@ -29,6 +29,8 @@ type CallerIdentity struct {
 	Comm      string
 	StartTime time.Time
 	VsockCID  uint32
+	ExePath   string
+	ExeHash   string
 }
 
 // WorkloadAttestor inspects incoming socket connections to verify the peer identity.

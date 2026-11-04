@@ -527,3 +527,54 @@ func TestAdversarial_ContainerExport_Zeroization(t *testing.T) {
 	t.Logf("PASS: In-memory key buffer successfully zeroized.")
 }
 
+// ADV-CA-03: RFC 5280 Name Constraints Enforcement
+// Asserts that the Root CA enforces critical Name Constraints restricting issuance strictly
+// to local loopback and internal trust domains, blocking arbitrary public domain forgery (GHSA-wfmr-rw42-3rv7 Finding 1).
+func TestAdversarial_RootCANameConstraintsEnforcement(t *testing.T) {
+	rootCA, err := GenerateRootCA("Bonjoski Hardened Root CA", "Bonjoski", 365)
+	if err != nil {
+		t.Fatalf("GenerateRootCA failed: %v", err)
+	}
+
+	// 1. Verify critical Name Constraints are present on Root CA
+	if !rootCA.Certificate.PermittedDNSDomainsCritical {
+		t.Errorf("CRITICAL: PermittedDNSDomainsCritical must be true to prevent trust store bypass")
+	}
+	if len(rootCA.Certificate.PermittedDNSDomains) == 0 {
+		t.Fatalf("CRITICAL: Root CA has empty PermittedDNSDomains!")
+	}
+	if len(rootCA.Certificate.PermittedIPRanges) == 0 {
+		t.Fatalf("CRITICAL: Root CA has empty PermittedIPRanges!")
+	}
+
+	// 2. Attempt to issue server certificate for public domain (apple.com)
+	_, _, err = rootCA.IssueServerCert([]string{"apple.com"}, 30)
+	if err == nil {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: Root CA successfully signed server cert for apple.com!")
+	}
+	if !errors.Is(err, ErrForbiddenHostname) {
+		t.Errorf("expected ErrForbiddenHostname, got: %v", err)
+	}
+	t.Logf("PASS: Public domain apple.com correctly rejected: %v", err)
+
+	// 3. Attempt to issue server certificate for public IP (8.8.8.8)
+	_, _, err = rootCA.IssueServerCert([]string{"8.8.8.8"}, 30)
+	if err == nil {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: Root CA successfully signed server cert for public IP 8.8.8.8!")
+	}
+	if !errors.Is(err, ErrForbiddenHostname) {
+		t.Errorf("expected ErrForbiddenHostname, got: %v", err)
+	}
+	t.Logf("PASS: Public IP 8.8.8.8 correctly rejected: %v", err)
+
+	// 4. Verify legitimate local domains and loopback IPs succeed
+	certPEM, _, err := rootCA.IssueServerCert([]string{"localhost", "127.0.0.1", "api.local", "service.internal"}, 30)
+	if err != nil {
+		t.Fatalf("Legitimate local domain issuance failed: %v", err)
+	}
+	if len(certPEM) == 0 {
+		t.Fatalf("Expected non-empty cert PEM")
+	}
+	t.Logf("PASS: Legitimate local domain issuance succeeded under Name Constraints.")
+}
+

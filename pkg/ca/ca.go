@@ -31,6 +31,53 @@ const (
 	DefaultCertValidity   = 365  // 1 year
 )
 
+// ErrForbiddenHostname is returned when a requested hostname or IP violates CA Name Constraints.
+var ErrForbiddenHostname = errors.New("security violation: hostname or IP violates CA name constraints")
+
+func validateIPPermitted(ip net.IP, permittedRanges []*net.IPNet) error {
+	if len(permittedRanges) == 0 {
+		return nil
+	}
+	for _, ipNet := range permittedRanges {
+		if ipNet.Contains(ip) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: IP %s is outside permitted CA IP ranges", ErrForbiddenHostname, ip)
+}
+
+func matchDomainConstraint(cleanHost, cleanPerm string) bool {
+	if cleanPerm == "" {
+		return false
+	}
+	if strings.HasPrefix(cleanPerm, ".") {
+		return strings.HasSuffix(cleanHost, cleanPerm) || cleanHost == cleanPerm[1:]
+	}
+	return cleanHost == cleanPerm || strings.HasSuffix(cleanHost, "."+cleanPerm)
+}
+
+func validateDNSPermitted(cleanHost string, permittedDomains []string) error {
+	if len(permittedDomains) == 0 {
+		return nil
+	}
+	for _, perm := range permittedDomains {
+		if matchDomainConstraint(cleanHost, strings.ToLower(perm)) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: hostname %q is not within permitted CA domains %v", ErrForbiddenHostname, cleanHost, permittedDomains)
+}
+
+func validateHostPermitted(caCert *x509.Certificate, host string) error {
+	if caCert == nil {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return validateIPPermitted(ip, caCert.PermittedIPRanges)
+	}
+	return validateDNSPermitted(strings.ToLower(strings.TrimSpace(host)), caCert.PermittedDNSDomains)
+}
+
 // CA represents a dual-root Certificate Authority capable of signing both
 // classical ECDSA and post-quantum ML-DSA-65 (NIST FIPS 204) certificates.
 type CA struct {
@@ -86,6 +133,10 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 		return nil, fmt.Errorf("failed to generate serial number: %w", err)
 	}
 
+	// RFC 5280 critical Name Constraints isolating local Sovereign Root CA
+	loopbackIPv4 := &net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)}
+	loopbackIPv6 := &net.IPNet{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)}
+
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
@@ -97,7 +148,13 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		MaxPathLenZero:        false,
+		MaxPathLenZero:        true,
+
+		// RFC 5280 Name Constraints: restrict blast radius strictly to localhost, loopback, and local trust domains
+		PermittedDNSDomainsCritical: true,
+		PermittedDNSDomains:         []string{"localhost", ".localhost", ".local", "local", ".internal", "internal"},
+		PermittedIPRanges:           []*net.IPNet{loopbackIPv4, loopbackIPv6},
+		PermittedURIDomains:         []string{"bonjoski.local", "local.dev"},
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privKey.PublicKey, privKey)
@@ -147,8 +204,14 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		MaxPathLenZero:        false,
+		MaxPathLenZero:        true,
 		SignatureAlgorithm:    x509.MLDSA65,
+
+		// RFC 5280 Name Constraints: restrict blast radius strictly to localhost, loopback, and local trust domains
+		PermittedDNSDomainsCritical: true,
+		PermittedDNSDomains:         []string{"localhost", ".localhost", ".local", "local", ".internal", "internal"},
+		PermittedIPRanges:           []*net.IPNet{loopbackIPv4, loopbackIPv6},
+		PermittedURIDomains:         []string{"bonjoski.local", "local.dev"},
 	}
 
 	pqcCertDER, err := x509.CreateCertificate(rand.Reader, &pqcTemplate, &pqcTemplate, pqcPrivKey.Public(), pqcPrivKey)
@@ -303,6 +366,9 @@ func (c *CA) IssueServerCert(hosts []string, validityDays int) (certPEM, keyPEM 
 	var ipAddresses []net.IP
 
 	for _, host := range hosts {
+		if err := validateHostPermitted(c.Certificate, host); err != nil {
+			return nil, nil, err
+		}
 		if ip := net.ParseIP(host); ip != nil {
 			ipAddresses = append(ipAddresses, ip)
 		} else {
@@ -384,6 +450,9 @@ func (c *CA) IssuePQCServerCert(hosts []string, validityDays int) (certPEM, keyP
 	var ipAddresses []net.IP
 
 	for _, host := range hosts {
+		if err := validateHostPermitted(c.Certificate, host); err != nil {
+			return nil, nil, err
+		}
 		if ip := net.ParseIP(host); ip != nil {
 			ipAddresses = append(ipAddresses, ip)
 		} else {

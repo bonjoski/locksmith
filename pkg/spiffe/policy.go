@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bonjoski/locksmith/v2/pkg/ca"
@@ -77,7 +78,7 @@ func (p *Policy) isUIDAllowed(uid uint32) bool {
 
 func (p *Policy) isCIDAllowed(cid uint32) bool {
 	if len(p.AllowedCIDs) == 0 {
-		return true // default: all guest microVMs allowed unless restricted
+		return false // fail-closed: must explicitly configure allowed CIDs
 	}
 	for _, allowed := range p.AllowedCIDs {
 		if allowed == cid {
@@ -87,27 +88,130 @@ func (p *Policy) isCIDAllowed(cid uint32) bool {
 	return false
 }
 
+func matchPattern(pattern, target string) bool {
+	if pattern == target {
+		return true
+	}
+	if strings.HasSuffix(pattern, "/*") {
+		prefix := strings.TrimSuffix(pattern, "/*")
+		if strings.HasPrefix(target, prefix+"/") {
+			return true
+		}
+	}
+	if matched, err := filepath.Match(pattern, target); err == nil && matched {
+		return true
+	}
+	return false
+}
+
+func (p *Policy) hasExplicitCIDRule(cid uint32, spiffeID string) bool {
+	for _, rule := range p.Rules {
+		if matchPattern(rule.SPIFFEPattern, spiffeID) {
+			for _, allowedCID := range rule.AllowedCIDs {
+				if allowedCID == cid {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func matchesUID(allowedUIDs []uint32, uid uint32) bool {
+	if len(allowedUIDs) == 0 {
+		return true
+	}
+	for _, u := range allowedUIDs {
+		if u == uid {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesCID(allowedCIDs []uint32, cid uint32) bool {
+	if len(allowedCIDs) == 0 {
+		return true
+	}
+	for _, c := range allowedCIDs {
+		if c == cid {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesBinary(allowedBinaries []string, id *CallerIdentity) bool {
+	if len(allowedBinaries) == 0 {
+		return true
+	}
+	for _, bin := range allowedBinaries {
+		if strings.HasPrefix(bin, "sha256:") {
+			if id.ExeHash != "" && strings.EqualFold(id.ExeHash, bin) {
+				return true
+			}
+		} else {
+			if (id.ExePath != "" && id.ExePath == bin) || (id.Comm != "" && id.Comm == bin) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func ruleSatisfiesCaller(rule PolicyRule, reqStr string, id *CallerIdentity) bool {
+	if !matchPattern(rule.SPIFFEPattern, reqStr) {
+		return false
+	}
+	if !matchesUID(rule.AllowedUIDs, id.UID) {
+		return false
+	}
+	if !matchesCID(rule.AllowedCIDs, id.VsockCID) {
+		return false
+	}
+	return matchesBinary(rule.AllowedBinaries, id)
+}
+
+func (p *Policy) checkBasicCallerAccess(identity *CallerIdentity) error {
+	if identity.VsockCID > 0 {
+		if !p.isCIDAllowed(identity.VsockCID) {
+			return fmt.Errorf("%w: caller vsock CID %d is not in allowed CIDs %v", ErrUnauthorizedWorkload, identity.VsockCID, p.AllowedCIDs)
+		}
+		return nil
+	}
+	if !p.isUIDAllowed(identity.UID) {
+		return fmt.Errorf("%w: caller UID %d is not in allowed UIDs %v", ErrUnauthorizedWorkload, identity.UID, p.AllowedUIDs)
+	}
+	return nil
+}
+
+func (p *Policy) authorizeAgainstRules(reqStr string, identity *CallerIdentity) error {
+	if len(p.Rules) == 0 {
+		return nil
+	}
+	for _, rule := range p.Rules {
+		if ruleSatisfiesCaller(rule, reqStr, identity) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: no policy rule authorizes caller (UID=%d, Comm=%s) for requested SPIFFE ID %q", ErrUnauthorizedWorkload, identity.UID, identity.Comm, reqStr)
+}
+
 // Authorize validates whether identity is permitted to receive the requested SPIFFE ID.
 func (p *Policy) Authorize(identity *CallerIdentity, requestedID *ca.SPIFFEID) error {
 	if identity == nil {
 		return ErrAttestationFailed
 	}
-
-	if identity.VsockCID > 0 {
-		if !p.isCIDAllowed(identity.VsockCID) {
-			return fmt.Errorf("%w: caller vsock CID %d is not in allowed CIDs %v", ErrUnauthorizedWorkload, identity.VsockCID, p.AllowedCIDs)
-		}
-	} else if !p.isUIDAllowed(identity.UID) {
-		return fmt.Errorf("%w: caller UID %d is not in allowed UIDs %v", ErrUnauthorizedWorkload, identity.UID, p.AllowedUIDs)
+	if err := p.checkBasicCallerAccess(identity); err != nil {
+		return err
 	}
-
-	if requestedID != nil {
-		if requestedID.TrustDomain() != p.TrustDomain {
-			return fmt.Errorf("%w: requested trust domain %q does not match authority %q", ErrUnauthorizedWorkload, requestedID.TrustDomain(), p.TrustDomain)
-		}
+	if requestedID == nil {
+		return nil
 	}
-
-	return nil
+	if requestedID.TrustDomain() != p.TrustDomain {
+		return fmt.Errorf("%w: requested trust domain %q does not match authority %q", ErrUnauthorizedWorkload, requestedID.TrustDomain(), p.TrustDomain)
+	}
+	return p.authorizeAgainstRules(requestedID.String(), identity)
 }
 
 // ResolveSPIFFEID derives the appropriate SPIFFE ID for an attested workload.
@@ -116,6 +220,14 @@ func (p *Policy) ResolveSPIFFEID(identity *CallerIdentity, requested string) (*c
 		parsed, err := ca.ParseSPIFFEID(requested)
 		if err != nil {
 			return nil, err
+		}
+		if identity != nil && identity.VsockCID > 0 {
+			expectedCIDURI := fmt.Sprintf("spiffe://%s/vm/cid/%d", p.TrustDomain, identity.VsockCID)
+			if parsed.String() != expectedCIDURI {
+				if !p.hasExplicitCIDRule(identity.VsockCID, parsed.String()) {
+					return nil, fmt.Errorf("%w: microVM CID %d is not authorized for requested SPIFFE ID %q (pinned to %s)", ErrUnauthorizedWorkload, identity.VsockCID, requested, expectedCIDURI)
+				}
+			}
 		}
 		if err := p.Authorize(identity, parsed); err != nil {
 			return nil, err

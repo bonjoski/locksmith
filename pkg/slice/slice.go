@@ -47,6 +47,7 @@ func Zeroize(b []byte) {
 // AuthZeroizeHook provides an active memory zeroization mechanism that
 // wipes credential slices from memory once an authentication handshake completes.
 type AuthZeroizeHook struct {
+	mu   sync.RWMutex
 	data []byte
 	once sync.Once
 }
@@ -62,13 +63,20 @@ func (h *AuthZeroizeHook) HandshakeComplete() {
 		return
 	}
 	h.once.Do(func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		ExplicitBzero(h.data)
 	})
 }
 
 // IsZeroized reports whether all bytes in the credential slice are zero.
 func (h *AuthZeroizeHook) IsZeroized() bool {
-	if h == nil || len(h.data) == 0 {
+	if h == nil {
+		return true
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if len(h.data) == 0 {
 		return true
 	}
 	for _, b := range h.data {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -134,6 +135,117 @@ func TestAdversarial_RateLimitThrottling(t *testing.T) {
 		t.Fatalf("CRITICAL: Rate limiter failed to throttle high-frequency requests!")
 	}
 	t.Logf("PASS: Rate limiter successfully throttled burst requests with 429.")
+}
+
+// ADV-SPIFFE-08: Unattested Loopback TCP Identity Spoofing Defense
+// Asserts that loopback TCP bridge requests without an authenticated bridge token
+// or with arbitrary requested SPIFFE IDs are rejected with 403 Forbidden (GHSA-wfmr-rw42-3rv7 Finding 2).
+func TestAdversarial_VsockBridgeUnattestedTCPSpoofing(t *testing.T) {
+	rootCA, _ := ca.GenerateRootCA("Test CA", "Bonjoski", 30)
+	sockPath := shortTempSock(t, "spoof-test")
+
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.AllowedCIDs = []uint32{3}
+
+	ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
+		SocketPath:  sockPath,
+		VsockPort:   29099,
+		BridgeToken: "secure-bridge-secret-token",
+		TrustDomain: "bonjoski.local",
+		Policy:      pol,
+		CA:          rootCA,
+	})
+	if err != nil {
+		t.Fatalf("failed creating server: %v", err)
+	}
+
+	go func() { _ = ws.Start() }()
+	time.Sleep(50 * time.Millisecond)
+	defer func() { _ = ws.Stop(context.Background()) }()
+
+	// 1. Attack: Unauthenticated TCP connection attempting to forge an admin SVID
+	spoofReq, _ := http.NewRequest("GET", "http://127.0.0.1:29099/v1/svid?spiffe_id=spiffe://bonjoski.local/ns/prod/sa/admin", nil)
+	resp, err := http.DefaultClient.Do(spoofReq)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: Unauthenticated TCP bridge connection returned %d instead of 403 Forbidden!", resp.StatusCode)
+	}
+	t.Logf("PASS: Unauthenticated loopback TCP connection correctly rejected with 403.")
+
+	// 2. Attack: Valid bridge token but attempting to request an unpermitted arbitrary SPIFFE ID
+	authSpoofReq, _ := http.NewRequest("GET", "http://127.0.0.1:29099/v1/svid?spiffe_id=spiffe://bonjoski.local/ns/prod/sa/admin", nil)
+	authSpoofReq.Header.Set("X-Locksmith-Bridge-Token", "secure-bridge-secret-token")
+	authSpoofReq.Header.Set("X-Locksmith-CID", "3")
+	authResp, err := http.DefaultClient.Do(authSpoofReq)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	authResp.Body.Close()
+	if authResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: CID 3 was allowed to mint arbitrary admin SVID, status: %d", authResp.StatusCode)
+	}
+	t.Logf("PASS: MicroVM CID 3 attempting to request unauthorized admin SPIFFE ID correctly rejected with 403.")
+
+	// 3. Legitimate: Valid bridge token requesting derived pinned CID SVID
+	legitReq, _ := http.NewRequest("GET", "http://127.0.0.1:29099/v1/svid", nil)
+	legitReq.Header.Set("X-Locksmith-Bridge-Token", "secure-bridge-secret-token")
+	legitReq.Header.Set("X-Locksmith-CID", "3")
+	legitResp, err := http.DefaultClient.Do(legitReq)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer legitResp.Body.Close()
+	if legitResp.StatusCode != http.StatusOK {
+		t.Fatalf("Legitimate authenticated SVID fetch failed with status: %d", legitResp.StatusCode)
+	}
+	t.Logf("PASS: Authenticated microVM request for pinned SVID succeeded with 200 OK.")
+}
+
+// ADV-SPIFFE-09: Fine-Grained PolicyRule Enforcement
+// Asserts that PolicyRule restrictions on spiffe_pattern and allowed_binaries are strictly enforced
+// rather than being silently ignored (GHSA-wfmr-rw42-3rv7 Finding 3).
+func TestAdversarial_PolicyRuleEnforcement(t *testing.T) {
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.Rules = []spiffe.PolicyRule{
+		{
+			SPIFFEPattern:   "spiffe://bonjoski.local/ns/dev/*",
+			AllowedUIDs:     []uint32{uint32(os.Getuid())},
+			AllowedBinaries: []string{"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}, // specific binary hash
+		},
+	}
+
+	// 1. Caller with matching UID and binary hash
+	legitCaller := &spiffe.CallerIdentity{
+		UID:     uint32(os.Getuid()),
+		Comm:    "valid-agent",
+		ExeHash: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+	}
+	legitID, _ := ca.ParseSPIFFEID("spiffe://bonjoski.local/ns/dev/sa/worker")
+	if err := pol.Authorize(legitCaller, legitID); err != nil {
+		t.Fatalf("Expected authorized rule for legit caller, got: %v", err)
+	}
+	t.Logf("PASS: Legit caller with matching binary hash authorized.")
+
+	// 2. Caller with mismatched binary hash
+	rogueCaller := &spiffe.CallerIdentity{
+		UID:     uint32(os.Getuid()),
+		Comm:    "rogue-agent",
+		ExeHash: "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+	}
+	if err := pol.Authorize(rogueCaller, legitID); err == nil {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: Rogue binary hash bypassed policy rule enforcement!")
+	}
+	t.Logf("PASS: Rogue binary hash correctly blocked by policy rule.")
+
+	// 3. Caller with matching hash but requesting out-of-pattern production SPIFFE ID
+	prodID, _ := ca.ParseSPIFFEID("spiffe://bonjoski.local/ns/prod/sa/admin")
+	if err := pol.Authorize(legitCaller, prodID); err == nil {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: Caller bypassed pattern restriction and accessed prod admin ID!")
+	}
+	t.Logf("PASS: Out-of-pattern production SPIFFE ID correctly blocked.")
 }
 
 func init() {

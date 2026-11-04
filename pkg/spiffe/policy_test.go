@@ -47,16 +47,22 @@ func TestPolicy_Authorize(t *testing.T) {
 		t.Errorf("expected nil identity to be rejected, got nil")
 	}
 
-	// 5. Vsock CID authorization
+	// 5. Vsock CID authorization (fails closed by default when AllowedCIDs is empty)
 	vmIdentity := &spiffe.CallerIdentity{
 		VsockCID: 3,
 		Comm:     "aegisbox-vm",
 	}
-	if err := pol.Authorize(vmIdentity, validID); err != nil {
-		t.Errorf("expected vsock identity to be authorized by default, got: %v", err)
+	if err := pol.Authorize(vmIdentity, validID); err == nil {
+		t.Errorf("expected vsock identity to be rejected when AllowedCIDs is empty")
 	}
 
-	// 6. Restrictive AllowedCIDs
+	// 6. AllowedCIDs permits explicit CID
+	pol.AllowedCIDs = []uint32{3}
+	if err := pol.Authorize(vmIdentity, validID); err != nil {
+		t.Errorf("expected CID 3 to be authorized when AllowedCIDs=[3], got: %v", err)
+	}
+
+	// 7. Restrictive AllowedCIDs mismatch
 	pol.AllowedCIDs = []uint32{4, 5}
 	if err := pol.Authorize(vmIdentity, validID); err == nil {
 		t.Errorf("expected CID 3 to be rejected when AllowedCIDs=[4,5]")
@@ -94,6 +100,7 @@ func TestPolicy_ResolveSPIFFEID(t *testing.T) {
 	}
 
 	// Default fallback derivation for vsock microVM
+	pol.AllowedCIDs = []uint32{3}
 	vmIdentity := &spiffe.CallerIdentity{VsockCID: 3}
 	vmResolved, err := pol.ResolveSPIFFEID(vmIdentity, "")
 	if err != nil {
