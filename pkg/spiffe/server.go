@@ -2,7 +2,9 @@ package spiffe
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -20,14 +23,16 @@ import (
 type contextKey string
 
 const (
-	identityContextKey contextKey = "caller_identity"
+	identityContextKey  contextKey = "caller_identity"
 	attestErrContextKey contextKey = "attest_error"
+	tcpBridgeContextKey contextKey = "tcp_bridge"
 )
 
 // ServerConfig configures the SPIFFE Workload API listener.
 type ServerConfig struct {
 	SocketPath  string
 	VsockPort   uint32
+	BridgeToken string
 	TrustDomain string
 	Policy      *Policy
 	Attestor    WorkloadAttestor
@@ -47,15 +52,14 @@ type WorkloadServer struct {
 	rateLimiters  map[uint32]*rate.Limiter
 }
 
-// NewWorkloadServer creates a new WorkloadServer instance.
-func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
+func applyDefaultServerConfig(cfg *ServerConfig) error {
 	if cfg.CA == nil {
-		return nil, errors.New("Root CA is required for SPIFFE Workload Server")
+		return errors.New("Root CA is required for SPIFFE Workload Server")
 	}
 	if cfg.SocketPath == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, fmt.Errorf("failed to determine user home directory: %w", err)
+			return fmt.Errorf("failed to determine user home directory: %w", err)
 		}
 		cfg.SocketPath = filepath.Join(home, ".locksmith", "spiffe", "workload.sock")
 	}
@@ -71,6 +75,41 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 	if cfg.BurstLimit <= 0 {
 		cfg.BurstLimit = 20
 	}
+	if cfg.VsockPort > 0 && cfg.BridgeToken == "" {
+		tokenBytes := make([]byte, 16)
+		if _, err := rand.Read(tokenBytes); err == nil {
+			cfg.BridgeToken = hex.EncodeToString(tokenBytes)
+		}
+	}
+	return nil
+}
+
+func (ws *WorkloadServer) connContext(ctx context.Context, c net.Conn) context.Context {
+	if c.RemoteAddr() != nil {
+		switch c.RemoteAddr().Network() {
+		case "tcp":
+			return context.WithValue(ctx, tcpBridgeContextKey, true)
+		case "vsock":
+			identity := &CallerIdentity{
+				VsockCID:  3,
+				Comm:      "aegisbox-vm",
+				StartTime: time.Now(),
+			}
+			return context.WithValue(ctx, identityContextKey, identity)
+		}
+	}
+	identity, err := ws.cfg.Attestor.AttestPeer(c)
+	if err != nil {
+		return context.WithValue(ctx, attestErrContextKey, err)
+	}
+	return context.WithValue(ctx, identityContextKey, identity)
+}
+
+// NewWorkloadServer creates a new WorkloadServer instance.
+func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
+	if err := applyDefaultServerConfig(&cfg); err != nil {
+		return nil, err
+	}
 
 	ws := &WorkloadServer{
 		cfg:          cfg,
@@ -83,25 +122,16 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 	mux.HandleFunc("/v1/svid", ws.handleSVID)
 
 	ws.httpServer = &http.Server{
-		Handler: mux,
-		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-			if c.RemoteAddr() != nil && (c.RemoteAddr().Network() == "tcp" || c.RemoteAddr().Network() == "vsock") {
-				identity := &CallerIdentity{
-					VsockCID:  3,
-					Comm:      "aegisbox-vm",
-					StartTime: time.Now(),
-				}
-				return context.WithValue(ctx, identityContextKey, identity)
-			}
-			identity, err := ws.cfg.Attestor.AttestPeer(c)
-			if err != nil {
-				return context.WithValue(ctx, attestErrContextKey, err)
-			}
-			return context.WithValue(ctx, identityContextKey, identity)
-		},
+		Handler:     mux,
+		ConnContext: ws.connContext,
 	}
 
 	return ws, nil
+}
+
+// BridgeToken returns the active authentication token for loopback TCP bridge requests.
+func (ws *WorkloadServer) BridgeToken() string {
+	return ws.cfg.BridgeToken
 }
 
 func (ws *WorkloadServer) checkRateLimit(uid uint32) bool {
@@ -117,6 +147,29 @@ func (ws *WorkloadServer) checkRateLimit(uid uint32) bool {
 }
 
 func (ws *WorkloadServer) getIdentity(r *http.Request) (*CallerIdentity, error) {
+	if isTCPBridge, _ := r.Context().Value(tcpBridgeContextKey).(bool); isTCPBridge {
+		token := r.Header.Get("X-Locksmith-Bridge-Token")
+		if ws.cfg.BridgeToken == "" || token != ws.cfg.BridgeToken {
+			return nil, fmt.Errorf("%w: unauthenticated vsock bridge TCP request (missing or invalid X-Locksmith-Bridge-Token)", ErrUnauthorizedWorkload)
+		}
+		var cid uint32 = 3
+		cidHeader := r.Header.Get("X-Locksmith-CID")
+		if cidHeader != "" {
+			if parsed, err := strconv.ParseUint(cidHeader, 10, 32); err == nil {
+				cid = uint32(parsed)
+			}
+		} else if len(ws.cfg.Policy.AllowedCIDs) > 0 {
+			cid = ws.cfg.Policy.AllowedCIDs[0]
+		}
+		if !ws.cfg.Policy.isCIDAllowed(cid) {
+			return nil, fmt.Errorf("%w: microVM CID %d not permitted by policy", ErrUnauthorizedWorkload, cid)
+		}
+		return &CallerIdentity{
+			VsockCID:  cid,
+			Comm:      "aegisbox-vm",
+			StartTime: time.Now(),
+		}, nil
+	}
 	if errVal := r.Context().Value(attestErrContextKey); errVal != nil {
 		if err, ok := errVal.(error); ok {
 			return nil, err

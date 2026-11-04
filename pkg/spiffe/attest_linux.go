@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bonjoski/locksmith/v2/pkg/protocol"
 	"golang.org/x/sys/unix"
 )
 
@@ -97,11 +98,21 @@ func (a *LinuxAttestor) AttestPeer(conn net.Conn) (*CallerIdentity, error) {
 		return nil, err
 	}
 
+	var exePath, exeHash string
+	if p, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid)); err == nil {
+		exePath = p
+		if h, err := protocol.HashFile(exePath); err == nil {
+			exeHash = h
+		}
+	}
+
 	return &CallerIdentity{
 		PID:       pid,
 		UID:       ucred.Uid,
 		GID:       ucred.Gid,
 		Comm:      comm,
 		StartTime: startTime,
+		ExePath:   exePath,
+		ExeHash:   exeHash,
 	}, nil
 }

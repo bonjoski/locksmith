@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -39,9 +40,13 @@ var (
 	caExportRenew      bool
 	caServeSocket      string
 	caServeTrustDomain string
-	caServePolicyPath  string
-	caServeRateLimit   float64
-	caServeVsockPort   uint32
+	caServePolicyPath        string
+	caServeRateLimit         float64
+	caServeVsockPort         uint32
+	caAllowUnsealedDiskKeys  bool
+	caForceUnconstrained     bool
+	caServeBridgeToken       string
+	caServeAllowedCIDs       []uint
 )
 
 const (
@@ -103,19 +108,13 @@ Use --trust to automatically install the classical Root CA into the macOS system
 			return fmt.Errorf("failed to generate Dual Root CA: %w", err)
 		}
 
-		// Write files with strict permissions
+		// 1. Write public certificates with standard read permissions
 		if err := os.WriteFile(rootCertPath, newCA.CertPEM, 0644); err != nil {
 			return fmt.Errorf("failed to write %s: %w", rootCertPath, err)
-		}
-		if err := os.WriteFile(rootKeyPath, newCA.KeyPEM, 0600); err != nil {
-			return fmt.Errorf("failed to write %s: %w", rootKeyPath, err)
 		}
 		if len(newCA.PQCCertPEM) > 0 {
 			if err := os.WriteFile(pqcCertPath, newCA.PQCCertPEM, 0644); err != nil {
 				return fmt.Errorf("failed to write %s: %w", pqcCertPath, err)
-			}
-			if err := os.WriteFile(pqcKeyPath, newCA.PQCKeyPEM, 0600); err != nil {
-				return fmt.Errorf("failed to write %s: %w", pqcKeyPath, err)
 			}
 		}
 		if len(newCA.DualCertPEM) > 0 {
@@ -124,19 +123,54 @@ Use --trust to automatically install the classical Root CA into the macOS system
 			}
 		}
 
-		// Save Root Keys & Certs to Locksmith Enclave
+		// 2. Hardware Enclave Sealing (macOS Keychain / TPM)
+		enclaveSealed := false
 		if ls != nil {
 			expiresAt := time.Now().Add(time.Duration(caDays) * 24 * time.Hour)
 			keyCopy := append([]byte(nil), newCA.KeyPEM...)
 			certCopy := append([]byte(nil), newCA.CertPEM...)
-			_ = ls.SetWithContext(secretRootCAKey, keyCopy, expiresAt, globalBiometricReqs, "token", "locksmith-ca", "", nil)
-			_ = ls.SetWithContext(secretRootCACert, certCopy, expiresAt, false, "token", "locksmith-ca", "", nil)
+			err1 := ls.SetWithContext(secretRootCAKey, keyCopy, expiresAt, globalBiometricReqs, "token", "locksmith-ca", "", nil)
+			err2 := ls.SetWithContext(secretRootCACert, certCopy, expiresAt, false, "token", "locksmith-ca", "", nil)
 
+			pqcErr := error(nil)
 			if len(newCA.PQCKeyPEM) > 0 {
 				pqcKeyCopy := append([]byte(nil), newCA.PQCKeyPEM...)
 				pqcCertCopy := append([]byte(nil), newCA.PQCCertPEM...)
-				_ = ls.SetWithContext(secretRootPQCKey, pqcKeyCopy, expiresAt, globalBiometricReqs, "token", "locksmith-ca", "", nil)
-				_ = ls.SetWithContext(secretRootPQCCert, pqcCertCopy, expiresAt, false, "token", "locksmith-ca", "", nil)
+				pqcErr1 := ls.SetWithContext(secretRootPQCKey, pqcKeyCopy, expiresAt, globalBiometricReqs, "token", "locksmith-ca", "", nil)
+				pqcErr2 := ls.SetWithContext(secretRootPQCCert, pqcCertCopy, expiresAt, false, "token", "locksmith-ca", "", nil)
+				if pqcErr1 != nil {
+					pqcErr = pqcErr1
+				} else if pqcErr2 != nil {
+					pqcErr = pqcErr2
+				}
+			}
+
+			if err1 == nil && err2 == nil && pqcErr == nil {
+				enclaveSealed = true
+			}
+		}
+
+		if !enclaveSealed {
+			if !caAllowUnsealedDiskKeys {
+				return errors.New("fatal: failed to seal Root CA private keys in platform enclave (macOS Keychain). Refusing to store unsealed private keys on disk. Pass --allow-unsealed-disk-keys to explicitly opt-in for headless or container environments")
+			}
+			// Explicit opt-in for unsealed disk keys
+			if err := os.WriteFile(rootKeyPath, newCA.KeyPEM, 0600); err != nil {
+				return fmt.Errorf("failed to write %s: %w", rootKeyPath, err)
+			}
+			if len(newCA.PQCKeyPEM) > 0 {
+				if err := os.WriteFile(pqcKeyPath, newCA.PQCKeyPEM, 0600); err != nil {
+					return fmt.Errorf("failed to write %s: %w", pqcKeyPath, err)
+				}
+			}
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  SECURITY WARNING: Root CA private keys written to unsealed disk storage (%s).\n", rootKeyPath)
+		} else {
+			// Clean up any stale plaintext keys on disk
+			if err := os.Remove(rootKeyPath); err != nil && !os.IsNotExist(err) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed cleaning up %s: %v\n", rootKeyPath, err)
+			}
+			if err := os.Remove(pqcKeyPath); err != nil && !os.IsNotExist(err) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed cleaning up %s: %v\n", pqcKeyPath, err)
 			}
 		}
 
@@ -313,6 +347,22 @@ var caTrustCmd = &cobra.Command{
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "✔ Successfully removed Root CA from macOS trust store.")
 		} else {
+			certBytes, err := os.ReadFile(rootCertPath)
+			if err != nil {
+				return err
+			}
+			block, _ := pem.Decode(certBytes)
+			if block == nil {
+				return errors.New("failed decoding Root CA PEM certificate")
+			}
+			parsedCert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return fmt.Errorf("failed parsing Root CA certificate: %w", err)
+			}
+			if len(parsedCert.PermittedDNSDomains) == 0 && !caForceUnconstrained {
+				return errors.New("security violation: refusing to install Root CA into macOS system trust store because it lacks RFC 5280 Name Constraints. Run 'locksmith ca init' to generate a name-constrained root, or pass --force-unconstrained to override")
+			}
+
 			if err := ca.TrustInSystemTrustStore(rootCertPath); err != nil {
 				return err
 			}
@@ -455,9 +505,18 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 			return fmt.Errorf("failed loading spiffe policy: %w", err)
 		}
 
+		for _, cid := range caServeAllowedCIDs {
+			pol.AllowedCIDs = append(pol.AllowedCIDs, uint32(cid))
+		}
+
+		if caServeVsockPort > 0 && len(pol.AllowedCIDs) == 0 {
+			return errors.New("fatal: --vsock-port requires at least one allowed microVM CID configured in policy.json or via --allowed-cid")
+		}
+
 		ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
 			SocketPath:  caServeSocket,
 			VsockPort:   caServeVsockPort,
+			BridgeToken: caServeBridgeToken,
 			TrustDomain: caServeTrustDomain,
 			Policy:      pol,
 			CA:          rootCA,
@@ -471,7 +530,8 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Trust Domain: %s\n", caServeTrustDomain)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Socket Path:  %s (0600)\n", ws.SocketPath())
 		if caServeVsockPort > 0 {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   VSock Bridge: 127.0.0.1:%d (CID 3)\n", caServeVsockPort)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   VSock Bridge: 127.0.0.1:%d (Allowed CIDs: %v)\n", caServeVsockPort, pol.AllowedCIDs)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Bridge Token: %s\n", ws.BridgeToken())
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Rate Limit:   %.0f req/s per UID\n", caServeRateLimit)
 
@@ -534,10 +594,12 @@ func loadRootCA() (*ca.CA, error) {
 		}
 	}
 	if len(keyData) == 0 {
-		keyData, err = readCADiskFile(filepath.Join(caDir, "root-ca.key"), true)
+		keyPath := filepath.Join(caDir, "root-ca.key")
+		keyData, err = readCADiskFile(keyPath, true)
 		if err != nil {
 			return nil, err
 		}
+		_, _ = fmt.Fprintf(os.Stderr, "⚠️  SECURITY WARNING: Root CA private key loaded from unsealed disk storage (%s).\n", keyPath)
 	}
 	if len(pqcCertData) == 0 {
 		pqcCertData, _ = readCADiskFile(filepath.Join(caDir, "root-ca-pqc.crt"), false)
@@ -563,6 +625,7 @@ func init() {
 	caInitCmd.Flags().StringVar(&caOrg, "org", ca.DefaultCAOrganization, "Organization name for the Root CA")
 	caInitCmd.Flags().IntVar(&caDays, "days", ca.DefaultCAValidityDays, "Validity duration in days for the Root CA")
 	caInitCmd.Flags().BoolVar(&caAutoTrust, "trust", false, "Automatically install the Classical Root CA into the macOS system trust store")
+	caInitCmd.Flags().BoolVar(&caAllowUnsealedDiskKeys, "allow-unsealed-disk-keys", false, "Allow storing unsealed plaintext root keys on disk (for headless/CI environments)")
 
 	// ca issue flags
 	caIssueCmd.Flags().StringSliceVar(&caServerHosts, "domain", []string{"127.0.0.1", "localhost"}, "Domain names and IP addresses for the server certificate")
@@ -576,6 +639,7 @@ func init() {
 
 	// ca trust flags
 	caTrustCmd.Flags().BoolVar(&caUntrust, "untrust", false, "Remove the Classical Root CA from the macOS trust store")
+	caTrustCmd.Flags().BoolVar(&caForceUnconstrained, "force-unconstrained", false, "Force installing a Root CA into trust store even if it lacks RFC 5280 Name Constraints")
 
 	// ca container-export flags
 	caContainerExportCmd.Flags().StringVar(&caExportOutDir, "out-dir", "", "Target directory for exported container certificates (required)")
@@ -592,4 +656,6 @@ func init() {
 	caServeSpiffeCmd.Flags().StringVar(&caServeTrustDomain, "trust-domain", spiffe.DefaultTrustDomain, "Sovereign trust domain authority")
 	caServeSpiffeCmd.Flags().StringVar(&caServePolicyPath, "policy", "", "Path to local policy.json file")
 	caServeSpiffeCmd.Flags().Float64Var(&caServeRateLimit, "rate-limit", 10.0, "Attestation rate limit (requests per second per UID)")
+	caServeSpiffeCmd.Flags().StringVar(&caServeBridgeToken, "bridge-token", "", "Pre-shared authorization token for loopback TCP vsock bridge")
+	caServeSpiffeCmd.Flags().UintSliceVar(&caServeAllowedCIDs, "allowed-cid", nil, "Allowed microVM CIDs for vsock bridge")
 }

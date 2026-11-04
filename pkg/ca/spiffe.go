@@ -157,6 +157,10 @@ func (c *CA) IssueSVID(profile *SVIDProfile) (certPEM, keyPEM []byte, err error)
 		return nil, nil, err
 	}
 
+	if err := c.validateSVIDProfilePermitted(profile); err != nil {
+		return nil, nil, err
+	}
+
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate ephemeral private key: %w", err)
@@ -218,6 +222,10 @@ func (c *CA) IssuePQCSVID(profile *SVIDProfile) (certPEM, keyPEM []byte, err err
 
 	ttl, skewPad, err := validateSVIDProfile(profile)
 	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := c.validateSVIDProfilePermitted(profile); err != nil {
 		return nil, nil, err
 	}
 
@@ -298,4 +306,29 @@ func (c *CA) IssueDualSVID(profile *SVIDProfile) (*IssuedCertBundle, error) {
 	}
 
 	return bundle, nil
+}
+
+func (c *CA) validateSVIDProfilePermitted(profile *SVIDProfile) error {
+	if profile == nil || profile.SPIFFEID == nil {
+		return ErrInvalidSPIFFEIDFormat
+	}
+	if c.Certificate != nil && len(c.Certificate.PermittedURIDomains) > 0 {
+		td := strings.ToLower(profile.SPIFFEID.TrustDomain())
+		matched := false
+		for _, permURI := range c.Certificate.PermittedURIDomains {
+			if td == strings.ToLower(permURI) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return fmt.Errorf("security violation: SPIFFE trust domain %q is not permitted by CA URI constraints %v", td, c.Certificate.PermittedURIDomains)
+		}
+	}
+	for _, host := range profile.Hosts {
+		if err := validateHostPermitted(c.Certificate, host); err != nil {
+			return err
+		}
+	}
+	return nil
 }

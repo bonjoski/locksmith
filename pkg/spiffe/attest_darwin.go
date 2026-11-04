@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bonjoski/locksmith/v2/pkg/protocol"
 	"golang.org/x/sys/unix"
 )
 
@@ -85,11 +86,21 @@ func (a *DarwinAttestor) AttestPeer(conn net.Conn) (*CallerIdentity, error) {
 		gid = xucred.Groups[0]
 	}
 
+	var exePath, exeHash string
+	if p, err := protocol.GetProcessExecutablePath(pid); err == nil {
+		exePath = p
+		if h, err := protocol.HashFile(exePath); err == nil {
+			exeHash = h
+		}
+	}
+
 	return &CallerIdentity{
 		PID:       pid,
 		UID:       xucred.Uid,
 		GID:       gid,
 		Comm:      parseComm(kp.Proc.P_comm),
 		StartTime: startTime,
+		ExePath:   exePath,
+		ExeHash:   exeHash,
 	}, nil
 }
