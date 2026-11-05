@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -41,10 +42,11 @@ func TestAdversarial_MultiAgentConcurrencyStress(t *testing.T) {
 		TrustDomain: "bonjoski.local",
 		BridgeKey:   masterKey,
 		CA:          rootCA,
-		RateLimit:   rate.Limit(5000),
+		RateLimit:   rate.Limit(10000),
+		BurstLimit:  1000,
 		Attestor: &MockAttestor{
 			Identity: &spiffe.CallerIdentity{
-				UID:       501,
+				UID:       uint32(os.Getuid()),
 				Comm:      "worker-agent",
 				StartTime: time.Now(),
 			},
@@ -134,9 +136,10 @@ func TestAdversarial_HeaderSmugglingOverUnixSocket(t *testing.T) {
 		BridgeKey:   masterKey,
 		CA:          rootCA,
 		RateLimit:   rate.Limit(100),
+		BurstLimit:  50,
 		Attestor: &MockAttestor{
 			Identity: &spiffe.CallerIdentity{
-				UID:       501,
+				UID:       uint32(os.Getuid()),
 				Comm:      "local-process",
 				StartTime: time.Now(),
 			},
