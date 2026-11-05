@@ -33,6 +33,14 @@ var rootCmd = &cobra.Command{
 
 		// Initialize Locksmith
 		if ls == nil {
+			if os.Getenv("LOCKSMITH_MOCK_BACKEND") == "1" {
+				cache := locksmith.NewMockCache()
+				ls = locksmith.NewWithCache(cache)
+				ls.Backend = locksmith.NewMockBackend()
+				ls.Config = cfg
+				ls.Options.RequireBiometrics = false
+				return nil
+			}
 			opts := locksmith.Options{
 				RequireBiometrics: true, // EXE always requires biometrics
 				PromptMessage:     cfg.Auth.PromptMessage,

@@ -95,10 +95,9 @@ func (p *Policy) Validate() ([]string, error) {
 			lower := strings.ToLower(bin)
 			if !strings.HasPrefix(lower, "sha256:") && !isHex64(bin) {
 				if !strings.HasPrefix(lower, "path:") && !strings.HasPrefix(lower, "comm:") {
-					warnings = append(warnings, fmt.Sprintf("rule for %q uses unauthenticated bare binary identifier %q; only sha256 digests provide non-repudiable attestation", rule.SPIFFEPattern, bin))
-				} else {
-					warnings = append(warnings, fmt.Sprintf("rule for %q uses unauthenticated %s provenance %q; only sha256 digests provide non-repudiable attestation", rule.SPIFFEPattern, bin[:4], bin))
+					return nil, fmt.Errorf("rule for %q uses unauthenticated bare binary identifier %q; must specify sha256:<digest>, path:<path>, or comm:<name>", rule.SPIFFEPattern, bin)
 				}
+				warnings = append(warnings, fmt.Sprintf("rule for %q uses unauthenticated %s provenance %q; only sha256 digests provide non-repudiable attestation", rule.SPIFFEPattern, bin[:4], bin))
 			}
 		}
 	}
@@ -215,10 +214,7 @@ func matchesSingleBinary(binSpec string, id *CallerIdentity) bool {
 		return false
 	}
 	lower := strings.ToLower(binSpec)
-	if matchPrefixedBinary(lower, binSpec, id) {
-		return true
-	}
-	return (id.ExePath != "" && id.ExePath == binSpec) || (id.Comm != "" && id.Comm == binSpec)
+	return matchPrefixedBinary(lower, binSpec, id)
 }
 
 func matchesBinary(allowedBinaries []string, id *CallerIdentity) bool {
