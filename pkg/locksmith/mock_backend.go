@@ -1,3 +1,5 @@
+//go:build locksmith_test_harness
+
 package locksmith
 
 import (
@@ -9,8 +11,9 @@ import (
 // MockBackend implements the Backend interface for testing.
 // It stores secrets in an in-memory map and does not perform any biometric checks.
 type MockBackend struct {
-	mu    sync.RWMutex
-	store map[string][]byte
+	mu            sync.RWMutex
+	store         map[string][]byte
+	ForceSealFail bool
 }
 
 func newMockBackend() *MockBackend {
@@ -23,6 +26,9 @@ func NewMockBackend() *MockBackend {
 }
 
 func (m *MockBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
+	if m.ForceSealFail {
+		return errors.New("simulated hardware enclave seal failure: biometric timeout or device busy")
+	}
 	key := service + "/" + account
 	m.mu.Lock()
 	defer m.mu.Unlock()

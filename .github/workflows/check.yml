@@ -59,6 +59,16 @@ jobs:
         run: |
           make govulncheck-ci
 
+      - name: Verify Security Claims Traceability
+        run: |
+          chmod +x scripts/verify-claims.sh
+          ./scripts/verify-claims.sh
+
+      - name: Verify Fails-Before / Passes-After
+        run: |
+          chmod +x scripts/verify-fails-before.sh
+          ./scripts/verify-fails-before.sh
+
       - name: Verify Context Freshness
         run: |
           chmod +x scripts/dev/update-context.sh

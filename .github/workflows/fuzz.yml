@@ -20,4 +20,11 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Run Fuzzing
-        run: go test -fuzz FuzzParseDuration -fuzztime 3m ./pkg/locksmith
+        run: |
+          go test -fuzz=FuzzParseDuration -fuzztime=30s ./pkg/locksmith
+          go test -fuzz=FuzzJSONUnmarshal -fuzztime=30s ./pkg/locksmith
+          go test -fuzz=FuzzParseSPIFFEID -fuzztime=30s ./pkg/ca
+          go test -fuzz=FuzzParseVsockAddr -fuzztime=30s ./pkg/spiffe
+          go test -fuzz=FuzzMatchPattern -fuzztime=30s ./pkg/spiffe
+          go test -tags=locksmith_admin -fuzz=FuzzParsePermittedIPs -fuzztime=30s ./cmd/locksmith/cmd
+          go test -tags=locksmith_admin -fuzz=FuzzIsSovereignDomain -fuzztime=30s ./cmd/locksmith/cmd
