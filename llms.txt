@@ -1,22 +1,27 @@
 # Locksmith
 
-> Biometric Hardware Secrets Vault & Model Context Protocol (MCP) Server.
+> Hardware biometric secrets vault, sovereign SPIFFE CA, and MCP server for AI agents backed by Touch ID, Windows Hello, and TPM2.
 
 ## Core Capabilities
 - Native Hardware Biometrics: Bridges developer and agent workflows with Apple Secure Enclave (Touch ID / Apple Watch), Windows Hello, and Linux TPM2/Secret Service.
+- Sovereign SPIFFE CA & Workload API: Issues short-lived X.509 SVIDs (`spiffe://bonjoski/agent/...`) for mTLS mutual authentication between autonomous agents and proxies.
 - Model Context Protocol (MCP) Server: Provides structured `get_secret` and `list_secrets` tools for Claude, Antigravity, and Cursor with prompt-time biometric verification.
 - Ephemeral Execution Injection: CyberArk Summon provider (`summon-locksmith`) and `locksmith run` inject secrets into process environments without disk persistence.
 - In-Memory Secret Slicing: Fragments secrets into non-contiguous memory slices with automatic memory zeroization on lease expiration.
-- Git Credential Helper: Intercepts git HTTPS auth via biometric enclave prompts.
+- Multi-Agent Biometric Amortization: Caches biometric confirmation leases (300s window) with token burst limits across concurrent subagent loops.
 
 ## CLI Usage
-- `locksmith add <KEY>`: Prompts and encrypts secret in the platform enclave.
-- `locksmith get <KEY>`: Prompts for biometric unlock and outputs secret.
+- `locksmith add <KEY>`: Encrypts and stores secret in the platform enclave.
+- `locksmith get <KEY>`: Prompts for biometric unlock and outputs secret value.
 - `locksmith list`: Lists stored secret keys (values redacted).
 - `locksmith run --secret <KEY> -- <command>`: Executes command with ephemeral secret injected.
+- `locksmith spiffe server`: Launches the SPIFFE Workload API server.
+- `locksmith spiffe mint --spiffe-id <ID>`: Mints an attested X.509 SVID certificate.
 - `locksmith mcp`: Launches stdio Model Context Protocol server.
-- `locksmith slice --key <KEY>`: Uses in-memory slicing for ephemeral key management.
+- `locksmith slice --key <KEY>`: Fragment secret into sliced in-memory buffers.
+- `locksmith doctor`: Probes hardware enclaves and codesigning entitlements.
 
-## Sockets & Paths
-- IPC Socket: `~/.locksmith/locksmith.sock`
-- Documentation: `docs/knowledge-base/05-locksmith.md` in repo `spanreed`
+## Key Sockets & Files
+- Control Socket: `~/.locksmith/locksmith.sock`
+- SPIFFE Socket: `~/.locksmith/spiffe.sock`
+- Parent Runbook: `docs/knowledge-base/05-locksmith.md` in repository `spanreed`
