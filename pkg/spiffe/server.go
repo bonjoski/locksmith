@@ -2,8 +2,10 @@ package spiffe
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -13,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,27 +26,65 @@ import (
 type contextKey string
 
 const (
-	identityContextKey  contextKey = "caller_identity"
-	attestErrContextKey contextKey = "attest_error"
-	tcpBridgeContextKey contextKey = "tcp_bridge"
+	identityContextKey    contextKey = "caller_identity"
+	attestErrContextKey   contextKey = "attest_error"
+	tcpBridgeContextKey   contextKey = "tcp_bridge"
+	bridgeDomainSeparator            = "locksmith-spiffe-bridge-v1:cid:"
 )
+
+// BridgeTokenDeriver computes and verifies domain-separated CID bridge tokens.
+type BridgeTokenDeriver struct {
+	masterKey []byte
+}
+
+// NewBridgeTokenDeriver creates a deriver with a defensive copy of the master key.
+func NewBridgeTokenDeriver(masterKey []byte) *BridgeTokenDeriver {
+	if len(masterKey) == 0 {
+		return nil
+	}
+	keyCopy := make([]byte, len(masterKey))
+	copy(keyCopy, masterKey)
+	return &BridgeTokenDeriver{masterKey: keyCopy}
+}
+
+// DeriveToken calculates the authoritative HMAC-SHA256 token for a given microVM CID.
+func (d *BridgeTokenDeriver) DeriveToken(cid uint32) string {
+	if d == nil || len(d.masterKey) == 0 {
+		return ""
+	}
+	h := hmac.New(sha256.New, d.masterKey)
+	h.Write([]byte(bridgeDomainSeparator + strconv.FormatUint(uint64(cid), 10)))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// VerifyToken verifies whether candidateToken matches cid in constant time.
+func (d *BridgeTokenDeriver) VerifyToken(cid uint32, candidateToken string) bool {
+	if d == nil || len(d.masterKey) == 0 || candidateToken == "" {
+		return false
+	}
+	expected := d.DeriveToken(cid)
+	return subtle.ConstantTimeCompare([]byte(candidateToken), []byte(expected)) == 1
+}
 
 // ServerConfig configures the SPIFFE Workload API listener.
 type ServerConfig struct {
-	SocketPath  string
-	VsockPort   uint32
-	BridgeToken string
-	TrustDomain string
-	Policy      *Policy
-	Attestor    WorkloadAttestor
-	CA          *ca.CA
-	RateLimit   rate.Limit // requests per second per UID
-	BurstLimit  int
+	SocketPath             string
+	VsockPort              uint32
+	BridgeToken            string
+	BridgeKey              []byte     // 32-byte master HMAC key for per-CID token derivation
+	AllowSharedBridgeToken bool       // Permit static BridgeToken across multiple CIDs
+	TrustDomain            string
+	Policy                 *Policy
+	Attestor               WorkloadAttestor
+	CA                     *ca.CA
+	RateLimit              rate.Limit // requests per second per UID
+	BurstLimit             int
 }
 
 // WorkloadServer serves the SPIFFE Workload API over a Unix Domain Socket and optional vsock bridge.
 type WorkloadServer struct {
 	cfg           ServerConfig
+	deriver       *BridgeTokenDeriver
 	listener      net.Listener
 	vsockListener net.Listener
 	httpServer    *http.Server
@@ -52,16 +93,39 @@ type WorkloadServer struct {
 	rateLimiters  map[uint32]*rate.Limiter
 }
 
+func applyDefaultSocketPath(cfg *ServerConfig) error {
+	if cfg.SocketPath != "" {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to determine user home directory: %w", err)
+	}
+	cfg.SocketPath = filepath.Join(home, ".locksmith", "spiffe", "workload.sock")
+	return nil
+}
+
+func applyDefaultLimitsAndKeys(cfg *ServerConfig) {
+	if cfg.RateLimit <= 0 {
+		cfg.RateLimit = rate.Limit(10) // 10 requests per second
+	}
+	if cfg.BurstLimit <= 0 {
+		cfg.BurstLimit = 20
+	}
+	if cfg.VsockPort > 0 && len(cfg.BridgeKey) == 0 && cfg.BridgeToken == "" {
+		keyBytes := make([]byte, 32)
+		if _, err := rand.Read(keyBytes); err == nil {
+			cfg.BridgeKey = keyBytes
+		}
+	}
+}
+
 func applyDefaultServerConfig(cfg *ServerConfig) error {
 	if cfg.CA == nil {
 		return errors.New("Root CA is required for SPIFFE Workload Server")
 	}
-	if cfg.SocketPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to determine user home directory: %w", err)
-		}
-		cfg.SocketPath = filepath.Join(home, ".locksmith", "spiffe", "workload.sock")
+	if err := applyDefaultSocketPath(cfg); err != nil {
+		return err
 	}
 	if cfg.Attestor == nil {
 		cfg.Attestor = NewAttestor()
@@ -69,19 +133,23 @@ func applyDefaultServerConfig(cfg *ServerConfig) error {
 	if cfg.Policy == nil {
 		cfg.Policy = NewDefaultPolicy(cfg.TrustDomain)
 	}
-	if cfg.RateLimit <= 0 {
-		cfg.RateLimit = rate.Limit(10) // 10 requests per second
+	applyDefaultLimitsAndKeys(cfg)
+	return nil
+}
+
+func parseVsockAddr(addr net.Addr) (uint32, error) {
+	if addr == nil {
+		return 0, errors.New("missing vsock peer address")
 	}
-	if cfg.BurstLimit <= 0 {
-		cfg.BurstLimit = 20
-	}
-	if cfg.VsockPort > 0 && cfg.BridgeToken == "" {
-		tokenBytes := make([]byte, 16)
-		if _, err := rand.Read(tokenBytes); err == nil {
-			cfg.BridgeToken = hex.EncodeToString(tokenBytes)
+	addrStr := strings.TrimSpace(addr.String())
+	parts := strings.Split(addrStr, ":")
+	if len(parts) >= 2 {
+		cidPart := strings.Trim(parts[0], "<> ")
+		if parsed, err := strconv.ParseUint(cidPart, 10, 32); err == nil && parsed > 0 {
+			return uint32(parsed), nil
 		}
 	}
-	return nil
+	return 0, fmt.Errorf("unable to determine peer CID from vsock address %q", addrStr)
 }
 
 func (ws *WorkloadServer) connContext(ctx context.Context, c net.Conn) context.Context {
@@ -90,9 +158,13 @@ func (ws *WorkloadServer) connContext(ctx context.Context, c net.Conn) context.C
 		case "tcp":
 			return context.WithValue(ctx, tcpBridgeContextKey, true)
 		case "vsock":
+			cid, err := parseVsockAddr(c.RemoteAddr())
+			if err != nil {
+				return context.WithValue(ctx, attestErrContextKey, fmt.Errorf("%w: %v", ErrAttestationFailed, err))
+			}
 			identity := &CallerIdentity{
-				VsockCID:  3,
-				Comm:      "aegisbox-vm",
+				VsockCID:  cid,
+				Comm:      "vsock-vm",
 				StartTime: time.Now(),
 			}
 			return context.WithValue(ctx, identityContextKey, identity)
@@ -115,6 +187,9 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 		cfg:          cfg,
 		rateLimiters: make(map[uint32]*rate.Limiter),
 	}
+	if len(cfg.BridgeKey) > 0 {
+		ws.deriver = NewBridgeTokenDeriver(cfg.BridgeKey)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/health", ws.handleHealth)
@@ -129,8 +204,29 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 	return ws, nil
 }
 
+// BridgeKey returns a copy of the active master HMAC key for CID token derivation.
+func (ws *WorkloadServer) BridgeKey() []byte {
+	if len(ws.cfg.BridgeKey) == 0 {
+		return nil
+	}
+	keyCopy := make([]byte, len(ws.cfg.BridgeKey))
+	copy(keyCopy, ws.cfg.BridgeKey)
+	return keyCopy
+}
+
+// DeriveBridgeToken returns the authoritative token for cid.
+func (ws *WorkloadServer) DeriveBridgeToken(cid uint32) string {
+	if ws.deriver != nil {
+		return ws.deriver.DeriveToken(cid)
+	}
+	return ws.cfg.BridgeToken
+}
+
 // BridgeToken returns the active authentication token for loopback TCP bridge requests.
 func (ws *WorkloadServer) BridgeToken() string {
+	if ws.deriver != nil && len(ws.cfg.Policy.AllowedCIDs) > 0 {
+		return ws.deriver.DeriveToken(ws.cfg.Policy.AllowedCIDs[0])
+	}
 	return ws.cfg.BridgeToken
 }
 
@@ -146,29 +242,67 @@ func (ws *WorkloadServer) checkRateLimit(uid uint32) bool {
 	return limiter.Allow()
 }
 
+func (ws *WorkloadServer) verifyBridgeTokenForCID(cid uint32, token string) bool {
+	if token == "" {
+		return false
+	}
+	if ws.deriver != nil && ws.deriver.VerifyToken(cid, token) {
+		return true
+	}
+	if ws.cfg.BridgeToken != "" {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(ws.cfg.BridgeToken)) == 1 {
+			if len(ws.cfg.Policy.AllowedCIDs) <= 1 || ws.cfg.AllowSharedBridgeToken {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (ws *WorkloadServer) resolveBridgeCID(r *http.Request) (uint32, error) {
+	cidHeader := r.Header.Get("X-Locksmith-CID")
+	if cidHeader != "" {
+		parsed, err := strconv.ParseUint(cidHeader, 10, 32)
+		if err != nil || parsed == 0 {
+			return 0, fmt.Errorf("%w: invalid X-Locksmith-CID %q", ErrUnauthorizedWorkload, cidHeader)
+		}
+		return uint32(parsed), nil
+	}
+	if len(ws.cfg.Policy.AllowedCIDs) == 1 {
+		return ws.cfg.Policy.AllowedCIDs[0], nil
+	}
+	return 0, fmt.Errorf("%w: ambiguous microVM identity: X-Locksmith-CID is required when multiple CIDs are configured", ErrUnauthorizedWorkload)
+}
+
+func (ws *WorkloadServer) getTCPBridgeIdentity(r *http.Request) (*CallerIdentity, error) {
+	token := r.Header.Get("X-Locksmith-Bridge-Token")
+	if token == "" {
+		return nil, fmt.Errorf("%w: missing X-Locksmith-Bridge-Token header", ErrUnauthorizedWorkload)
+	}
+
+	cid, err := ws.resolveBridgeCID(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if !ws.cfg.Policy.isCIDAllowed(cid) {
+		return nil, fmt.Errorf("%w: microVM CID %d not permitted by policy", ErrUnauthorizedWorkload, cid)
+	}
+
+	if !ws.verifyBridgeTokenForCID(cid, token) {
+		return nil, fmt.Errorf("%w: invalid or unauthorized bridge token for microVM CID %d", ErrUnauthorizedWorkload, cid)
+	}
+
+	return &CallerIdentity{
+		VsockCID:  cid,
+		Comm:      "aegisbox-vm",
+		StartTime: time.Now(),
+	}, nil
+}
+
 func (ws *WorkloadServer) getIdentity(r *http.Request) (*CallerIdentity, error) {
 	if isTCPBridge, _ := r.Context().Value(tcpBridgeContextKey).(bool); isTCPBridge {
-		token := r.Header.Get("X-Locksmith-Bridge-Token")
-		if ws.cfg.BridgeToken == "" || token != ws.cfg.BridgeToken {
-			return nil, fmt.Errorf("%w: unauthenticated vsock bridge TCP request (missing or invalid X-Locksmith-Bridge-Token)", ErrUnauthorizedWorkload)
-		}
-		var cid uint32 = 3
-		cidHeader := r.Header.Get("X-Locksmith-CID")
-		if cidHeader != "" {
-			if parsed, err := strconv.ParseUint(cidHeader, 10, 32); err == nil {
-				cid = uint32(parsed)
-			}
-		} else if len(ws.cfg.Policy.AllowedCIDs) > 0 {
-			cid = ws.cfg.Policy.AllowedCIDs[0]
-		}
-		if !ws.cfg.Policy.isCIDAllowed(cid) {
-			return nil, fmt.Errorf("%w: microVM CID %d not permitted by policy", ErrUnauthorizedWorkload, cid)
-		}
-		return &CallerIdentity{
-			VsockCID:  cid,
-			Comm:      "aegisbox-vm",
-			StartTime: time.Now(),
-		}, nil
+		return ws.getTCPBridgeIdentity(r)
 	}
 	if errVal := r.Context().Value(attestErrContextKey); errVal != nil {
 		if err, ok := errVal.(error); ok {

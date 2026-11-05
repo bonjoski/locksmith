@@ -2,6 +2,7 @@ package spiffe
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,7 +62,30 @@ func LoadPolicy(path string, trustDomain string) (*Policy, error) {
 	if pol.TrustDomain == "" {
 		pol.TrustDomain = DefaultTrustDomain
 	}
+	if _, err := pol.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid policy: %w", err)
+	}
 	return &pol, nil
+}
+
+// Validate checks policy rules and returns any security warnings or fatal validation errors.
+func (p *Policy) Validate() ([]string, error) {
+	if p.TrustDomain == "" {
+		return nil, errors.New("policy trust_domain must not be empty")
+	}
+	var warnings []string
+	for _, rule := range p.Rules {
+		if rule.SPIFFEPattern == "" {
+			return nil, errors.New("policy rule spiffe_pattern must not be empty")
+		}
+		for _, bin := range rule.AllowedBinaries {
+			lower := strings.ToLower(bin)
+			if !strings.HasPrefix(lower, "sha256:") && !isHex64(bin) {
+				warnings = append(warnings, fmt.Sprintf("rule for %q uses unauthenticated binary provenance %q; only sha256 digests provide non-repudiable attestation", rule.SPIFFEPattern, bin))
+			}
+		}
+	}
+	return warnings, nil
 }
 
 func (p *Policy) isUIDAllowed(uid uint32) bool {
@@ -141,19 +165,52 @@ func matchesCID(allowedCIDs []uint32, cid uint32) bool {
 	return false
 }
 
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < 64; i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+func matchPrefixedBinary(lower, binSpec string, id *CallerIdentity) bool {
+	switch {
+	case strings.HasPrefix(lower, "sha256:"):
+		return id.ExeHash != "" && strings.EqualFold(id.ExeHash, binSpec)
+	case isHex64(binSpec):
+		return id.ExeHash != "" && strings.EqualFold(id.ExeHash, "sha256:"+binSpec)
+	case strings.HasPrefix(lower, "path:"):
+		return id.ExePath != "" && id.ExePath == binSpec[5:]
+	case strings.HasPrefix(lower, "comm:"):
+		return id.Comm != "" && id.Comm == binSpec[5:]
+	default:
+		return false
+	}
+}
+
+func matchesSingleBinary(binSpec string, id *CallerIdentity) bool {
+	if binSpec == "" || id == nil {
+		return false
+	}
+	lower := strings.ToLower(binSpec)
+	if matchPrefixedBinary(lower, binSpec, id) {
+		return true
+	}
+	return (id.ExePath != "" && id.ExePath == binSpec) || (id.Comm != "" && id.Comm == binSpec)
+}
+
 func matchesBinary(allowedBinaries []string, id *CallerIdentity) bool {
 	if len(allowedBinaries) == 0 {
 		return true
 	}
 	for _, bin := range allowedBinaries {
-		if strings.HasPrefix(bin, "sha256:") {
-			if id.ExeHash != "" && strings.EqualFold(id.ExeHash, bin) {
-				return true
-			}
-		} else {
-			if (id.ExePath != "" && id.ExePath == bin) || (id.Comm != "" && id.Comm == bin) {
-				return true
-			}
+		if matchesSingleBinary(bin, id) {
+			return true
 		}
 	}
 	return false

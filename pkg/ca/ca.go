@@ -106,20 +106,54 @@ type IssuedCertBundle struct {
 	DualCertPEM []byte // Concatenated certificate bundle
 }
 
-// GenerateRootCA creates a new self-signed dual-root Certificate Authority (ECDSA + ML-DSA-65).
+// RootCAConfig defines configurable parameters and RFC 5280 Name Constraints for Root CA creation.
+type RootCAConfig struct {
+	CommonName          string
+	Organization        string
+	ValidityDays        int
+	PermittedDNSDomains []string
+	PermittedIPRanges   []*net.IPNet
+	PermittedURIDomains []string
+}
+
+func resolveRootCANameConstraints(cfg *RootCAConfig) {
+	if cfg.CommonName == "" {
+		cfg.CommonName = DefaultCAName
+	}
+	if cfg.Organization == "" {
+		cfg.Organization = DefaultCAOrganization
+	}
+	if cfg.ValidityDays <= 0 {
+		cfg.ValidityDays = DefaultCAValidityDays
+	}
+	if len(cfg.PermittedDNSDomains) == 0 {
+		cfg.PermittedDNSDomains = []string{"localhost", ".localhost", ".local", "local", ".internal", "internal"}
+	}
+	if len(cfg.PermittedIPRanges) == 0 {
+		loopbackIPv4 := &net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)}
+		loopbackIPv6 := &net.IPNet{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)}
+		cfg.PermittedIPRanges = []*net.IPNet{loopbackIPv4, loopbackIPv6}
+	}
+	if len(cfg.PermittedURIDomains) == 0 {
+		cfg.PermittedURIDomains = []string{"bonjoski.local", "local.dev"}
+	}
+}
+
+// GenerateRootCA creates a new self-signed dual-root Certificate Authority with default constraints.
 func GenerateRootCA(commonName, organization string, validityDays int) (*CA, error) {
-	if commonName == "" {
-		commonName = DefaultCAName
-	}
-	if organization == "" {
-		organization = DefaultCAOrganization
-	}
-	if validityDays <= 0 {
-		validityDays = DefaultCAValidityDays
-	}
+	return GenerateRootCAWithConfig(RootCAConfig{
+		CommonName:   commonName,
+		Organization: organization,
+		ValidityDays: validityDays,
+	})
+}
+
+// GenerateRootCAWithConfig creates a new self-signed dual-root Certificate Authority with explicit config.
+func GenerateRootCAWithConfig(cfg RootCAConfig) (*CA, error) {
+	resolveRootCANameConstraints(&cfg)
 
 	notBefore := time.Now().Add(-1 * time.Hour)
-	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
+	notAfter := notBefore.Add(time.Duration(cfg.ValidityDays) * 24 * time.Hour)
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 
 	// 1. Classical ECDSA P-256 Root CA
@@ -133,15 +167,11 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 		return nil, fmt.Errorf("failed to generate serial number: %w", err)
 	}
 
-	// RFC 5280 critical Name Constraints isolating local Sovereign Root CA
-	loopbackIPv4 := &net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)}
-	loopbackIPv6 := &net.IPNet{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)}
-
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			CommonName:   commonName,
-			Organization: []string{organization},
+			CommonName:   cfg.CommonName,
+			Organization: []string{cfg.Organization},
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -152,9 +182,9 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 
 		// RFC 5280 Name Constraints: restrict blast radius strictly to localhost, loopback, and local trust domains
 		PermittedDNSDomainsCritical: true,
-		PermittedDNSDomains:         []string{"localhost", ".localhost", ".local", "local", ".internal", "internal"},
-		PermittedIPRanges:           []*net.IPNet{loopbackIPv4, loopbackIPv6},
-		PermittedURIDomains:         []string{"bonjoski.local", "local.dev"},
+		PermittedDNSDomains:         cfg.PermittedDNSDomains,
+		PermittedIPRanges:           cfg.PermittedIPRanges,
+		PermittedURIDomains:         cfg.PermittedURIDomains,
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &privKey.PublicKey, privKey)
@@ -192,12 +222,12 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 		return nil, fmt.Errorf("failed to generate PQC serial number: %w", err)
 	}
 
-	pqcCommonName := commonName + " (Post-Quantum ML-DSA-65)"
+	pqcCommonName := cfg.CommonName + " (Post-Quantum ML-DSA-65)"
 	pqcTemplate := x509.Certificate{
 		SerialNumber: pqcSerialNumber,
 		Subject: pkix.Name{
 			CommonName:   pqcCommonName,
-			Organization: []string{organization},
+			Organization: []string{cfg.Organization},
 		},
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
@@ -209,9 +239,9 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 
 		// RFC 5280 Name Constraints: restrict blast radius strictly to localhost, loopback, and local trust domains
 		PermittedDNSDomainsCritical: true,
-		PermittedDNSDomains:         []string{"localhost", ".localhost", ".local", "local", ".internal", "internal"},
-		PermittedIPRanges:           []*net.IPNet{loopbackIPv4, loopbackIPv6},
-		PermittedURIDomains:         []string{"bonjoski.local", "local.dev"},
+		PermittedDNSDomains:         cfg.PermittedDNSDomains,
+		PermittedIPRanges:           cfg.PermittedIPRanges,
+		PermittedURIDomains:         cfg.PermittedURIDomains,
 	}
 
 	pqcCertDER, err := x509.CreateCertificate(rand.Reader, &pqcTemplate, &pqcTemplate, pqcPrivKey.Public(), pqcPrivKey)

@@ -2,6 +2,7 @@ package spiffe_test
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net"
 	"net/http"
@@ -246,6 +247,92 @@ func TestAdversarial_PolicyRuleEnforcement(t *testing.T) {
 		t.Fatalf("CRITICAL SECURITY VULNERABILITY: Caller bypassed pattern restriction and accessed prod admin ID!")
 	}
 	t.Logf("PASS: Out-of-pattern production SPIFFE ID correctly blocked.")
+}
+
+// TestAdversarial_HMACBridgeCIDTransposition verifies that a microVM with a valid token for CID 4
+// cannot spoof X-Locksmith-CID: 3 across the TCP bridge (GHSA-wfmr-rw42-3rv7 Residual Finding 1).
+func TestAdversarial_HMACBridgeCIDTransposition(t *testing.T) {
+	masterKey := []byte("01234567890123456789012345678901") // 32-byte key
+	deriver := spiffe.NewBridgeTokenDeriver(masterKey)
+
+	tokenCID3 := deriver.DeriveToken(3)
+	tokenCID4 := deriver.DeriveToken(4)
+
+	if subtle.ConstantTimeCompare([]byte(tokenCID3), []byte(tokenCID4)) == 1 {
+		t.Fatalf("Expected distinct tokens for CID 3 and CID 4")
+	}
+
+	sockPath := shortTempSock(t, "hmac-cid")
+	rootCA, err := ca.GenerateRootCA("Sovereign Test Root", "Locksmith Org", 1)
+	if err != nil {
+		t.Fatalf("Failed to generate root CA: %v", err)
+	}
+
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.AllowedCIDs = []uint32{3, 4}
+
+	server, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
+		SocketPath:  sockPath,
+		VsockPort:   29199,
+		BridgeKey:   masterKey,
+		TrustDomain: "bonjoski.local",
+		Policy:      pol,
+		CA:          rootCA,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create workload server: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Start()
+	}()
+	defer func() {
+		_ = server.Stop(context.Background())
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case err := <-errCh:
+		t.Fatalf("server.Start() failed immediately: %v", err)
+	default:
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+
+	// 1. CID 4 presents token for CID 4 but claims X-Locksmith-CID: 3 (Transposition attack)
+	reqSpoof, err := http.NewRequest("GET", "http://127.0.0.1:29199/v1/svid?spiffe_id=spiffe://bonjoski.local/vm/cid/3", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	reqSpoof.Header.Set("X-Locksmith-Bridge-Token", tokenCID4) // Token for CID 4
+	reqSpoof.Header.Set("X-Locksmith-CID", "3")                 // Claiming CID 3
+	respSpoof, err := client.Do(reqSpoof)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	_ = respSpoof.Body.Close()
+	if respSpoof.StatusCode != http.StatusForbidden {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: CID 4 token allowed claiming CID 3! Expected 403, got %d", respSpoof.StatusCode)
+	}
+	t.Logf("PASS: Cross-CID bridge transposition attack blocked with 403.")
+
+	// 2. CID 3 presents authentic token for CID 3 -> 200 OK
+	reqLegit, err := http.NewRequest("GET", "http://127.0.0.1:29199/v1/svid?spiffe_id=spiffe://bonjoski.local/vm/cid/3", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	reqLegit.Header.Set("X-Locksmith-Bridge-Token", tokenCID3)
+	reqLegit.Header.Set("X-Locksmith-CID", "3")
+	respLegit, err := client.Do(reqLegit)
+	if err != nil {
+		t.Fatalf("Legitimate request failed: %v", err)
+	}
+	_ = respLegit.Body.Close()
+	if respLegit.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 OK for authentic CID 3 token, got: %d", respLegit.StatusCode)
+	}
+	t.Logf("PASS: Authentic CID 3 token authorized successfully.")
 }
 
 func init() {
