@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.3] - 2026-11-04
+
+### Security & Hardening (GHSA-wfmr-rw42-3rv7 Residual Mitigations)
+- **Multi-VM SPIFFE Bridge CID Transposition Defense:**
+  - Implemented `BridgeTokenDeriver` generating domain-separated cryptographic bridge tokens per microVM CID: `HMAC-SHA256(K_bridge, "locksmith-spiffe-bridge-v1:cid:" || CID)`.
+  - Added strict constant-time token verification via `crypto/subtle.ConstantTimeCompare`, blocking cross-CID transposition attacks where a compromised microVM attempts to impersonate another CID.
+- **Hardened Bridge Token & Key Management:**
+  - Added `--bridge-token-file`, `--bridge-key-file`, and `LOCKSMITH_BRIDGE_TOKEN` environment variable support.
+  - Replaced raw stdout printing of bridge tokens with mode `0600` disk persistence (`bridge.token`, `bridge.key`) and stderr fingerprint logging.
+- **Dynamic vsock Peer CID Attestation:**
+  - Implemented `parseVsockAddr` extracting peer CID directly from native `vsock` addresses, eliminating hardcoded fallback CIDs and failing closed if unidentifiable.
+- **Configurable Sovereign Name Constraints:**
+  - Added `GenerateRootCAWithConfig` supporting operator-defined `--permitted-dns`, `--permitted-ip`, and `--permitted-uri` flags in `locksmith ca init`.
+  - Added `--allow-broad-domains` flag requiring explicit consent when initializing broader sovereign domain perimeters.
+- **Disambiguated Policy Binary Provenance:**
+  - Implemented explicit prefix grammar (`sha256:`, `path:`, `comm:`, or 64-hex SHA-256) in `matchesSingleBinary`.
+  - Added `(p *Policy) Validate()` emitting warnings when unauthenticated binary path or comm strings are used without cryptographic hash digests.
+- **Comprehensive Root CA Security Profile Validation:**
+  - Added `validateRootSecurityProfile` checking `PermittedDNSDomainsCritical`, `MaxPathLenZero`, loopback/private IP ranges, and rejecting public internet TLDs prior to trust store installation.
+
 ## [3.2.2] - 2026-11-04
 
 ### Security & Hardening (GHSA-wfmr-rw42-3rv7)

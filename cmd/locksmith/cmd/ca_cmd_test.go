@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bonjoski/locksmith/v2/pkg/ca"
 )
 
 func TestCACliCommands(t *testing.T) {
@@ -169,4 +172,61 @@ func testCACliServeSpiffeHelp(t *testing.T) {
 			t.Errorf("expected %s flag in ca serve-spiffe help output", expected)
 		}
 	}
+}
+
+func TestAdversarial_ValidateRootSecurityProfile(t *testing.T) {
+	rootCA, err := ca.GenerateRootCA("Sovereign Root", "Locksmith Org", 1)
+	if err != nil {
+		t.Fatalf("Failed to generate default root CA: %v", err)
+	}
+
+	// 1. Valid root profile succeeds
+	if err := validateRootSecurityProfile(rootCA.Certificate); err != nil {
+		t.Fatalf("Expected valid root certificate profile to pass, got: %v", err)
+	}
+
+	// 2. Missing critical flag is rejected
+	tamperedCert := *rootCA.Certificate
+	tamperedCert.PermittedDNSDomainsCritical = false
+	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+		t.Fatalf("CRITICAL: Root certificate without critical Name Constraints was accepted!")
+	}
+
+	// 3. MaxPathLenZero false is rejected
+	tamperedCert = *rootCA.Certificate
+	tamperedCert.MaxPathLenZero = false
+	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+		t.Fatalf("CRITICAL: Root certificate allowing intermediate subordinate CAs was accepted!")
+	}
+
+	// 4. Missing IP ranges is rejected
+	tamperedCert = *rootCA.Certificate
+	tamperedCert.PermittedIPRanges = nil
+	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+		t.Fatalf("CRITICAL: Root certificate without PermittedIPRanges was accepted!")
+	}
+
+	// 5. Public IP range (e.g. 8.8.8.0/24) is rejected
+	_, publicNet, _ := net.ParseCIDR("8.8.8.0/24")
+	tamperedCert = *rootCA.Certificate
+	tamperedCert.PermittedIPRanges = []*net.IPNet{publicNet}
+	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+		t.Fatalf("CRITICAL: Root certificate with public IP range was accepted!")
+	}
+
+	// 6. Public TLD domain (apple.com) is rejected
+	tamperedCert = *rootCA.Certificate
+	tamperedCert.PermittedDNSDomains = []string{"apple.com"}
+	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+		t.Fatalf("CRITICAL: Root certificate with public TLD (apple.com) was accepted!")
+	}
+
+	// 7. Wildcard domain (*) is rejected
+	tamperedCert = *rootCA.Certificate
+	tamperedCert.PermittedDNSDomains = []string{"*"}
+	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+		t.Fatalf("CRITICAL: Root certificate with wildcard domain (*) was accepted!")
+	}
+
+	t.Logf("PASS: validateRootSecurityProfile strictly rejects non-sovereign or unconstrained profiles.")
 }

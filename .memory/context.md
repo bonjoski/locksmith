@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore(homebrew): update formula to v3.2.2 with release checksums
 - Merge pull request #110 from bonjoski/fix/ghsa-wfmr-rw42-3rv7-ca-spiffe-hardening
 - chore(release): bump locksmith version to v3.2.2 and update changelog
 - fix(security): address GHSA-wfmr-rw42-3rv7 sovereign CA and SPIFFE weaknesses
 - chore(homebrew): update formula to v3.2.1 with release checksums
-- test(windows): adapt export permissions and temp socket paths for windows runners
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
