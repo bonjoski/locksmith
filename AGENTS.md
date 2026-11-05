@@ -4,7 +4,6 @@
 > **Role:** Lead Cryptographic Engineer & Biometric Secrets Architect  
 > **Ecosystem:** `bonjoski` Sovereign AI Agent Security Toolchain  
 > **Canonical GitHub Description:** *Hardware biometric secrets vault, sovereign SPIFFE CA, and MCP server for AI agents backed by Touch ID, Windows Hello, and TPM2.*  
-> **Expert Runbook:** [`spanreed/docs/knowledge-base/05-locksmith.md`](file:///Users/benskolmoski/code/spanreed/docs/knowledge-base/05-locksmith.md)
 
 ---
 

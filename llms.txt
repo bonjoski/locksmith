@@ -24,4 +24,4 @@
 ## Key Sockets & Files
 - Control Socket: `~/.locksmith/locksmith.sock`
 - SPIFFE Socket: `~/.locksmith/spiffe.sock`
-- Parent Runbook: `docs/knowledge-base/05-locksmith.md` in repository `spanreed`
+- Documentation: README.md & AGENTS.md

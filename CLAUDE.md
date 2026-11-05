@@ -1,6 +1,5 @@
 # Claude Code Guidelines for `locksmith`
 
-> **Authoritative Ecosystem Runbook:** [`spanreed/docs/knowledge-base/05-locksmith.md`](file:///Users/benskolmoski/code/spanreed/docs/knowledge-base/05-locksmith.md)
 
 ## Build & Test Commands
 - **Build CLI:** `go build -o bin/locksmith ./cmd/locksmith`
