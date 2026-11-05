@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/ca"
 	"github.com/bonjoski/locksmith/v2/pkg/spiffe"
@@ -257,7 +258,7 @@ func TestAdversarial_ValidateRootSecurityProfile_DNSAndURIs(t *testing.T) {
 		t.Fatalf("Failed to generate default root CA: %v", err)
 	}
 
-	for _, d := range []string{"apple.com", "*", "com", "org", "bonjoski.lan"} {
+	for _, d := range []string{"apple.com", "*", "com", "org", "bonjoski.lan", "example.eu", "google.de", "corp.co.uk", "sub.cloud"} {
 		tampered := *rootCA.Certificate
 		tampered.PermittedDNSDomains = []string{d}
 		if err := validateRootSecurityProfile(&tampered); err == nil {
@@ -362,5 +363,57 @@ func TestCACliDeriveBridgeToken(t *testing.T) {
 	rootCmd.SetArgs([]string{"ca", "derive-bridge-token", "--cid", "2", "--ca-dir", caDir})
 	if err := rootCmd.Execute(); err == nil {
 		t.Fatalf("expected CID 2 to be rejected, got success with token %q", outBuf.String())
+	}
+}
+
+func TestCACliInit_TrustValidationFailsClosed(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	// ca init --trust with invalid supernet CIDR must fail closed
+	outBuf, errBuf := setupTest()
+	rootCmd.SetArgs([]string{"ca", "init", "--trust", "--permitted-ip", "0.0.0.0/0"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatalf("expected ca init --trust with 0.0.0.0/0 to fail closed, out=%s, err=%s", outBuf.String(), errBuf.String())
+	}
+
+	// ca init --trust with public IP range must fail closed
+	outBuf, errBuf = setupTest()
+	rootCmd.SetArgs([]string{"ca", "init", "--trust", "--permitted-ip", "8.8.8.0/24"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatalf("expected ca init --trust with 8.8.8.0/24 to fail closed, out=%s, err=%s", outBuf.String(), errBuf.String())
+	}
+}
+
+func TestCACliDeriveBridgeToken_FromKeychain(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	caDir := filepath.Join(tempHome, ".locksmith", "ca")
+	if err := os.MkdirAll(caDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	masterKey := make([]byte, 32)
+	for i := range masterKey {
+		masterKey[i] = byte(i + 10)
+	}
+
+	deriver, _ := spiffe.NewBridgeTokenDeriver(masterKey)
+	expectedToken := deriver.DeriveToken(5)
+
+	outBuf, errBuf := setupTest()
+	// Pre-seed mock keychain with secretBridgeKey
+	_ = ls.SetWithContext(secretBridgeKey, masterKey, time.Now().Add(time.Hour), false, "token", "locksmith-spiffe", "", nil)
+
+	// derive-bridge-token without a disk key file must succeed via keychain
+	rootCmd.SetArgs([]string{"ca", "derive-bridge-token", "--cid", "5", "--ca-dir", caDir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("expected ca derive-bridge-token from keychain to succeed: %v, err: %s", err, errBuf.String())
+	}
+
+	derivedOutput := strings.TrimSpace(outBuf.String())
+	if derivedOutput != expectedToken {
+		t.Fatalf("expected token %q, got %q", expectedToken, derivedOutput)
 	}
 }

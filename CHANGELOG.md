@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.5] - 2026-11-05
+
+### Security & Verification (GHSA-wfmr-rw42-3rv7 Final Verification)
+- **Zero Cleartext Disk Keys by Default [CLAIM-CA-01]:**
+  - Enforced hardware enclave sealing for both Root CA keys and bridge master key. No plaintext `.key` files are written to disk without explicit opt-in (`--allow-unsealed-disk-keys`, `--allow-unsealed-bridge-key`).
+- **Critical RFC 5280 Name Constraints [CLAIM-CA-02]:**
+  - Enforced critical Name Constraints extension with default loopback constraints (`localhost`, `.localhost`).
+- **Symmetrical Root Profile Validation [CLAIM-CA-03]:**
+  - Unified root certificate validation across `ca trust` and `ca init --trust`. Replaced 30-suffix public TLD denylist with strict RFC special-use allowlist (`localhost`, `local`, `internal`, `home.arpa`, `test`, `example`, `invalid`).
+- **Per-CID Bridge Token Isolation [CLAIM-SPIFFE-01]:**
+  - Enforced domain-separated HMAC-SHA256 bridge tokens per microVM CID preventing cross-CID transposition.
+- **Hardware-Sealed Bridge Key & Token Storage [CLAIM-SPIFFE-02]:**
+  - Bridge master key sealed in Keychain enclave under `ca:bridge:masterkey`. Disk persistence disabled by default; write errors on per-CID tokens reported.
+- **Strict Binary Provenance in Policy Rules [CLAIM-POLICY-01]:**
+  - Disallowed unauthenticated bare binary identifiers in policy rules (`Policy.Validate()` fails closed). Requires explicit cryptographic digest (`sha256:`) or administrative prefix (`path:`, `comm:`).
+
 ## [3.2.4] - 2026-11-05
 
 ### Security & Hardening (GHSA-wfmr-rw42-3rv7 Gap Closure)

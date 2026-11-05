@@ -1,10 +1,9 @@
-//go:build test_native && locksmith_admin
-
 package locksmith
 
 import (
 	"errors"
 	"sync"
+	"time"
 )
 
 // MockBackend implements the Backend interface for testing.
@@ -16,6 +15,11 @@ type MockBackend struct {
 
 func newMockBackend() *MockBackend {
 	return &MockBackend{store: make(map[string][]byte)}
+}
+
+// NewMockBackend returns a new MockBackend for testing.
+func NewMockBackend() *MockBackend {
+	return newMockBackend()
 }
 
 func (m *MockBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
@@ -60,4 +64,43 @@ func (m *MockBackend) List(service string, useBiometrics bool, prompt string) ([
 		}
 	}
 	return keys, nil
+}
+
+// MockCache is an in-memory Cache implementation for testing.
+type MockCache struct {
+	mu      sync.RWMutex
+	secrets map[string]Secret
+}
+
+// NewMockCache returns a new MockCache for testing.
+func NewMockCache() *MockCache {
+	return &MockCache{secrets: make(map[string]Secret)}
+}
+
+func (m *MockCache) Set(key string, secret Secret, ttl time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.secrets[key] = secret
+	return nil
+}
+
+func (m *MockCache) Get(key string) (*Secret, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.secrets[key]
+	if !ok {
+		return nil, nil
+	}
+	return &s, nil
+}
+
+func (m *MockCache) Delete(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.secrets, key)
+	return nil
+}
+
+func (m *MockCache) IsExpired(key string, ttl time.Duration) bool {
+	return false
 }

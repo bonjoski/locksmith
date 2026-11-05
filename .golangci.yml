@@ -1,0 +1,24 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+linters-settings:
+  errcheck:
+    check-blank: true
+    exclude-functions:
+      - (*bytes.Buffer).Write
+      - (*bytes.Buffer).WriteString
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+      - os.Remove

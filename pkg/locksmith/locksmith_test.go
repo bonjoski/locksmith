@@ -6,33 +6,6 @@ import (
 	"time"
 )
 
-// MockCache is a simple in-memory cache for testing
-type MockCache struct {
-	secrets map[string]Secret
-}
-
-func (m *MockCache) Set(key string, secret Secret, ttl time.Duration) error {
-	m.secrets[key] = secret
-	return nil
-}
-
-func (m *MockCache) Get(key string) (*Secret, error) {
-	s, ok := m.secrets[key]
-	if !ok {
-		return nil, nil
-	}
-	return &s, nil
-}
-
-func (m *MockCache) Delete(key string) error {
-	delete(m.secrets, key)
-	return nil
-}
-
-func (m *MockCache) IsExpired(key string, ttl time.Duration) bool {
-	return false
-}
-
 // TestSecretZeroing verifies that secrets are properly zeroed after use
 func TestSecretZeroing(t *testing.T) {
 	secret := Secret{

@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
-- chore(homebrew): update formula to v3.2.3 with release checksums
-- Merge pull request #112 from bonjoski/fix/ghsa-wfmr-rw42-3rv7-residual-hardening
-- fix(security): resolve GHSA-wfmr-rw42-3rv7 residual weaknesses and bump to v3.2.3
-- chore(homebrew): update formula to v3.2.2 with release checksums
-- Merge pull request #110 from bonjoski/fix/ghsa-wfmr-rw42-3rv7-ca-spiffe-hardening
+- fix(docs): ensure ai documentation is 100% self-contained and scrub private repo references
+- docs(ai): update tripartite ai documentation stack (AGENTS.md, CLAUDE.md, llms.txt)
+- Merge pull request #113 from bonjoski/fix/ghsa-wfmr-rw42-3rv7-gap-closure
+- test(spiffe): dynamically resolve runner UID and increase burst limit in concurrency test
+- fix(security): close GHSA-wfmr-rw42-3rv7 gaps and bump to v3.2.4
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

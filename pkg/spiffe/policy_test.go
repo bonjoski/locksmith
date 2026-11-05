@@ -110,3 +110,38 @@ func TestPolicy_ResolveSPIFFEID(t *testing.T) {
 		t.Errorf("got %q, want spiffe://bonjoski.local/vm/cid/3", vmResolved.String())
 	}
 }
+
+func TestPolicy_BareBinaryValidation(t *testing.T) {
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.Rules = []spiffe.PolicyRule{
+		{
+			SPIFFEPattern:   "spiffe://bonjoski.local/sa/worker",
+			AllowedBinaries: []string{"nginx"}, // bare binary without sha256:, path:, or comm:
+		},
+	}
+
+	// 1. Bare binary identifier fails validation
+	if _, err := pol.Validate(); err == nil {
+		t.Fatalf("expected bare binary 'nginx' to fail validation, got nil")
+	}
+
+	// 2. Prefixed identifier passes validation
+	pol.Rules[0].AllowedBinaries = []string{"comm:nginx"}
+	warnings, err := pol.Validate()
+	if err != nil {
+		t.Fatalf("expected comm:nginx to pass validation, got err: %v", err)
+	}
+	if len(warnings) == 0 {
+		t.Errorf("expected warning for non-cryptographic comm provenance")
+	}
+
+	// 3. Cryptographic sha256 digest passes without warning
+	pol.Rules[0].AllowedBinaries = []string{"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+	warnings, err = pol.Validate()
+	if err != nil {
+		t.Fatalf("expected sha256 digest to pass validation, got err: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("expected 0 warnings for sha256 digest, got: %v", warnings)
+	}
+}
