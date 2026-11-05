@@ -127,7 +127,7 @@ func resolveRootCANameConstraints(cfg *RootCAConfig) {
 		cfg.ValidityDays = DefaultCAValidityDays
 	}
 	if len(cfg.PermittedDNSDomains) == 0 {
-		cfg.PermittedDNSDomains = []string{"localhost", ".localhost", ".local", "local", ".internal", "internal"}
+		cfg.PermittedDNSDomains = []string{"localhost", ".localhost"}
 	}
 	if len(cfg.PermittedIPRanges) == 0 {
 		loopbackIPv4 := &net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)}
@@ -135,7 +135,7 @@ func resolveRootCANameConstraints(cfg *RootCAConfig) {
 		cfg.PermittedIPRanges = []*net.IPNet{loopbackIPv4, loopbackIPv6}
 	}
 	if len(cfg.PermittedURIDomains) == 0 {
-		cfg.PermittedURIDomains = []string{"bonjoski.local", "local.dev"}
+		cfg.PermittedURIDomains = []string{"bonjoski.local"}
 	}
 }
 

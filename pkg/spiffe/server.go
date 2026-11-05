@@ -38,13 +38,14 @@ type BridgeTokenDeriver struct {
 }
 
 // NewBridgeTokenDeriver creates a deriver with a defensive copy of the master key.
-func NewBridgeTokenDeriver(masterKey []byte) *BridgeTokenDeriver {
-	if len(masterKey) == 0 {
-		return nil
+// The masterKey must be at least 32 bytes to ensure cryptographic security.
+func NewBridgeTokenDeriver(masterKey []byte) (*BridgeTokenDeriver, error) {
+	if len(masterKey) < 32 {
+		return nil, fmt.Errorf("master key must be at least 32 bytes (got %d)", len(masterKey))
 	}
 	keyCopy := make([]byte, len(masterKey))
 	copy(keyCopy, masterKey)
-	return &BridgeTokenDeriver{masterKey: keyCopy}
+	return &BridgeTokenDeriver{masterKey: keyCopy}, nil
 }
 
 // DeriveToken calculates the authoritative HMAC-SHA256 token for a given microVM CID.
@@ -142,10 +143,22 @@ func parseVsockAddr(addr net.Addr) (uint32, error) {
 		return 0, errors.New("missing vsock peer address")
 	}
 	addrStr := strings.TrimSpace(addr.String())
-	parts := strings.Split(addrStr, ":")
-	if len(parts) >= 2 {
-		cidPart := strings.Trim(parts[0], "<> ")
-		if parsed, err := strconv.ParseUint(cidPart, 10, 32); err == nil && parsed > 0 {
+	clean := addrStr
+	if strings.HasPrefix(clean, "vsock://") {
+		clean = strings.TrimPrefix(clean, "vsock://")
+	} else if strings.HasPrefix(clean, "vsock:") {
+		clean = strings.TrimPrefix(clean, "vsock:")
+	}
+	clean = strings.Trim(clean, "<> ")
+	if strings.HasPrefix(clean, "vm(") {
+		if idx := strings.Index(clean, ")"); idx != -1 {
+			clean = clean[3:idx] + clean[idx+1:]
+		}
+	}
+	parts := strings.Split(clean, ":")
+	if len(parts) >= 1 {
+		cidPart := strings.TrimSpace(parts[0])
+		if parsed, err := strconv.ParseUint(cidPart, 10, 32); err == nil && parsed >= 3 {
 			return uint32(parsed), nil
 		}
 	}
@@ -188,7 +201,11 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 		rateLimiters: make(map[uint32]*rate.Limiter),
 	}
 	if len(cfg.BridgeKey) > 0 {
-		ws.deriver = NewBridgeTokenDeriver(cfg.BridgeKey)
+		deriver, err := NewBridgeTokenDeriver(cfg.BridgeKey)
+		if err != nil {
+			return nil, fmt.Errorf("invalid BridgeKey: %w", err)
+		}
+		ws.deriver = deriver
 	}
 
 	mux := http.NewServeMux()

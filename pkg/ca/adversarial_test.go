@@ -567,13 +567,31 @@ func TestAdversarial_RootCANameConstraintsEnforcement(t *testing.T) {
 	}
 	t.Logf("PASS: Public IP 8.8.8.8 correctly rejected: %v", err)
 
-	// 4. Verify legitimate local domains and loopback IPs succeed
-	certPEM, _, err := rootCA.IssueServerCert([]string{"localhost", "127.0.0.1", "api.local", "service.internal"}, 30)
+	// 4. Verify legitimate local domains and loopback IPs succeed with default root CA
+	certPEM, _, err := rootCA.IssueServerCert([]string{"localhost", "127.0.0.1", "sub.localhost"}, 30)
 	if err != nil {
-		t.Fatalf("Legitimate local domain issuance failed: %v", err)
+		t.Fatalf("Legitimate localhost domain issuance failed: %v", err)
 	}
 	if len(certPEM) == 0 {
 		t.Fatalf("Expected non-empty cert PEM")
+	}
+
+	// 5. Verify broad domains (.local / .internal) require explicitly configured CA
+	broadCA, err := GenerateRootCAWithConfig(RootCAConfig{
+		CommonName:          "Broad CA",
+		Organization:        "Bonjoski",
+		ValidityDays:        30,
+		PermittedDNSDomains: []string{"localhost", ".localhost", ".local", ".internal"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateRootCAWithConfig failed: %v", err)
+	}
+	broadCertPEM, _, err := broadCA.IssueServerCert([]string{"localhost", "127.0.0.1", "api.local", "service.internal"}, 30)
+	if err != nil {
+		t.Fatalf("Legitimate broad domain issuance failed: %v", err)
+	}
+	if len(broadCertPEM) == 0 {
+		t.Fatalf("Expected non-empty cert PEM for broad domains")
 	}
 	t.Logf("PASS: Legitimate local domain issuance succeeded under Name Constraints.")
 }

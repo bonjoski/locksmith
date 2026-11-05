@@ -45,7 +45,12 @@ func TestRootCAGenerationAndValidation(t *testing.T) {
 }
 
 func TestIssueServerCertAndVerification(t *testing.T) {
-	rootCA, err := GenerateRootCA("Bonjoski Root CA", "Bonjoski", 365)
+	rootCA, err := GenerateRootCAWithConfig(RootCAConfig{
+		CommonName:          "Bonjoski Root CA",
+		Organization:        "Bonjoski",
+		ValidityDays:        365,
+		PermittedDNSDomains: []string{"localhost", ".localhost", ".local"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

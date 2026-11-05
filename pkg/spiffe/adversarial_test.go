@@ -253,7 +253,15 @@ func TestAdversarial_PolicyRuleEnforcement(t *testing.T) {
 // cannot spoof X-Locksmith-CID: 3 across the TCP bridge (GHSA-wfmr-rw42-3rv7 Residual Finding 1).
 func TestAdversarial_HMACBridgeCIDTransposition(t *testing.T) {
 	masterKey := []byte("01234567890123456789012345678901") // 32-byte key
-	deriver := spiffe.NewBridgeTokenDeriver(masterKey)
+	deriver, err := spiffe.NewBridgeTokenDeriver(masterKey)
+	if err != nil {
+		t.Fatalf("Failed to create deriver: %v", err)
+	}
+
+	// ADV-SPIFFE-10: Assert key length under 32 bytes is strictly rejected
+	if _, err := spiffe.NewBridgeTokenDeriver([]byte("short-key")); err == nil {
+		t.Fatalf("CRITICAL SECURITY VULNERABILITY: BridgeTokenDeriver accepted key < 32 bytes!")
+	}
 
 	tokenCID3 := deriver.DeriveToken(3)
 	tokenCID4 := deriver.DeriveToken(4)
