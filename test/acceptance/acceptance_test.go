@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -24,6 +25,9 @@ func TestMain(m *testing.M) {
 		}()
 
 		bin = filepath.Join(tmpDir, "locksmith")
+		if runtime.GOOS == "windows" {
+			bin += ".exe"
+		}
 		cmd := exec.Command("go", "build", "-o", bin, "./cmd/locksmith")
 		cmd.Dir = "../.."
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -38,6 +42,7 @@ func execLocksmith(homeDir string, args ...string) *exec.Cmd {
 	cmd := exec.Command(locksmithBin, args...)
 	cmd.Env = append(os.Environ(),
 		"HOME="+homeDir,
+		"USERPROFILE="+homeDir,
 		"LOCKSMITH_MOCK_BACKEND=1",
 	)
 	return cmd
