@@ -87,15 +87,21 @@ func writeKeyFileAtomic(path string, data []byte, mode os.FileMode) error {
 	}()
 
 	if err := tmpFile.Chmod(mode); err != nil {
-		_ = tmpFile.Close()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
 		return err
 	}
 	if _, err := tmpFile.Write(data); err != nil {
-		_ = tmpFile.Close()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
 		return err
 	}
 	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
+		if closeErr := tmpFile.Close(); closeErr != nil {
+			return errors.Join(err, closeErr)
+		}
 		return err
 	}
 	if err := tmpFile.Close(); err != nil {
@@ -635,11 +641,17 @@ Use --spiffe to issue short-lived ephemeral SPIFFE X.509-SVIDs (with --ttl).`,
 
 		// Write PQC certs if generated
 		if len(bundle.PQCCertPEM) > 0 {
-			_ = os.WriteFile(pqcCertPath, bundle.PQCCertPEM, 0644)
-			_ = os.WriteFile(pqcKeyPath, bundle.PQCKeyPEM, 0600)
+			if err := os.WriteFile(pqcCertPath, bundle.PQCCertPEM, 0644); err != nil {
+				return fmt.Errorf("failed to write PQC certificate to %s: %w", pqcCertPath, err)
+			}
+			if err := os.WriteFile(pqcKeyPath, bundle.PQCKeyPEM, 0600); err != nil {
+				return fmt.Errorf("failed to write PQC private key to %s: %w", pqcKeyPath, err)
+			}
 		}
 		if len(bundle.DualCertPEM) > 0 {
-			_ = os.WriteFile(dualCertPath, bundle.DualCertPEM, 0644)
+			if err := os.WriteFile(dualCertPath, bundle.DualCertPEM, 0644); err != nil {
+				return fmt.Errorf("failed to write dual certificate bundle to %s: %w", dualCertPath, err)
+			}
 		}
 
 		if caSpiffeID != "" {
@@ -779,7 +791,11 @@ Supports atomic rotation and background auto-renewal with --renew.`,
 			if defaultName == "" {
 				defaultName = "workload"
 			}
-			spiffeID, _ = ca.ParseSPIFFEID(fmt.Sprintf("spiffe://bonjoski.local/ns/dev/sa/%s", defaultName))
+			var parseErr error
+			spiffeID, parseErr = ca.ParseSPIFFEID(fmt.Sprintf("spiffe://bonjoski.local/ns/dev/sa/%s", defaultName))
+			if parseErr != nil {
+				return fmt.Errorf("failed parsing default SPIFFE ID: %w", parseErr)
+			}
 		}
 
 		profile := &ca.SVIDProfile{
@@ -799,7 +815,10 @@ Supports atomic rotation and background auto-renewal with --renew.`,
 			return fmt.Errorf("container export failed: %w", err)
 		}
 
-		files, _ := ca.ResolveFilenames(opts.Format, opts.Name)
+		files, resolveErr := ca.ResolveFilenames(opts.Format, opts.Name)
+		if resolveErr != nil {
+			return fmt.Errorf("failed resolving container export filenames: %w", resolveErr)
+		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "💎 Successfully exported container certificates (%s format):\n", opts.Format)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Directory:   %s (0700)\n", opts.OutDir)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Certificate: %s\n", filepath.Join(opts.OutDir, files.CertName))
@@ -865,35 +884,34 @@ func resolveBridgeCredentials() (string, []byte, error) {
 	return bridgeToken, bridgeKey, nil
 }
 
-func sealBridgeSecretsInEnclave(ws *spiffe.WorkloadServer) {
+func sealBridgeSecretsInEnclave(cmd *cobra.Command, ws *spiffe.WorkloadServer) error {
 	if ls != nil && len(ws.BridgeKey()) > 0 {
 		expiresAt := time.Now().Add(365 * 24 * time.Hour)
-		_ = ls.SetWithContext(secretBridgeKey, ws.BridgeKey(), expiresAt, false, "token", "locksmith-spiffe", "", nil)
+		err := ls.SetWithContext(secretBridgeKey, ws.BridgeKey(), expiresAt, globalBiometricReqs, "token", "locksmith-spiffe", "", nil)
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "🔒 Bridge master key securely sealed in platform hardware enclave.")
 	}
+	return nil
 }
 
 func persistBridgeKeyToDisk(cmd *cobra.Command, ws *spiffe.WorkloadServer, caDir string, allowUnsealed bool) {
-	if len(ws.BridgeKey()) == 0 {
+	if len(ws.BridgeKey()) == 0 || !allowUnsealed {
 		return
 	}
 	keyPath := filepath.Join(caDir, "bridge.key")
-	if allowUnsealed {
-		if err := writeKeyFileAtomic(keyPath, ws.BridgeKey(), 0600); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Failed writing bridge key to %s: %v\n", keyPath, err)
-			return
-		}
-		keyFp := sha256.Sum256(ws.BridgeKey())
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  SECURITY WARNING: Bridge master key written to unsealed disk storage (%s).\n", keyPath)
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "   Bridge Key:   Saved to %s (SHA-256: %x...)\n", keyPath, keyFp[:6])
-	} else if ls == nil {
-		if err := writeKeyFileAtomic(keyPath, ws.BridgeKey(), 0600); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Failed writing bridge key to %s: %v\n", keyPath, err)
-		}
+	if err := writeKeyFileAtomic(keyPath, ws.BridgeKey(), 0600); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Failed writing bridge key to %s: %v\n", keyPath, err)
+		return
 	}
+	keyFp := sha256.Sum256(ws.BridgeKey())
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  SECURITY WARNING: Bridge master key written to unsealed disk storage (%s).\n", keyPath)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "   Bridge Key:   Saved to %s (SHA-256: %x...)\n", keyPath, keyFp[:6])
 }
 
 func persistBridgeTokensToDisk(cmd *cobra.Command, ws *spiffe.WorkloadServer, caDir string, allowedCIDs []uint32, allowUnsealed bool) {
-	if !allowUnsealed && ls != nil {
+	if !allowUnsealed {
 		return
 	}
 	if ws.BridgeToken() != "" {
@@ -927,7 +945,12 @@ func saveAndLogBridgeSecrets(cmd *cobra.Command, ws *spiffe.WorkloadServer, allo
 		return
 	}
 
-	sealBridgeSecretsInEnclave(ws)
+	if err := sealBridgeSecretsInEnclave(cmd, ws); err != nil {
+		if !allowUnsealed {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  CRITICAL: Bridge master key could not be sealed in hardware enclave: %v\n", err)
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "   The bridge key is held only in daemon memory. To persist to disk, restart with --allow-unsealed-bridge-key.")
+		}
+	}
 	persistBridgeKeyToDisk(cmd, ws, caDir, allowUnsealed)
 	persistBridgeTokensToDisk(cmd, ws, caDir, allowedCIDs, allowUnsealed)
 }
@@ -1044,7 +1067,9 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\nShutting down SPIFFE Workload API server...")
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			_ = ws.Stop(ctx)
+			if stopErr := ws.Stop(ctx); stopErr != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Error stopping SPIFFE server: %v\n", stopErr)
+			}
 		}()
 
 		if err := ws.Start(); err != nil && err != http.ErrServerClosed {
@@ -1114,10 +1139,18 @@ func loadRootCA() (*ca.CA, error) {
 		_, _ = fmt.Fprintf(os.Stderr, "⚠️  SECURITY WARNING: Root CA private key loaded from unsealed disk storage (%s).\n", keyPath)
 	}
 	if len(pqcCertData) == 0 {
-		pqcCertData, _ = readCADiskFile(filepath.Join(caDir, "root-ca-pqc.crt"), false)
+		var readErr error
+		pqcCertData, readErr = readCADiskFile(filepath.Join(caDir, "root-ca-pqc.crt"), false)
+		if readErr != nil {
+			pqcCertData = nil
+		}
 	}
 	if len(pqcKeyData) == 0 {
-		pqcKeyData, _ = readCADiskFile(filepath.Join(caDir, "root-ca-pqc.key"), false)
+		var readErr error
+		pqcKeyData, readErr = readCADiskFile(filepath.Join(caDir, "root-ca-pqc.key"), false)
+		if readErr != nil {
+			pqcKeyData = nil
+		}
 	}
 
 	return ca.LoadDualCA(certData, keyData, pqcCertData, pqcKeyData)
@@ -1136,7 +1169,9 @@ func init() {
 
 	// ca derive-bridge-token flags
 	caDeriveBridgeTokenCmd.Flags().Uint32Var(&caDeriveCID, "cid", 0, "Target Aegisbox microVM CID (required, >= 3)")
-	_ = caDeriveBridgeTokenCmd.MarkFlagRequired("cid")
+	if err := caDeriveBridgeTokenCmd.MarkFlagRequired("cid"); err != nil {
+		panic(err)
+	}
 	caDeriveBridgeTokenCmd.Flags().StringVar(&caDeriveKeyFile, "key-file", "", "Path to bridge master HMAC key file")
 
 	// ca init flags
@@ -1180,7 +1215,9 @@ func init() {
 	caServeSpiffeCmd.Flags().StringVar(&caServePolicyPath, "policy", "", "Path to local policy.json file")
 	caServeSpiffeCmd.Flags().Float64Var(&caServeRateLimit, "rate-limit", 10.0, "Attestation rate limit (requests per second per UID)")
 	caServeSpiffeCmd.Flags().StringVar(&caServeBridgeToken, "bridge-token", "", "Pre-shared authorization token for loopback TCP vsock bridge")
-	_ = caServeSpiffeCmd.Flags().MarkDeprecated("bridge-token", "use --bridge-token-file or LOCKSMITH_BRIDGE_TOKEN instead to avoid argument leaking in ps")
+	if err := caServeSpiffeCmd.Flags().MarkDeprecated("bridge-token", "use --bridge-token-file or LOCKSMITH_BRIDGE_TOKEN instead to avoid argument leaking in ps"); err != nil {
+		panic(err)
+	}
 	caServeSpiffeCmd.Flags().StringVar(&caServeBridgeTokenFile, "bridge-token-file", "", "Path to file containing pre-shared bridge token")
 	caServeSpiffeCmd.Flags().StringVar(&caServeBridgeKeyFile, "bridge-key-file", "", "Path to file containing 32-byte master HMAC bridge key")
 	caServeSpiffeCmd.Flags().UintSliceVar(&caServeAllowedCIDs, "allowed-cid", nil, "Allowed microVM CIDs for vsock bridge")

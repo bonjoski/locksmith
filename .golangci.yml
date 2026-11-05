@@ -6,6 +6,7 @@ run:
 linters:
   enable:
     - errcheck
+    - forbidigo
     - gosimple
     - govet
     - ineffassign
@@ -22,3 +23,7 @@ linters-settings:
       - fmt.Fprintln
       - fmt.Fprint
       - os.Remove
+  forbidigo:
+    forbid:
+      - p: '^fmt\.Print$'
+        msg: "Use cmd.OutOrStdout() or cmd.ErrOrStderr() instead of direct fmt.Print"

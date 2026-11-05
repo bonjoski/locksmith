@@ -1,0 +1,111 @@
+//go:build !locksmith_test_harness
+
+package locksmith
+
+import (
+	"errors"
+	"sync"
+	"time"
+)
+
+// MockBackend implements the Backend interface for testing.
+type MockBackend struct {
+	mu            sync.RWMutex
+	store         map[string][]byte
+	ForceSealFail bool
+}
+
+func newMockBackend() *MockBackend {
+	return &MockBackend{store: make(map[string][]byte)}
+}
+
+// NewMockBackend returns a new MockBackend for testing.
+func NewMockBackend() *MockBackend {
+	return newMockBackend()
+}
+
+func (m *MockBackend) Set(service, account string, data []byte, requireBiometrics bool) error {
+	if m.ForceSealFail {
+		return errors.New("simulated hardware enclave seal failure: biometric timeout or device busy")
+	}
+	key := service + "/" + account
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	copyData := make([]byte, len(data))
+	copy(copyData, data)
+	m.store[key] = copyData
+	return nil
+}
+
+func (m *MockBackend) Get(service, account string, useBiometrics bool, prompt string) ([]byte, error) {
+	key := service + "/" + account
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	data, ok := m.store[key]
+	if !ok {
+		return nil, errors.New("key not found")
+	}
+	copyData := make([]byte, len(data))
+	copy(copyData, data)
+	return copyData, nil
+}
+
+func (m *MockBackend) Delete(service, account string, useBiometrics bool, prompt string) error {
+	key := service + "/" + account
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.store, key)
+	return nil
+}
+
+func (m *MockBackend) List(service string, useBiometrics bool, prompt string) ([]string, error) {
+	prefix := service + "/"
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var keys []string
+	for k := range m.store {
+		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+			keys = append(keys, k[len(prefix):])
+		}
+	}
+	return keys, nil
+}
+
+// MockCache is an in-memory Cache implementation for testing.
+type MockCache struct {
+	mu      sync.RWMutex
+	secrets map[string]Secret
+}
+
+// NewMockCache returns a new MockCache for testing.
+func NewMockCache() *MockCache {
+	return &MockCache{secrets: make(map[string]Secret)}
+}
+
+func (m *MockCache) Set(key string, secret Secret, ttl time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.secrets[key] = secret
+	return nil
+}
+
+func (m *MockCache) Get(key string) (*Secret, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.secrets[key]
+	if !ok {
+		return nil, nil
+	}
+	return &s, nil
+}
+
+func (m *MockCache) Delete(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.secrets, key)
+	return nil
+}
+
+func (m *MockCache) IsExpired(key string, ttl time.Duration) bool {
+	return false
+}

@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 		if runtime.GOOS == "windows" {
 			bin += ".exe"
 		}
-		cmd := exec.Command("go", "build", "-o", bin, "./cmd/locksmith")
+		cmd := exec.Command("go", "build", "-tags", "locksmith_test_harness,locksmith_admin", "-o", bin, "./cmd/locksmith")
 		cmd.Dir = "../.."
 		if out, err := cmd.CombinedOutput(); err != nil {
 			panic("failed to build locksmith binary: " + string(out))
@@ -252,5 +252,123 @@ func TestAcceptance_BridgeKeyEnclaveSealing(t *testing.T) {
 	// Verify no bridge.key file was persisted to disk
 	if _, err := os.Stat(diskBridgeKey); !os.IsNotExist(err) {
 		t.Fatalf("CLAIM-SPIFFE-02 VIOLATION: bridge.key was persisted to disk unexpectedly")
+	}
+}
+
+// CLAIM: CLAIM-CA-04
+// Finding 1 & Recommendation 1: Sealing failure causes fatal exit and leaves zero unsealed key files on disk
+func TestAcceptance_SealingFailureRejectsPlaintextDiskWrite(t *testing.T) {
+	tempHome := t.TempDir()
+	caDir := filepath.Join(tempHome, ".locksmith", "ca")
+
+	cmd := execLocksmith(tempHome, "ca", "init", "--ca-dir", caDir)
+	cmd.Env = append(cmd.Env, "LOCKSMITH_FORCE_SEAL_FAIL=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected ca init to fail when enclave sealing fails without opt-in, out: %s", string(out))
+	}
+	if !strings.Contains(string(out), "Refusing to store unsealed private keys on disk") {
+		t.Fatalf("expected error regarding refusing to store unsealed private keys, got: %s", string(out))
+	}
+
+	// Verify NO .key files were written
+	rootKeyPath := filepath.Join(caDir, "root-ca.key")
+	if _, statErr := os.Stat(rootKeyPath); !os.IsNotExist(statErr) {
+		t.Fatalf("CLAIM-CA-04 VIOLATION: root-ca.key exists on disk after sealing failure without opt-in")
+	}
+	pqcKeyPath := filepath.Join(caDir, "root-ca-pqc.key")
+	if _, statErr := os.Stat(pqcKeyPath); !os.IsNotExist(statErr) {
+		t.Fatalf("CLAIM-CA-04 VIOLATION: root-ca-pqc.key exists on disk after sealing failure without opt-in")
+	}
+}
+
+// CLAIM: CLAIM-SEAM-01
+// Finding REM-01: Production release builds omit the test harness seam
+func TestAcceptance_ProductionBinaryNoMockBackendSeam(t *testing.T) {
+	tmpDir := t.TempDir()
+	prodBin := filepath.Join(tmpDir, "locksmith-prod")
+	if runtime.GOOS == "windows" {
+		prodBin += ".exe"
+	}
+	// Build WITHOUT locksmith_test_harness tag (matching release.yml / make release)
+	buildCmd := exec.Command("go", "build", "-tags", "locksmith_admin", "-o", prodBin, "./cmd/locksmith")
+	buildCmd.Dir = "../.."
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed compiling production binary: %v, out: %s", err, string(out))
+	}
+
+	tempHome := t.TempDir()
+	cmd := exec.Command(prodBin, "--version")
+	cmd.Env = append(os.Environ(),
+		"HOME="+tempHome,
+		"USERPROFILE="+tempHome,
+		"LOCKSMITH_MOCK_BACKEND=1",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("production binary execution failed: %v, out: %s", err, string(out))
+	}
+	if len(out) == 0 {
+		t.Fatalf("CLAIM-SEAM-01 VIOLATION: Expected version output from production binary")
+	}
+}
+
+// CLAIM: CLAIM-CA-05
+// Finding REM-05: Bridge keys and tokens are never written to disk without explicit opt-in
+func TestAcceptance_NoPlaintextFallback(t *testing.T) {
+	tempHome := t.TempDir()
+	caDir := filepath.Join(tempHome, ".locksmith", "ca")
+
+	// Pre-seed CA
+	initCmd := execLocksmith(tempHome, "ca", "init", "--allow-unsealed-disk-keys", "--ca-dir", caDir)
+	if out, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed initializing CA for test: %v, out: %s", err, string(out))
+	}
+
+	// Run derive-bridge-token without --allow-unsealed-bridge-key
+	cmd := execLocksmith(tempHome, "ca", "derive-bridge-token", "--cid", "3")
+	cmd.Env = append(cmd.Env, "LOCKSMITH_BRIDGE_KEY="+strings.Repeat("0123456789abcdef", 4))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("derive-bridge-token failed: %v, out: %s", err, string(out))
+	}
+
+	// Assert no bridge.key or bridge tokens exist on disk
+	diskBridgeKey := filepath.Join(caDir, "bridge.key")
+	if _, err := os.Stat(diskBridgeKey); !os.IsNotExist(err) {
+		t.Fatalf("CLAIM-CA-05 VIOLATION: bridge.key was written to disk without --allow-unsealed-bridge-key")
+	}
+	diskBridgeToken := filepath.Join(caDir, "bridge.token")
+	if _, err := os.Stat(diskBridgeToken); !os.IsNotExist(err) {
+		t.Fatalf("CLAIM-CA-05 VIOLATION: bridge.token was written to disk without --allow-unsealed-bridge-key")
+	}
+}
+
+// CLAIM: CLAIM-SPIFFE-03
+// Finding REM-02: Enclave bridge key sealing errors are reported and require biometric auth
+func TestAcceptance_BridgeKeyEnclaveSealingBiometrics(t *testing.T) {
+	tempHome := t.TempDir()
+	caDir := filepath.Join(tempHome, ".locksmith", "ca")
+
+	// Pre-seed CA
+	initCmd := execLocksmith(tempHome, "ca", "init", "--allow-unsealed-disk-keys", "--ca-dir", caDir)
+	if out, err := initCmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed initializing CA for test: %v, out: %s", err, string(out))
+	}
+
+	// Attempt derive-bridge-token with simulated seal failure
+	cmd := execLocksmith(tempHome, "ca", "derive-bridge-token", "--cid", "3")
+	cmd.Env = append(cmd.Env,
+		"LOCKSMITH_BRIDGE_KEY="+strings.Repeat("0123456789abcdef", 4),
+		"LOCKSMITH_FORCE_SEAL_FAIL=1",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("derive-bridge-token unexpectedly failed: %v, out: %s", err, string(out))
+	}
+
+	// Bridge key must not have been persisted to disk
+	diskBridgeKey := filepath.Join(caDir, "bridge.key")
+	if _, statErr := os.Stat(diskBridgeKey); !os.IsNotExist(statErr) {
+		t.Fatalf("CLAIM-SPIFFE-03 VIOLATION: bridge.key written to disk when enclave sealing failed")
 	}
 }

@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.6] - 2026-11-05
+
+### Security & Hardening (GHSA-wfmr-rw42-3rv7 Hardening Closure)
+- **Eliminate Test Seam in Production Binary [CLAIM-SEAM-01]:**
+  - Removed `LOCKSMITH_MOCK_BACKEND` test double hook from production binary builds. Guarded test double harness strictly behind `//go:build locksmith_test_harness`.
+- **Fail Closed on Hardware Enclave Sealing Failure [CLAIM-CA-04]:**
+  - Proved that enclave sealing failure exits with non-zero status and leaves zero unsealed private keys on disk without explicit opt-in.
+- **Enclave Bridge Key Sealing Verification & Biometrics [CLAIM-SPIFFE-03]:**
+  - Checked `ls.SetWithContext` error in `sealBridgeSecretsInEnclave` and enforced biometric requirements matching root CA keys.
+- **Eliminate Dead Plaintext Fallback [CLAIM-CA-05]:**
+  - Removed unauthenticated disk write fallback when `ls == nil` in `persistBridgeKeyToDisk` and `persistBridgeTokensToDisk`.
+
 ## [3.2.5] - 2026-11-05
 
 ### Security & Verification (GHSA-wfmr-rw42-3rv7 Final Verification)

@@ -33,12 +33,7 @@ var rootCmd = &cobra.Command{
 
 		// Initialize Locksmith
 		if ls == nil {
-			if os.Getenv("LOCKSMITH_MOCK_BACKEND") == "1" {
-				cache := locksmith.NewMockCache()
-				ls = locksmith.NewWithCache(cache)
-				ls.Backend = locksmith.NewMockBackend()
-				ls.Config = cfg
-				ls.Options.RequireBiometrics = false
+			if initTestHarnessLocksmith(cfg) {
 				return nil
 			}
 			opts := locksmith.Options{
