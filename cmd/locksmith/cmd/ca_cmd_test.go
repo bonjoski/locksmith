@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/bonjoski/locksmith/v2/pkg/ca"
+	"github.com/bonjoski/locksmith/v2/pkg/spiffe"
 )
 
 func TestCACliCommands(t *testing.T) {
@@ -174,59 +175,192 @@ func testCACliServeSpiffeHelp(t *testing.T) {
 	}
 }
 
-func TestAdversarial_ValidateRootSecurityProfile(t *testing.T) {
+func TestAdversarial_ValidateRootSecurityProfile_Basic(t *testing.T) {
 	rootCA, err := ca.GenerateRootCA("Sovereign Root", "Locksmith Org", 1)
 	if err != nil {
 		t.Fatalf("Failed to generate default root CA: %v", err)
 	}
 
-	// 1. Valid root profile succeeds
 	if err := validateRootSecurityProfile(rootCA.Certificate); err != nil {
 		t.Fatalf("Expected valid root certificate profile to pass, got: %v", err)
 	}
 
-	// 2. Missing critical flag is rejected
-	tamperedCert := *rootCA.Certificate
-	tamperedCert.PermittedDNSDomainsCritical = false
-	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+	tampered := *rootCA.Certificate
+	tampered.PermittedDNSDomainsCritical = false
+	if err := validateRootSecurityProfile(&tampered); err == nil {
 		t.Fatalf("CRITICAL: Root certificate without critical Name Constraints was accepted!")
 	}
 
-	// 3. MaxPathLenZero false is rejected
-	tamperedCert = *rootCA.Certificate
-	tamperedCert.MaxPathLenZero = false
-	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+	tampered = *rootCA.Certificate
+	tampered.MaxPathLenZero = false
+	if err := validateRootSecurityProfile(&tampered); err == nil {
 		t.Fatalf("CRITICAL: Root certificate allowing intermediate subordinate CAs was accepted!")
 	}
 
-	// 4. Missing IP ranges is rejected
-	tamperedCert = *rootCA.Certificate
-	tamperedCert.PermittedIPRanges = nil
-	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+	tampered = *rootCA.Certificate
+	tampered.PermittedIPRanges = nil
+	if err := validateRootSecurityProfile(&tampered); err == nil {
 		t.Fatalf("CRITICAL: Root certificate without PermittedIPRanges was accepted!")
 	}
+}
 
-	// 5. Public IP range (e.g. 8.8.8.0/24) is rejected
+func TestAdversarial_ValidateRootSecurityProfile_IPConstraints(t *testing.T) {
+	rootCA, err := ca.GenerateRootCA("Sovereign Root", "Locksmith Org", 1)
+	if err != nil {
+		t.Fatalf("Failed to generate default root CA: %v", err)
+	}
+
+	// Public IP range
 	_, publicNet, _ := net.ParseCIDR("8.8.8.0/24")
-	tamperedCert = *rootCA.Certificate
-	tamperedCert.PermittedIPRanges = []*net.IPNet{publicNet}
-	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
+	tampered := *rootCA.Certificate
+	tampered.PermittedIPRanges = []*net.IPNet{publicNet}
+	if err := validateRootSecurityProfile(&tampered); err == nil {
 		t.Fatalf("CRITICAL: Root certificate with public IP range was accepted!")
 	}
 
-	// 6. Public TLD domain (apple.com) is rejected
-	tamperedCert = *rootCA.Certificate
-	tamperedCert.PermittedDNSDomains = []string{"apple.com"}
-	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
-		t.Fatalf("CRITICAL: Root certificate with public TLD (apple.com) was accepted!")
+	// Supernet 0 CIDR bypass
+	_, supernetNet, _ := net.ParseCIDR("127.0.0.0/0")
+	tampered = *rootCA.Certificate
+	tampered.PermittedIPRanges = []*net.IPNet{supernetNet}
+	if err := validateRootSecurityProfile(&tampered); err == nil {
+		t.Fatalf("CRITICAL: Supernet /0 CIDR bypass (127.0.0.0/0) was accepted!")
 	}
 
-	// 7. Wildcard domain (*) is rejected
-	tamperedCert = *rootCA.Certificate
-	tamperedCert.PermittedDNSDomains = []string{"*"}
-	if err := validateRootSecurityProfile(&tamperedCert); err == nil {
-		t.Fatalf("CRITICAL: Root certificate with wildcard domain (*) was accepted!")
+	// Supernet 7 CIDR bypass
+	_, supernet7, _ := net.ParseCIDR("127.0.0.0/7")
+	tampered = *rootCA.Certificate
+	tampered.PermittedIPRanges = []*net.IPNet{supernet7}
+	if err := validateRootSecurityProfile(&tampered); err == nil {
+		t.Fatalf("CRITICAL: Supernet /7 CIDR bypass (127.0.0.0/7) was accepted!")
 	}
 
-	t.Logf("PASS: validateRootSecurityProfile strictly rejects non-sovereign or unconstrained profiles.")
+	// IPv6 supernet 0
+	_, supernetIPv6, _ := net.ParseCIDR("::/0")
+	tampered = *rootCA.Certificate
+	tampered.PermittedIPRanges = []*net.IPNet{supernetIPv6}
+	if err := validateRootSecurityProfile(&tampered); err == nil {
+		t.Fatalf("CRITICAL: IPv6 supernet /0 was accepted!")
+	}
+
+	// Multicast IP range
+	_, multicastNet, _ := net.ParseCIDR("224.0.0.0/4")
+	tampered = *rootCA.Certificate
+	tampered.PermittedIPRanges = []*net.IPNet{multicastNet}
+	if err := validateRootSecurityProfile(&tampered); err == nil {
+		t.Fatalf("CRITICAL: Multicast IP range was accepted!")
+	}
+}
+
+func TestAdversarial_ValidateRootSecurityProfile_DNSAndURIs(t *testing.T) {
+	rootCA, err := ca.GenerateRootCA("Sovereign Root", "Locksmith Org", 1)
+	if err != nil {
+		t.Fatalf("Failed to generate default root CA: %v", err)
+	}
+
+	for _, d := range []string{"apple.com", "*", "com", "org", "bonjoski.lan"} {
+		tampered := *rootCA.Certificate
+		tampered.PermittedDNSDomains = []string{d}
+		if err := validateRootSecurityProfile(&tampered); err == nil {
+			t.Fatalf("CRITICAL: Invalid domain constraint %q was accepted!", d)
+		}
+	}
+
+	for _, u := range []string{"https://google.com", "local.dev"} {
+		tampered := *rootCA.Certificate
+		tampered.PermittedURIDomains = []string{u}
+		if err := validateRootSecurityProfile(&tampered); err == nil {
+			t.Fatalf("CRITICAL: Public URI domain constraint %q was accepted!", u)
+		}
+	}
+
+	tampered := *rootCA.Certificate
+	tampered.PermittedURIDomains = []string{"spiffe://bonjoski.local"}
+	if err := validateRootSecurityProfile(&tampered); err != nil {
+		t.Fatalf("Expected sovereign URI domain constraint 'spiffe://bonjoski.local' to pass, got: %v", err)
+	}
+}
+
+func TestParsePermittedIPs(t *testing.T) {
+	// 1. Valid IPs and CIDRs
+	validRaw := []string{"127.0.0.1", "10.0.0.0/8", "::1"}
+	nets, err := parsePermittedIPs(validRaw)
+	if err != nil {
+		t.Fatalf("unexpected error parsing valid IPs: %v", err)
+	}
+	if len(nets) != 3 {
+		t.Fatalf("expected 3 nets, got %d", len(nets))
+	}
+
+	// Ensure IPv4 representations are 4 bytes
+	if len(nets[0].IP) != 4 {
+		t.Errorf("expected 4-byte IPv4 for 127.0.0.1, got %d bytes", len(nets[0].IP))
+	}
+	if len(nets[1].IP) != 4 {
+		t.Errorf("expected 4-byte IPv4 for 10.0.0.0/8, got %d bytes", len(nets[1].IP))
+	}
+
+	// 2. Invalid IP returns error (fails closed)
+	invalidRaw := []string{"127.0.0.1", "not-a-valid-ip"}
+	if _, err := parsePermittedIPs(invalidRaw); err == nil {
+		t.Fatalf("expected error on invalid IP string, got nil")
+	}
+}
+
+func TestCACliInit_BroadDomainRequirement(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	// Broad domain .local without --allow-broad-domains must fail closed
+	outBuf, errBuf := setupTest()
+	rootCmd.SetArgs([]string{"ca", "init", "--permitted-dns", ".local"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatalf("expected ca init to fail without --allow-broad-domains for .local, out=%s, err=%s", outBuf.String(), errBuf.String())
+	}
+
+	// Broad domain with --allow-broad-domains succeeds
+	outBuf, errBuf = setupTest()
+	rootCmd.SetArgs([]string{"ca", "init", "--permitted-dns", ".local", "--allow-broad-domains"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("expected ca init to succeed with --allow-broad-domains, got: %v, err=%s", err, errBuf.String())
+	}
+}
+
+func TestCACliDeriveBridgeToken(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	caDir := filepath.Join(tempHome, ".locksmith", "ca")
+	if err := os.MkdirAll(caDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	masterKey := make([]byte, 32)
+	for i := range masterKey {
+		masterKey[i] = byte(i + 1)
+	}
+	keyPath := filepath.Join(caDir, "bridge.key")
+	if err := os.WriteFile(keyPath, masterKey, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	deriver, _ := spiffe.NewBridgeTokenDeriver(masterKey)
+	expectedToken := deriver.DeriveToken(4)
+
+	outBuf, errBuf := setupTest()
+	rootCmd.SetArgs([]string{"ca", "derive-bridge-token", "--cid", "4", "--ca-dir", caDir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("ca derive-bridge-token failed: %v, err: %s", err, errBuf.String())
+	}
+
+	derivedOutput := strings.TrimSpace(outBuf.String())
+	if derivedOutput != expectedToken {
+		t.Fatalf("expected token %q, got %q", expectedToken, derivedOutput)
+	}
+
+	// Test CID < 3 rejected
+	outBuf, errBuf = setupTest()
+	rootCmd.SetArgs([]string{"ca", "derive-bridge-token", "--cid", "2", "--ca-dir", caDir})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatalf("expected CID 2 to be rejected, got success with token %q", outBuf.String())
+	}
 }

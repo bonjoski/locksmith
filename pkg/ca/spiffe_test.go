@@ -173,7 +173,12 @@ func verifyCertChain(t *testing.T, cert, root *x509.Certificate, now time.Time) 
 }
 
 func TestIssueSVID_Classical(t *testing.T) {
-	rootCA, err := ca.GenerateRootCA("Test CA", "Bonjoski Test Org", 30)
+	rootCA, err := ca.GenerateRootCAWithConfig(ca.RootCAConfig{
+		CommonName:          "Test CA",
+		Organization:        "Bonjoski Test Org",
+		ValidityDays:        30,
+		PermittedDNSDomains: []string{"localhost", ".localhost", ".internal"},
+	})
 	if err != nil {
 		t.Fatalf("failed to generate test root CA: %v", err)
 	}

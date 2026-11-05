@@ -28,6 +28,7 @@ type Policy struct {
 	AllowedUIDs []uint32     `json:"allowed_uids"`
 	AllowedCIDs []uint32     `json:"allowed_cids,omitempty"`
 	Rules       []PolicyRule `json:"rules,omitempty"`
+	warnings    []string     `json:"-"`
 }
 
 // NewDefaultPolicy initializes a policy allowing the current user UID.
@@ -62,10 +63,22 @@ func LoadPolicy(path string, trustDomain string) (*Policy, error) {
 	if pol.TrustDomain == "" {
 		pol.TrustDomain = DefaultTrustDomain
 	}
-	if _, err := pol.Validate(); err != nil {
+	warnings, err := pol.Validate()
+	if err != nil {
 		return nil, fmt.Errorf("invalid policy: %w", err)
 	}
+	pol.warnings = warnings
 	return &pol, nil
+}
+
+// Warnings returns any non-fatal security warnings identified during policy validation.
+func (p *Policy) Warnings() []string {
+	if p == nil || len(p.warnings) == 0 {
+		return nil
+	}
+	res := make([]string, len(p.warnings))
+	copy(res, p.warnings)
+	return res
 }
 
 // Validate checks policy rules and returns any security warnings or fatal validation errors.
@@ -81,7 +94,11 @@ func (p *Policy) Validate() ([]string, error) {
 		for _, bin := range rule.AllowedBinaries {
 			lower := strings.ToLower(bin)
 			if !strings.HasPrefix(lower, "sha256:") && !isHex64(bin) {
-				warnings = append(warnings, fmt.Sprintf("rule for %q uses unauthenticated binary provenance %q; only sha256 digests provide non-repudiable attestation", rule.SPIFFEPattern, bin))
+				if !strings.HasPrefix(lower, "path:") && !strings.HasPrefix(lower, "comm:") {
+					warnings = append(warnings, fmt.Sprintf("rule for %q uses unauthenticated bare binary identifier %q; only sha256 digests provide non-repudiable attestation", rule.SPIFFEPattern, bin))
+				} else {
+					warnings = append(warnings, fmt.Sprintf("rule for %q uses unauthenticated %s provenance %q; only sha256 digests provide non-repudiable attestation", rule.SPIFFEPattern, bin[:4], bin))
+				}
 			}
 		}
 	}

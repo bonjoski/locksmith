@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.4] - 2026-11-05
+
+### Security & Hardening (GHSA-wfmr-rw42-3rv7 Gap Closure)
+- **RFC 5280 Supernet `/0` CIDR Bypass Closure:**
+  - Tightened `isPrivateOrLoopbackIPNet` to validate mask width (IPv4 $\ge 8$, IPv6 $\ge 7$) and calculate both base IP and broadcast/last IP against loopback and RFC 1918 private IP ranges.
+  - Explicitly rejects supernet masks (`127.0.0.0/0`, `::/0`) and multicast spaces (`224.0.0.0/4`).
+- **Dotless TLD & Broad Domain Name Constraints Hardening:**
+  - Default Root CA `PermittedDNSDomains` tightened strictly to `localhost` and `.localhost` (removing `.local` and `.internal` from defaults).
+  - Implemented `isSovereignDomain` and `validateRootDNSDomains`, rejecting dotless TLD subtree constraints (`com`, `net`) and unreserved pseudo-TLDs (`.lan`).
+  - Added strict fail-closed enforcement in `ca init` requiring `--allow-broad-domains` when configuring broad sovereign domains (`.local`, `.internal`, `.home.arpa`).
+- **RFC 5280 URI Name Constraints Alignment & Public gTLD Elimination:**
+  - Removed Google public gTLD `local.dev` from default URI name constraints.
+  - Implemented `validateRootURIDomains` stripping URI schemes per RFC 5280 Section 4.2.1.10 and validating hostnames against sovereign constraints.
+- **Dynamic MicroVM Provisioning & Multi-Agent Atomic I/O:**
+  - Added `locksmith ca derive-bridge-token --cid <uint32> [--key-file <path>] [--ca-dir <path>]` command for out-of-band token generation.
+  - Implemented atomic file write utility `writeKeyFileAtomic` with sync and rename semantics, preventing truncation races under parallel subagents.
+  - Added `--no-persist-bridge-key` flag and marked `--bridge-token` deprecated with guidance to use `--bridge-token-file` or `LOCKSMITH_BRIDGE_TOKEN` to avoid ps argument leaks.
+  - Enforced 32-byte key minimum in `NewBridgeTokenDeriver` and `resolveBridgeCredentials`.
+- **Policy Diagnostics & Parser Hardening:**
+  - Surfaced `pol.Warnings()` during SPIFFE Workload daemon startup.
+  - Refactored `parsePermittedIPs` to fail closed on invalid IP strings and normalize IPv4 to 4-byte representations.
+  - Extended `parseVsockAddr` to support angle-bracketed and URI-prefixed vsock peer address formats.
+
 ## [3.2.3] - 2026-11-04
 
 ### Security & Hardening (GHSA-wfmr-rw42-3rv7 Residual Mitigations)

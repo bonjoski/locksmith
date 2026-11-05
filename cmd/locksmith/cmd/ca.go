@@ -47,14 +47,18 @@ var (
 	caServeVsockPort       uint32
 	caAllowUnsealedDiskKeys bool
 	caForceUnconstrained   bool
-	caServeBridgeToken     string
-	caServeBridgeTokenFile string
-	caServeBridgeKeyFile   string
-	caServeAllowedCIDs     []uint
-	caPermittedDNS         []string
-	caPermittedIP          []string
-	caPermittedURI         []string
-	caAllowBroadDomains    bool
+	caServeBridgeToken        string
+	caServeBridgeTokenFile    string
+	caServeBridgeKeyFile      string
+	caServeAllowedCIDs        []uint
+	caPermittedDNS            []string
+	caPermittedIP             []string
+	caPermittedURI            []string
+	caAllowBroadDomains       bool
+	caCustomCADir             string
+	caServeNoPersistBridgeKey bool
+	caDeriveCID               uint32
+	caDeriveKeyFile           string
 )
 
 const (
@@ -64,30 +68,163 @@ const (
 	secretRootPQCCert = "ca:root:pqc:cert"
 )
 
+func writeKeyFileAtomic(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	tmpFile, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		if rmErr := os.Remove(tmpPath); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			_ = rmErr
+		}
+	}()
+
+	if err := tmpFile.Chmod(mode); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+func isPrivateIPv4(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	if ip4.IsMulticast() {
+		return false
+	}
+	if ip4.IsLoopback() || ip4.IsPrivate() || ip4.IsLinkLocalUnicast() {
+		return true
+	}
+	cgnat := &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+	return cgnat.Contains(ip4)
+}
+
+func isPrivateIPv6(ip net.IP) bool {
+	if ip.To4() != nil {
+		return false
+	}
+	if ip.IsMulticast() {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
+}
+
+func isPrivateOrLoopbackIPv4Net(ipNet *net.IPNet) bool {
+	ones, bits := ipNet.Mask.Size()
+	if bits != 32 || ones < 8 {
+		return false
+	}
+	ip4 := ipNet.IP.To4()
+	if ip4 == nil {
+		return false
+	}
+	mask4 := net.CIDRMask(ones, 32)
+	baseIP := ip4.Mask(mask4)
+	lastIP := make(net.IP, 4)
+	for i := 0; i < 4; i++ {
+		lastIP[i] = baseIP[i] | ^mask4[i]
+	}
+	if baseIP.IsMulticast() || lastIP.IsMulticast() {
+		return false
+	}
+	return isPrivateIPv4(baseIP) && isPrivateIPv4(lastIP)
+}
+
+func isPrivateOrLoopbackIPv6Net(ipNet *net.IPNet) bool {
+	ones, bits := ipNet.Mask.Size()
+	if bits != 128 || ones < 7 {
+		return false
+	}
+	ip16 := ipNet.IP.To16()
+	if ip16 == nil {
+		return false
+	}
+	mask16 := net.CIDRMask(ones, 128)
+	baseIP := ip16.Mask(mask16)
+	lastIP := make(net.IP, 16)
+	for i := 0; i < 16; i++ {
+		lastIP[i] = baseIP[i] | ^mask16[i]
+	}
+	if baseIP.IsMulticast() || lastIP.IsMulticast() {
+		return false
+	}
+	return isPrivateIPv6(baseIP) && isPrivateIPv6(lastIP)
+}
+
 func isPrivateOrLoopbackIPNet(ipNet *net.IPNet) bool {
 	if ipNet == nil || ipNet.IP == nil {
 		return false
 	}
-	ip := ipNet.IP
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
-		return true
+	if ipNet.IP.To4() != nil {
+		return isPrivateOrLoopbackIPv4Net(ipNet)
 	}
-	cgnat := &net.IPNet{IP: net.ParseIP("100.64.0.0"), Mask: net.CIDRMask(10, 32)}
-	return cgnat.Contains(ip)
+	return isPrivateOrLoopbackIPv6Net(ipNet)
+}
+
+func isBroadDomain(domain string) bool {
+	clean := strings.ToLower(strings.TrimSpace(domain))
+	clean = strings.TrimPrefix(clean, ".")
+	clean = strings.TrimSuffix(clean, ".")
+	return clean == "local" || strings.HasSuffix(clean, ".local") ||
+		clean == "internal" || strings.HasSuffix(clean, ".internal") ||
+		clean == "home.arpa" || strings.HasSuffix(clean, ".home.arpa")
 }
 
 func hasPublicTLD(domain string) bool {
+	clean := strings.ToLower(strings.TrimSpace(domain))
+	clean = strings.TrimPrefix(clean, ".")
+	clean = strings.TrimSuffix(clean, ".")
 	publicSuffixes := []string{
-		".com", ".net", ".org", ".edu", ".gov", ".mil", ".io", ".dev", ".app",
-		".ai", ".co", ".info", ".biz", ".xyz", ".me", ".cloud", ".online", ".site",
-		".tech", ".us", ".uk", ".ca", ".de", ".fr", ".jp", ".cn", ".au", ".ru", ".br", ".in",
+		"com", "net", "org", "edu", "gov", "mil", "io", "dev", "app",
+		"ai", "co", "info", "biz", "xyz", "me", "cloud", "online", "site",
+		"tech", "us", "uk", "ca", "de", "fr", "jp", "cn", "au", "ru", "br", "in",
 	}
 	for _, suffix := range publicSuffixes {
-		if domain == suffix[1:] || strings.HasSuffix(domain, suffix) {
+		if clean == suffix || strings.HasSuffix(clean, "."+suffix) {
 			return true
 		}
 	}
 	return false
+}
+
+func isSovereignDomain(domain string) error {
+	clean := strings.ToLower(strings.TrimSpace(domain))
+	clean = strings.TrimSuffix(clean, ".")
+	if clean == "" || clean == "*" || clean == "." {
+		return fmt.Errorf("invalid empty or wildcard domain constraint %q", domain)
+	}
+
+	cleanNoDot := strings.TrimPrefix(clean, ".")
+	if !strings.Contains(cleanNoDot, ".") && cleanNoDot != "localhost" && cleanNoDot != "local" && cleanNoDot != "internal" && cleanNoDot != "home.arpa" {
+		return fmt.Errorf("domain %q is an invalid dotless TLD constraint; must be localhost or have a sovereign domain suffix", domain)
+	}
+
+	if cleanNoDot == "lan" || strings.HasSuffix(cleanNoDot, ".lan") {
+		return fmt.Errorf("domain %q uses .lan which is not an IETF sovereign reserved domain; use .local, .internal, or .home.arpa", domain)
+	}
+
+	if hasPublicTLD(clean) {
+		return fmt.Errorf("domain %q contains public internet domain", domain)
+	}
+	return nil
 }
 
 func validateRootCriticalAndPathLen(cert *x509.Certificate) error {
@@ -117,12 +254,27 @@ func validateRootDNSDomains(cert *x509.Certificate) error {
 		return errors.New("missing PermittedDNSDomains")
 	}
 	for _, d := range cert.PermittedDNSDomains {
-		clean := strings.ToLower(strings.TrimSpace(d))
-		if clean == "" || clean == "*" || clean == "." {
-			return fmt.Errorf("invalid empty or wildcard domain constraint %q", d)
+		if err := isSovereignDomain(d); err != nil {
+			return fmt.Errorf("invalid PermittedDNSDomains entry %q: %w", d, err)
 		}
-		if hasPublicTLD(clean) {
-			return fmt.Errorf("PermittedDNSDomains contains public internet domain %q", d)
+	}
+	return nil
+}
+
+func validateRootURIDomains(cert *x509.Certificate) error {
+	if len(cert.PermittedURIDomains) == 0 {
+		return nil
+	}
+	for _, uriDomain := range cert.PermittedURIDomains {
+		clean := strings.TrimSpace(uriDomain)
+		if idx := strings.Index(clean, "://"); idx != -1 {
+			clean = clean[idx+3:]
+		}
+		if slashIdx := strings.Index(clean, "/"); slashIdx != -1 {
+			clean = clean[:slashIdx]
+		}
+		if err := isSovereignDomain(clean); err != nil {
+			return fmt.Errorf("invalid PermittedURIDomains entry %q: %w", uriDomain, err)
 		}
 	}
 	return nil
@@ -138,10 +290,13 @@ func validateRootSecurityProfile(cert *x509.Certificate) error {
 	if err := validateRootIPRanges(cert); err != nil {
 		return err
 	}
-	return validateRootDNSDomains(cert)
+	if err := validateRootDNSDomains(cert); err != nil {
+		return err
+	}
+	return validateRootURIDomains(cert)
 }
 
-func parsePermittedIPs(raw []string) []*net.IPNet {
+func parsePermittedIPs(raw []string) ([]*net.IPNet, error) {
 	var nets []*net.IPNet
 	for _, ipStr := range raw {
 		trimmed := strings.TrimSpace(ipStr)
@@ -149,19 +304,35 @@ func parsePermittedIPs(raw []string) []*net.IPNet {
 			continue
 		}
 		if _, ipNet, err := net.ParseCIDR(trimmed); err == nil {
-			nets = append(nets, ipNet)
+			if ip4 := ipNet.IP.To4(); ip4 != nil {
+				ones, _ := ipNet.Mask.Size()
+				nets = append(nets, &net.IPNet{
+					IP:   ip4,
+					Mask: net.CIDRMask(ones, 32),
+				})
+			} else {
+				nets = append(nets, ipNet)
+			}
 		} else if ip := net.ParseIP(trimmed); ip != nil {
-			if ip.To4() != nil {
-				nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(32, 32)})
+			if ip4 := ip.To4(); ip4 != nil {
+				nets = append(nets, &net.IPNet{IP: ip4, Mask: net.CIDRMask(32, 32)})
 			} else {
 				nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(128, 128)})
 			}
+		} else {
+			return nil, fmt.Errorf("invalid permitted-ip %q: must be valid CIDR or IP address", trimmed)
 		}
 	}
-	return nets
+	return nets, nil
 }
 
 func getDefaultCADir() string {
+	if caCustomCADir != "" {
+		return caCustomCADir
+	}
+	if env := os.Getenv("LOCKSMITH_CA_DIR"); env != "" {
+		return env
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ".locksmith/ca"
@@ -183,6 +354,30 @@ var caCmd = &cobra.Command{
 	Long: `Manage the local hardware-bound Certificate Authority (CA) for the Bonjoski security ecosystem.
 Allows creating a sovereign local Root CA anchored in your hardware enclave, issuing trusted
 HTTPS server certificates for local loopback daemons (Shield, Aegisbox), and mutual TLS (mTLS) client certificates.`,
+}
+
+func validateInitConfig() ([]*net.IPNet, error) {
+	for _, d := range caPermittedDNS {
+		if isBroadDomain(d) && !caAllowBroadDomains {
+			return nil, fmt.Errorf("domain %q requires --allow-broad-domains flag", d)
+		}
+		if err := isSovereignDomain(d); err != nil {
+			return nil, fmt.Errorf("invalid --permitted-dns domain %q: %w", d, err)
+		}
+	}
+	for _, u := range caPermittedURI {
+		clean := strings.TrimSpace(u)
+		if idx := strings.Index(clean, "://"); idx != -1 {
+			clean = clean[idx+3:]
+		}
+		if slashIdx := strings.Index(clean, "/"); slashIdx != -1 {
+			clean = clean[:slashIdx]
+		}
+		if err := isSovereignDomain(clean); err != nil {
+			return nil, fmt.Errorf("invalid --permitted-uri domain %q: %w", u, err)
+		}
+	}
+	return parsePermittedIPs(caPermittedIP)
 }
 
 var caInitCmd = &cobra.Command{
@@ -207,15 +402,11 @@ Use --trust to automatically install the classical Root CA into the macOS system
 		pqcKeyPath := filepath.Join(caDir, "root-ca-pqc.key")
 		dualCertPath := filepath.Join(caDir, "root-ca-dual.crt")
 
-		for _, d := range caPermittedDNS {
-			clean := strings.ToLower(strings.TrimSpace(d))
-			if (clean == ".local" || clean == "local" || clean == ".internal" || clean == "internal") && !caAllowBroadDomains {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: Root CA configured with broad private-use domain (.local / .internal). Pass --allow-broad-domains to silence.")
-				break
-			}
+		permittedIPNets, err := validateInitConfig()
+		if err != nil {
+			return err
 		}
 
-		permittedIPNets := parsePermittedIPs(caPermittedIP)
 		newCA, err := ca.GenerateRootCAWithConfig(ca.RootCAConfig{
 			CommonName:          caCommonName,
 			Organization:        caOrg,
@@ -229,16 +420,16 @@ Use --trust to automatically install the classical Root CA into the macOS system
 		}
 
 		// 1. Write public certificates with standard read permissions
-		if err := os.WriteFile(rootCertPath, newCA.CertPEM, 0644); err != nil {
+		if err := writeKeyFileAtomic(rootCertPath, newCA.CertPEM, 0644); err != nil {
 			return fmt.Errorf("failed to write %s: %w", rootCertPath, err)
 		}
 		if len(newCA.PQCCertPEM) > 0 {
-			if err := os.WriteFile(pqcCertPath, newCA.PQCCertPEM, 0644); err != nil {
+			if err := writeKeyFileAtomic(pqcCertPath, newCA.PQCCertPEM, 0644); err != nil {
 				return fmt.Errorf("failed to write %s: %w", pqcCertPath, err)
 			}
 		}
 		if len(newCA.DualCertPEM) > 0 {
-			if err := os.WriteFile(dualCertPath, newCA.DualCertPEM, 0644); err != nil {
+			if err := writeKeyFileAtomic(dualCertPath, newCA.DualCertPEM, 0644); err != nil {
 				return fmt.Errorf("failed to write %s: %w", dualCertPath, err)
 			}
 		}
@@ -275,11 +466,11 @@ Use --trust to automatically install the classical Root CA into the macOS system
 				return errors.New("fatal: failed to seal Root CA private keys in platform enclave (macOS Keychain). Refusing to store unsealed private keys on disk. Pass --allow-unsealed-disk-keys to explicitly opt-in for headless or container environments")
 			}
 			// Explicit opt-in for unsealed disk keys
-			if err := os.WriteFile(rootKeyPath, newCA.KeyPEM, 0600); err != nil {
+			if err := writeKeyFileAtomic(rootKeyPath, newCA.KeyPEM, 0600); err != nil {
 				return fmt.Errorf("failed to write %s: %w", rootKeyPath, err)
 			}
 			if len(newCA.PQCKeyPEM) > 0 {
-				if err := os.WriteFile(pqcKeyPath, newCA.PQCKeyPEM, 0600); err != nil {
+				if err := writeKeyFileAtomic(pqcKeyPath, newCA.PQCKeyPEM, 0600); err != nil {
 					return fmt.Errorf("failed to write %s: %w", pqcKeyPath, err)
 				}
 			}
@@ -604,6 +795,23 @@ Supports atomic rotation and background auto-renewal with --renew.`,
 	},
 }
 
+func resolveBridgeKey() ([]byte, error) {
+	if caServeBridgeKeyFile != "" {
+		data, err := os.ReadFile(caServeBridgeKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed reading bridge key file %s: %w", caServeBridgeKeyFile, err)
+		}
+		return data, nil
+	}
+	if envKey := os.Getenv("LOCKSMITH_BRIDGE_KEY"); envKey != "" {
+		if decoded, err := hex.DecodeString(strings.TrimSpace(envKey)); err == nil {
+			return decoded, nil
+		}
+		return []byte(envKey), nil
+	}
+	return nil, nil
+}
+
 func resolveBridgeCredentials() (string, []byte, error) {
 	bridgeToken := caServeBridgeToken
 	if bridgeToken == "" && caServeBridgeTokenFile != "" {
@@ -617,39 +825,93 @@ func resolveBridgeCredentials() (string, []byte, error) {
 		bridgeToken = os.Getenv("LOCKSMITH_BRIDGE_TOKEN")
 	}
 
-	var bridgeKey []byte
-	if caServeBridgeKeyFile != "" {
-		data, err := os.ReadFile(caServeBridgeKeyFile)
-		if err != nil {
-			return "", nil, fmt.Errorf("failed reading bridge key file %s: %w", caServeBridgeKeyFile, err)
-		}
-		bridgeKey = data
-	} else if envKey := os.Getenv("LOCKSMITH_BRIDGE_KEY"); envKey != "" {
-		if decoded, err := hex.DecodeString(strings.TrimSpace(envKey)); err == nil {
-			bridgeKey = decoded
-		} else {
-			bridgeKey = []byte(envKey)
-		}
+	bridgeKey, err := resolveBridgeKey()
+	if err != nil {
+		return "", nil, err
+	}
+	if len(bridgeKey) > 0 && len(bridgeKey) < 32 {
+		return "", nil, errors.New("bridge master key must be at least 32 bytes")
 	}
 	return bridgeToken, bridgeKey, nil
 }
 
-func saveAndLogBridgeSecrets(cmd *cobra.Command, ws *spiffe.WorkloadServer, allowedCIDs []uint32, vsockPort uint32) {
+func saveAndLogBridgeSecrets(cmd *cobra.Command, ws *spiffe.WorkloadServer, allowedCIDs []uint32, vsockPort uint32, noPersist bool) {
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   VSock Bridge: 127.0.0.1:%d (Allowed CIDs: %v)\n", vsockPort, allowedCIDs)
+	if noPersist {
+		return
+	}
 	caDir := getDefaultCADir()
-	_ = os.MkdirAll(caDir, 0700)
+	if err := os.MkdirAll(caDir, 0700); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Failed to create CA directory %s: %v\n", caDir, err)
+		return
+	}
 	if len(ws.BridgeKey()) > 0 {
 		keyPath := filepath.Join(caDir, "bridge.key")
-		_ = os.WriteFile(keyPath, ws.BridgeKey(), 0600)
-		keyFp := sha256.Sum256(ws.BridgeKey())
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "   Bridge Key:   Saved to %s (SHA-256: %x...)\n", keyPath, keyFp[:6])
+		if err := writeKeyFileAtomic(keyPath, ws.BridgeKey(), 0600); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Failed writing bridge key to %s: %v\n", keyPath, err)
+		} else {
+			keyFp := sha256.Sum256(ws.BridgeKey())
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "   Bridge Key:   Saved to %s (SHA-256: %x...)\n", keyPath, keyFp[:6])
+		}
 	}
 	if ws.BridgeToken() != "" {
 		tokenPath := filepath.Join(caDir, "bridge.token")
-		_ = os.WriteFile(tokenPath, []byte(ws.BridgeToken()+"\n"), 0600)
-		tokenFp := sha256.Sum256([]byte(ws.BridgeToken()))
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "   Bridge Token: Saved to %s (SHA-256: %x...)\n", tokenPath, tokenFp[:6])
+		if err := writeKeyFileAtomic(tokenPath, []byte(ws.BridgeToken()+"\n"), 0600); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Failed writing bridge token to %s: %v\n", tokenPath, err)
+		} else {
+			tokenFp := sha256.Sum256([]byte(ws.BridgeToken()))
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "   Bridge Token: Saved to %s (SHA-256: %x...)\n", tokenPath, tokenFp[:6])
+		}
 	}
+	for _, cid := range allowedCIDs {
+		derived := ws.DeriveBridgeToken(cid)
+		if derived != "" && derived != ws.BridgeToken() {
+			cidTokenPath := filepath.Join(caDir, fmt.Sprintf("bridge-cid-%d.token", cid))
+			_ = writeKeyFileAtomic(cidTokenPath, []byte(derived+"\n"), 0600)
+		}
+	}
+}
+
+var caDeriveBridgeTokenCmd = &cobra.Command{
+	Use:   "derive-bridge-token",
+	Short: "Derive an authoritative bridge authentication token for a microVM CID",
+	Long: `Derive a domain-separated bridge token for an Aegisbox microVM CID using HKDF-SHA256.
+Enables dynamic provisioning of subagent microVMs without restarting the SPIFFE daemon.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if caDeriveCID < 3 {
+			return fmt.Errorf("invalid microVM CID %d: must be >= 3", caDeriveCID)
+		}
+		var keyBytes []byte
+		if caDeriveKeyFile != "" {
+			data, err := os.ReadFile(caDeriveKeyFile)
+			if err != nil {
+				return fmt.Errorf("failed reading bridge key file %s: %w", caDeriveKeyFile, err)
+			}
+			keyBytes = data
+		} else {
+			caDir := getDefaultCADir()
+			defaultKeyPath := filepath.Join(caDir, "bridge.key")
+			if data, err := os.ReadFile(defaultKeyPath); err == nil {
+				keyBytes = data
+			} else if envKey := os.Getenv("LOCKSMITH_BRIDGE_KEY"); envKey != "" {
+				if decoded, err := hex.DecodeString(strings.TrimSpace(envKey)); err == nil {
+					keyBytes = decoded
+				} else {
+					keyBytes = []byte(envKey)
+				}
+			}
+		}
+		if len(keyBytes) == 0 {
+			return errors.New("no bridge key found; specify --key-file, set LOCKSMITH_BRIDGE_KEY, or run 'locksmith ca serve-spiffe' first")
+		}
+		deriver, err := spiffe.NewBridgeTokenDeriver(keyBytes)
+		if err != nil {
+			return fmt.Errorf("invalid bridge key: %w", err)
+		}
+		token := deriver.DeriveToken(caDeriveCID)
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), token)
+		return nil
+	},
 }
 
 var caServeSpiffeCmd = &cobra.Command{
@@ -671,6 +933,10 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 		pol, err := spiffe.LoadPolicy(caServePolicyPath, caServeTrustDomain)
 		if err != nil {
 			return fmt.Errorf("failed loading spiffe policy: %w", err)
+		}
+
+		for _, warn := range pol.Warnings() {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  SPIFFE Policy Warning: %s\n", warn)
 		}
 
 		for _, cid := range caServeAllowedCIDs {
@@ -704,7 +970,7 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Trust Domain: %s\n", caServeTrustDomain)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Socket Path:  %s (0600)\n", ws.SocketPath())
 		if caServeVsockPort > 0 {
-			saveAndLogBridgeSecrets(cmd, ws, pol.AllowedCIDs, caServeVsockPort)
+			saveAndLogBridgeSecrets(cmd, ws, pol.AllowedCIDs, caServeVsockPort, caServeNoPersistBridgeKey)
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Rate Limit:   %.0f req/s per UID\n", caServeRateLimit)
 
@@ -786,12 +1052,19 @@ func loadRootCA() (*ca.CA, error) {
 
 func init() {
 	rootCmd.AddCommand(caCmd)
+	caCmd.PersistentFlags().StringVar(&caCustomCADir, "ca-dir", "", "Custom CA directory (defaults to ~/.locksmith/ca or LOCKSMITH_CA_DIR)")
 	caCmd.AddCommand(caInitCmd)
 	caCmd.AddCommand(caIssueCmd)
 	caCmd.AddCommand(caTrustCmd)
 	caCmd.AddCommand(caStatusCmd)
 	caCmd.AddCommand(caContainerExportCmd)
 	caCmd.AddCommand(caServeSpiffeCmd)
+	caCmd.AddCommand(caDeriveBridgeTokenCmd)
+
+	// ca derive-bridge-token flags
+	caDeriveBridgeTokenCmd.Flags().Uint32Var(&caDeriveCID, "cid", 0, "Target Aegisbox microVM CID (required, >= 3)")
+	_ = caDeriveBridgeTokenCmd.MarkFlagRequired("cid")
+	caDeriveBridgeTokenCmd.Flags().StringVar(&caDeriveKeyFile, "key-file", "", "Path to bridge master HMAC key file")
 
 	// ca init flags
 	caInitCmd.Flags().StringVar(&caCommonName, "common-name", ca.DefaultCAName, "Common Name for the Root CA")
@@ -834,7 +1107,9 @@ func init() {
 	caServeSpiffeCmd.Flags().StringVar(&caServePolicyPath, "policy", "", "Path to local policy.json file")
 	caServeSpiffeCmd.Flags().Float64Var(&caServeRateLimit, "rate-limit", 10.0, "Attestation rate limit (requests per second per UID)")
 	caServeSpiffeCmd.Flags().StringVar(&caServeBridgeToken, "bridge-token", "", "Pre-shared authorization token for loopback TCP vsock bridge")
+	_ = caServeSpiffeCmd.Flags().MarkDeprecated("bridge-token", "use --bridge-token-file or LOCKSMITH_BRIDGE_TOKEN instead to avoid argument leaking in ps")
 	caServeSpiffeCmd.Flags().StringVar(&caServeBridgeTokenFile, "bridge-token-file", "", "Path to file containing pre-shared bridge token")
 	caServeSpiffeCmd.Flags().StringVar(&caServeBridgeKeyFile, "bridge-key-file", "", "Path to file containing 32-byte master HMAC bridge key")
 	caServeSpiffeCmd.Flags().UintSliceVar(&caServeAllowedCIDs, "allowed-cid", nil, "Allowed microVM CIDs for vsock bridge")
+	caServeSpiffeCmd.Flags().BoolVar(&caServeNoPersistBridgeKey, "no-persist-bridge-key", false, "Do not write bridge key or bridge tokens to disk")
 }

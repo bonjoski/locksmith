@@ -229,3 +229,99 @@ func TestWorkloadServer_VsockBridge(t *testing.T) {
 	defer cancel()
 	_ = ws.Stop(ctx)
 }
+
+type mockVsockAddr struct {
+	net string
+	str string
+}
+
+func (m mockVsockAddr) Network() string { return m.net }
+func (m mockVsockAddr) String() string  { return m.str }
+
+func TestParseVsockAddr(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    net.Addr
+		wantCID uint32
+		wantErr bool
+	}{
+		{
+			name:    "nil address",
+			addr:    nil,
+			wantErr: true,
+		},
+		{
+			name:    "standard cid:port",
+			addr:    mockVsockAddr{net: "vsock", str: "3:9099"},
+			wantCID: 3,
+			wantErr: false,
+		},
+		{
+			name:    "angle bracket format",
+			addr:    mockVsockAddr{net: "vsock", str: "<3:9099>"},
+			wantCID: 3,
+			wantErr: false,
+		},
+		{
+			name:    "vm parenthesis format",
+			addr:    mockVsockAddr{net: "vsock", str: "vm(3):9099"},
+			wantCID: 3,
+			wantErr: false,
+		},
+		{
+			name:    "prefixed vsock format",
+			addr:    mockVsockAddr{net: "vsock", str: "vsock:3:9099"},
+			wantCID: 3,
+			wantErr: false,
+		},
+		{
+			name:    "prefixed uri angle bracket format",
+			addr:    mockVsockAddr{net: "vsock", str: "vsock://<3:9099>"},
+			wantCID: 3,
+			wantErr: false,
+		},
+		{
+			name:    "hypervisor cid 0 rejected",
+			addr:    mockVsockAddr{net: "vsock", str: "0:9099"},
+			wantErr: true,
+		},
+		{
+			name:    "loopback cid 1 rejected",
+			addr:    mockVsockAddr{net: "vsock", str: "1:9099"},
+			wantErr: true,
+		},
+		{
+			name:    "host cid 2 rejected",
+			addr:    mockVsockAddr{net: "vsock", str: "2:9099"},
+			wantErr: true,
+		},
+		{
+			name:    "empty address string",
+			addr:    mockVsockAddr{net: "vsock", str: ""},
+			wantErr: true,
+		},
+		{
+			name:    "invalid address string",
+			addr:    mockVsockAddr{net: "vsock", str: "invalid-vsock-addr"},
+			wantErr: true,
+		},
+		{
+			name:    "high valid cid",
+			addr:    mockVsockAddr{net: "vsock", str: "42:9099"},
+			wantCID: 42,
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cid, err := spiffe.ParseVsockAddrForTest(tt.addr)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseVsockAddr() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && cid != tt.wantCID {
+				t.Errorf("ParseVsockAddr() cid = %d, wantCID %d", cid, tt.wantCID)
+			}
+		})
+	}
+}
