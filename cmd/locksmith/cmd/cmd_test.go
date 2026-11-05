@@ -97,6 +97,17 @@ func setupTest() (*bytes.Buffer, *bytes.Buffer) {
 	sliceCmdEnvFile = ""
 	integrationsDoctorPaths = nil
 	integrationsDoctorAI = false
+	caDeriveKeyFile = ""
+	caDeriveCID = 0
+	caCustomCADir = ""
+	caPermittedDNS = nil
+	caPermittedIP = nil
+	caPermittedURI = nil
+	caAllowBroadDomains = false
+	caAllowUnsealedDiskKeys = false
+	caAllowUnsealedBridgeKey = false
+	caAutoTrust = false
+	caForceUnconstrained = false
 
 	cfg = &locksmith.Config{
 		Auth: locksmith.AuthConfig{RequireBiometrics: false},
