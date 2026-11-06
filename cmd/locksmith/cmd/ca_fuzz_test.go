@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,25 @@ func FuzzParsePermittedIPs(f *testing.F) {
 	})
 }
 
+func assertValidSovereignDomain(t *testing.T, domain, clean, cleanNoDot string) {
+	if clean == "" || clean == "*" || clean == "." {
+		t.Fatalf("INVARIANT VIOLATION: isSovereignDomain accepted invalid domain %q", domain)
+	}
+	if strings.Contains(clean, "/") {
+		t.Fatalf("INVARIANT VIOLATION: isSovereignDomain accepted domain with path delimiter %q", domain)
+	}
+	hasSuffix := false
+	for _, sfx := range sovereignSpecialUseSuffixes {
+		if cleanNoDot == sfx || strings.HasSuffix(cleanNoDot, "."+sfx) {
+			hasSuffix = true
+			break
+		}
+	}
+	if !hasSuffix {
+		t.Fatalf("INVARIANT VIOLATION: isSovereignDomain accepted non-sovereign domain %q", domain)
+	}
+}
+
 func FuzzIsSovereignDomain(f *testing.F) {
 	seeds := []string{
 		"localhost",
@@ -58,6 +78,11 @@ func FuzzIsSovereignDomain(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, domain string) {
-		_ = isSovereignDomain(domain)
+		err := isSovereignDomain(domain)
+		clean := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(domain, ".")))
+		cleanNoDot := strings.TrimPrefix(clean, ".")
+		if err == nil {
+			assertValidSovereignDomain(t, domain, clean, cleanNoDot)
+		}
 	})
 }
