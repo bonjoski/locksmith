@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"crypto"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -42,7 +43,11 @@ var agentStartCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to listen on socket %s: %w", socketPath, err)
 		}
-		defer listener.Close()
+		defer func() {
+			if closeErr := listener.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: error closing agent listener: %v\n", closeErr)
+			}
+		}()
 
 		fmt.Printf("Locksmith SSH Agent listening on UNIX socket: %s\n", socketPath)
 		fmt.Printf("To use this agent, run:\n  export SSH_AUTH_SOCK=%s\n", socketPath)

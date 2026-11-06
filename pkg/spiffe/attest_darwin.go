@@ -33,7 +33,7 @@ func getConnFD(conn net.Conn) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	var fileDesc int = -1
+	var fileDesc = -1
 	err = rawConn.Control(func(fd uintptr) {
 		fileDesc = int(fd)
 	})

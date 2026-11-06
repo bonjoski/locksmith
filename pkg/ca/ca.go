@@ -308,12 +308,13 @@ func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
 	var privKey *ecdsa.PrivateKey
 	var pqcPrivKey *mldsa.PrivateKey
 
-	if keyBlock.Type == "EC PRIVATE KEY" {
+	switch keyBlock.Type {
+	case "EC PRIVATE KEY":
 		privKey, err = x509.ParseECPrivateKey(keyBlock.Bytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse EC private key: %w", err)
 		}
-	} else if keyBlock.Type == "PRIVATE KEY" {
+	case "PRIVATE KEY":
 		pkcs8Key, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
@@ -325,7 +326,7 @@ func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
 		} else {
 			return nil, errors.New("private key is neither ECDSA nor ML-DSA")
 		}
-	} else {
+	default:
 		return nil, fmt.Errorf("unsupported private key block type: %s", keyBlock.Type)
 	}
 

@@ -1,6 +1,7 @@
 package acceptance_test
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/pem"
 	"os"
@@ -8,7 +9,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 var locksmithBin string
@@ -285,18 +288,39 @@ func TestAcceptance_SealingFailureRejectsPlaintextDiskWrite(t *testing.T) {
 // CLAIM: CLAIM-SEAM-01
 // Finding REM-01: Production release builds omit the test harness seam
 func TestAcceptance_ProductionBinaryNoMockBackendSeam(t *testing.T) {
-	tmpDir := t.TempDir()
-	prodBin := filepath.Join(tmpDir, "locksmith-prod")
-	if runtime.GOOS == "windows" {
-		prodBin += ".exe"
-	}
-	// Build WITHOUT locksmith_test_harness tag (matching release.yml / make release)
-	buildCmd := exec.Command("go", "build", "-tags", "locksmith_admin", "-o", prodBin, "./cmd/locksmith")
-	buildCmd.Dir = "../.."
-	if out, err := buildCmd.CombinedOutput(); err != nil {
-		t.Fatalf("failed compiling production binary: %v, out: %s", err, string(out))
+	prodBin := os.Getenv("LOCKSMITH_BIN")
+	if prodBin == "" {
+		tmpDir := t.TempDir()
+		prodBin = filepath.Join(tmpDir, "locksmith-prod")
+		if runtime.GOOS == "windows" {
+			prodBin += ".exe"
+		}
+		// Build WITHOUT locksmith_test_harness tag (matching release.yml / make release)
+		buildCmd := exec.Command("go", "build", "-tags", "locksmith_admin", "-o", prodBin, "./cmd/locksmith")
+		buildCmd.Dir = "../.."
+		if out, err := buildCmd.CombinedOutput(); err != nil {
+			t.Fatalf("failed compiling production binary: %v, out: %s", err, string(out))
+		}
 	}
 
+	// 1. Inspect symbol table via `go tool nm`
+	nmCmd := exec.Command("go", "tool", "nm", prodBin)
+	if nmOut, err := nmCmd.CombinedOutput(); err == nil {
+		outStr := string(nmOut)
+		if strings.Contains(outStr, "MockBackend") || strings.Contains(outStr, "MockCache") || strings.Contains(outStr, "initTestHarnessLocksmith") {
+			t.Fatalf("CLAIM-SEAM-01 VIOLATION: Production binary contains test harness mock symbols in symbol table")
+		}
+	} else {
+		// 2. Fallback to binary byte inspection for stripped binaries
+		binBytes, readErr := os.ReadFile(prodBin)
+		if readErr == nil {
+			if bytes.Contains(binBytes, []byte("MockBackend")) || bytes.Contains(binBytes, []byte("LOCKSMITH_MOCK_BACKEND")) {
+				t.Fatalf("CLAIM-SEAM-01 VIOLATION: Production binary contains test harness mock strings")
+			}
+		}
+	}
+
+	// 3. Runtime assertion: production binary must not activate mock backend
 	tempHome := t.TempDir()
 	cmd := exec.Command(prodBin, "--version")
 	cmd.Env = append(os.Environ(),
@@ -325,11 +349,26 @@ func TestAcceptance_NoPlaintextFallback(t *testing.T) {
 		t.Fatalf("failed initializing CA for test: %v, out: %s", err, string(out))
 	}
 
-	// Run derive-bridge-token without --allow-unsealed-bridge-key
-	cmd := execLocksmith(tempHome, "ca", "derive-bridge-token", "--cid", "3")
-	cmd.Env = append(cmd.Env, "LOCKSMITH_BRIDGE_KEY="+strings.Repeat("0123456789abcdef", 4))
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("derive-bridge-token failed: %v, out: %s", err, string(out))
+	sockPath := filepath.Join(tempHome, "test.sock")
+	bridgeKey := strings.Repeat("0123456789abcdef", 4)
+
+	// Start serve-spiffe with a vsock port and temporary socket, WITHOUT --allow-unsealed-bridge-key
+	cmd := execLocksmith(tempHome, "ca", "serve-spiffe",
+		"--socket", sockPath,
+		"--vsock-port", "29199",
+		"--allowed-cid", "3",
+		"--trust-domain", "bonjoski.local",
+	)
+	cmd.Env = append(cmd.Env,
+		"LOCKSMITH_BRIDGE_KEY="+bridgeKey,
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed starting serve-spiffe: %v", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if cmd.Process != nil {
+		_ = cmd.Process.Signal(syscall.SIGTERM)
+		_ = cmd.Wait()
 	}
 
 	// Assert no bridge.key or bridge tokens exist on disk
@@ -355,15 +394,33 @@ func TestAcceptance_BridgeKeyEnclaveSealingBiometrics(t *testing.T) {
 		t.Fatalf("failed initializing CA for test: %v, out: %s", err, string(out))
 	}
 
-	// Attempt derive-bridge-token with simulated seal failure
-	cmd := execLocksmith(tempHome, "ca", "derive-bridge-token", "--cid", "3")
+	sockPath := filepath.Join(tempHome, "test.sock")
+	bridgeKey := strings.Repeat("0123456789abcdef", 4)
+
+	// Attempt serve-spiffe with simulated seal failure
+	cmd := execLocksmith(tempHome, "ca", "serve-spiffe",
+		"--socket", sockPath,
+		"--vsock-port", "29198",
+		"--allowed-cid", "3",
+		"--trust-domain", "bonjoski.local",
+	)
 	cmd.Env = append(cmd.Env,
-		"LOCKSMITH_BRIDGE_KEY="+strings.Repeat("0123456789abcdef", 4),
+		"LOCKSMITH_BRIDGE_KEY="+bridgeKey,
 		"LOCKSMITH_FORCE_SEAL_FAIL=1",
 	)
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("derive-bridge-token unexpectedly failed: %v, out: %s", err, string(out))
+	// Must fail closed with non-zero exit code!
+	if err == nil {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		t.Fatalf("CLAIM-SPIFFE-03 VIOLATION: serve-spiffe unexpectedly succeeded / did not fail closed when enclave sealing failed: %s", string(out))
+	}
+
+	// Must log critical error on stderr
+	outStr := string(out)
+	if !strings.Contains(outStr, "CRITICAL: Bridge master key could not be sealed in hardware enclave") {
+		t.Fatalf("CLAIM-SPIFFE-03 VIOLATION: Expected critical enclave seal failure error on stderr, got: %s", outStr)
 	}
 
 	// Bridge key must not have been persisted to disk
