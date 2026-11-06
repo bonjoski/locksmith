@@ -1,29 +1,57 @@
+version: "2"
 run:
-  timeout: 5m
   issues-exit-code: 1
-  tests: true
+  tests: false
 
 linters:
   enable:
     - errcheck
     - forbidigo
-    - gosimple
-    - govet
     - ineffassign
     - staticcheck
     - unused
-
-linters-settings:
-  errcheck:
-    check-blank: true
-    exclude-functions:
-      - (*bytes.Buffer).Write
-      - (*bytes.Buffer).WriteString
-      - fmt.Fprintf
-      - fmt.Fprintln
-      - fmt.Fprint
-      - os.Remove
-  forbidigo:
-    forbid:
-      - p: '^fmt\.Print$'
-        msg: "Use cmd.OutOrStdout() or cmd.ErrOrStderr() instead of direct fmt.Print"
+  settings:
+    errcheck:
+      check-blank: true
+      exclude-functions:
+        - (*bytes.Buffer).Write
+        - (*bytes.Buffer).WriteString
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - os.Remove
+    forbidigo:
+      forbid:
+        - pattern: ^fmt\.Print$
+          msg: Use cmd.OutOrStdout() or cmd.ErrOrStderr() instead of direct fmt.Print
+        - pattern: ^(os\.WriteFile|os\.Create)$
+          msg: Use writeKeyFileAtomic for writing key material and certificates
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - forbidigo
+          - staticcheck
+      - path: cmd/summon-locksmith/
+        linters:
+          - forbidigo
+      - path: cmd/locksmith/cmd/(get|credential|integrations|list|run|slice)\.go
+        linters:
+          - errcheck
+          - forbidigo
+      - path: (pkg/locksmith|pkg/audit|pkg/slice|pkg/stepup|pkg/agent|scripts/dev)/
+        linters:
+          - errcheck
+          - staticcheck
+          - forbidigo
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

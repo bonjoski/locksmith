@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -123,7 +124,7 @@ func applyDefaultLimitsAndKeys(cfg *ServerConfig) {
 
 func applyDefaultServerConfig(cfg *ServerConfig) error {
 	if cfg.CA == nil {
-		return errors.New("Root CA is required for SPIFFE Workload Server")
+		return errors.New("root CA is required for SPIFFE Workload Server")
 	}
 	if err := applyDefaultSocketPath(cfg); err != nil {
 		return err
@@ -340,7 +341,9 @@ func (ws *WorkloadServer) getIdentity(r *http.Request) (*CallerIdentity, error) 
 
 func (ws *WorkloadServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (ws *WorkloadServer) handleBundle(w http.ResponseWriter, r *http.Request) {
@@ -364,7 +367,10 @@ func (ws *WorkloadServer) handleBundle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (ws *WorkloadServer) parseSVIDTTL(r *http.Request) time.Duration {
@@ -424,7 +430,10 @@ func (ws *WorkloadServer) handleSVID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 // Start binds the Unix Domain Socket and begins serving requests.
@@ -446,7 +455,9 @@ func (ws *WorkloadServer) Start() error {
 
 	// Restrict permissions to user-owned 0600 (or 0660)
 	if err := os.Chmod(ws.cfg.SocketPath, 0600); err != nil {
-		_ = l.Close()
+		if closeErr := l.Close(); closeErr != nil {
+			return fmt.Errorf("failed to set socket permissions %s: %w (close error: %v)", ws.cfg.SocketPath, err, closeErr)
+		}
 		return fmt.Errorf("failed to set socket permissions %s: %w", ws.cfg.SocketPath, err)
 	}
 
@@ -455,7 +466,9 @@ func (ws *WorkloadServer) Start() error {
 	if ws.cfg.VsockPort > 0 {
 		vl, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", ws.cfg.VsockPort))
 		if err != nil {
-			_ = l.Close()
+			if closeErr := l.Close(); closeErr != nil {
+				return fmt.Errorf("failed to listen on vsock bridge port %d: %w (close error: %v)", ws.cfg.VsockPort, err, closeErr)
+			}
 			return fmt.Errorf("failed to listen on vsock bridge port %d: %w", ws.cfg.VsockPort, err)
 		}
 		ws.vsockListener = vl
@@ -464,7 +477,9 @@ func (ws *WorkloadServer) Start() error {
 			ConnContext: ws.httpServer.ConnContext,
 		}
 		go func() {
-			_ = ws.vsockServer.Serve(vl)
+			if serveErr := ws.vsockServer.Serve(vl); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+				log.Printf("vsock bridge server exited: %v", serveErr)
+			}
 		}()
 	}
 
