@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.7] - 2026-11-05
+
+### Security & Verification Hardening (GHSA-wfmr-rw42-3rv7 Measured Verification Closure)
+- **Fail-Closed Bridge Enclave Sealing in `serve-spiffe` [CLAIM-SPIFFE-03]:**
+  - Enforced that hardware enclave sealing failure during `serve-spiffe --vsock-port` aborts immediately with non-zero exit unless `--allow-unsealed-bridge-key` is explicitly supplied.
+- **Strict Symbol Table Production Seam Gate [CLAIM-SEAM-01]:**
+  - Hardened acceptance test to inspect production binaries via `go tool nm` and string tables, guaranteeing `MockBackend`, `MockCache`, and `initTestHarnessLocksmith` are absent and that tests fail on `v3.2.5`.
+- **Fails-Before Verification Against Intermediate Releases:**
+  - Upgraded `scripts/verify-fails-before.sh` to build and test intermediate release `v3.2.5`, verifying explicit test failures on vulnerable builds with assertion failure message matching.
+- **Bidirectional Behavioral Claim Traceability:**
+  - Upgraded `scripts/verify-claims.sh` to verify test function existence and assert active security assertions for 100% of claims.
+- **Parser Fuzz Invariant Verification:**
+  - Hardened `FuzzIsSovereignDomain` and `FuzzMatchPattern` with property-based invariant checks enforcing valid RFC 1035/5280 DNS label syntax, sovereign special-use suffixes, and exact non-wildcard identity matches.
+- **Zero-Tolerance Lint Gate & Clean Error Handling:**
+  - Migrated `.golangci.yml` to v2 schema, upgraded `golangci-lint` to `v2.9.0`, eliminated `|| true` from `make lint`, and resolved all 7 unchecked error returns across `pkg/spiffe` and `cmd/locksmith/cmd`.
+
 ## [3.2.6] - 2026-11-05
 
 ### Security & Hardening (GHSA-wfmr-rw42-3rv7 Hardening Closure)

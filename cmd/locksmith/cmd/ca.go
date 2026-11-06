@@ -209,8 +209,31 @@ func isBroadDomain(domain string) bool {
 		clean == "invalid" || strings.HasSuffix(clean, ".invalid")
 }
 
-func hasPublicTLD(domain string) bool {
-	return isSovereignDomain(domain) != nil
+func validateDNSLabelSyntax(cleanNoDot, domain string) error {
+	parts := strings.Split(cleanNoDot, ".")
+	for _, p := range parts {
+		if p == "" {
+			return fmt.Errorf("domain %q contains empty label", domain)
+		}
+		for _, r := range p {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+				return fmt.Errorf("domain %q contains invalid character %q", domain, r)
+			}
+		}
+		if strings.HasPrefix(p, "-") || strings.HasSuffix(p, "-") {
+			return fmt.Errorf("domain %q contains label starting or ending with hyphen", domain)
+		}
+	}
+	return nil
+}
+
+func hasSovereignSuffix(cleanNoDot string) bool {
+	for _, suffix := range sovereignSpecialUseSuffixes {
+		if cleanNoDot == suffix || strings.HasSuffix(cleanNoDot, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func isSovereignDomain(domain string) error {
@@ -221,18 +244,19 @@ func isSovereignDomain(domain string) error {
 	}
 
 	cleanNoDot := strings.TrimPrefix(clean, ".")
+	if cleanNoDot == "" {
+		return fmt.Errorf("invalid empty domain constraint %q", domain)
+	}
+
+	if err := validateDNSLabelSyntax(cleanNoDot, domain); err != nil {
+		return err
+	}
+
 	if cleanNoDot == "lan" || strings.HasSuffix(cleanNoDot, ".lan") {
 		return fmt.Errorf("domain %q uses .lan which is not an IETF sovereign reserved domain; use .local, .internal, or .home.arpa", domain)
 	}
 
-	matchesSuffix := false
-	for _, suffix := range sovereignSpecialUseSuffixes {
-		if cleanNoDot == suffix || strings.HasSuffix(cleanNoDot, "."+suffix) {
-			matchesSuffix = true
-			break
-		}
-	}
-	if !matchesSuffix {
+	if !hasSovereignSuffix(cleanNoDot) {
 		return fmt.Errorf("domain %q contains public or unreserved domain; must be localhost or have a sovereign special-use suffix (.localhost, .local, .internal, .home.arpa, .test, .example, .invalid)", domain)
 	}
 
@@ -241,7 +265,7 @@ func isSovereignDomain(domain string) error {
 
 func validateRootCriticalAndPathLen(cert *x509.Certificate) error {
 	if !cert.PermittedDNSDomainsCritical {
-		return errors.New("Name Constraints extension is not marked critical (RFC 5280)")
+		return errors.New("name constraints extension is not marked critical (RFC 5280)")
 	}
 	if !cert.MaxPathLenZero {
 		return errors.New("BasicConstraints MaxPathLenZero must be true to prevent subordinate CA issuance")
@@ -632,24 +656,24 @@ Use --spiffe to issue short-lived ephemeral SPIFFE X.509-SVIDs (with --ttl).`,
 		dualCertPath := filepath.Join(certsDir, fmt.Sprintf("%s-dual.crt", baseName))
 
 		// Write classical certs
-		if err := os.WriteFile(outCert, bundle.CertPEM, 0644); err != nil {
+		if err := writeKeyFileAtomic(outCert, bundle.CertPEM, 0644); err != nil {
 			return fmt.Errorf("failed to write certificate to %s: %w", outCert, err)
 		}
-		if err := os.WriteFile(outKey, bundle.KeyPEM, 0600); err != nil {
+		if err := writeKeyFileAtomic(outKey, bundle.KeyPEM, 0600); err != nil {
 			return fmt.Errorf("failed to write private key to %s: %w", outKey, err)
 		}
 
 		// Write PQC certs if generated
 		if len(bundle.PQCCertPEM) > 0 {
-			if err := os.WriteFile(pqcCertPath, bundle.PQCCertPEM, 0644); err != nil {
+			if err := writeKeyFileAtomic(pqcCertPath, bundle.PQCCertPEM, 0644); err != nil {
 				return fmt.Errorf("failed to write PQC certificate to %s: %w", pqcCertPath, err)
 			}
-			if err := os.WriteFile(pqcKeyPath, bundle.PQCKeyPEM, 0600); err != nil {
+			if err := writeKeyFileAtomic(pqcKeyPath, bundle.PQCKeyPEM, 0600); err != nil {
 				return fmt.Errorf("failed to write PQC private key to %s: %w", pqcKeyPath, err)
 			}
 		}
 		if len(bundle.DualCertPEM) > 0 {
-			if err := os.WriteFile(dualCertPath, bundle.DualCertPEM, 0644); err != nil {
+			if err := writeKeyFileAtomic(dualCertPath, bundle.DualCertPEM, 0644); err != nil {
 				return fmt.Errorf("failed to write dual certificate bundle to %s: %w", dualCertPath, err)
 			}
 		}
@@ -691,7 +715,7 @@ var caTrustCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rootCertPath := filepath.Join(getDefaultCADir(), "root-ca.crt")
 		if _, err := os.Stat(rootCertPath); os.IsNotExist(err) {
-			return fmt.Errorf("Root CA not found at %s. Run 'locksmith ca init' first", rootCertPath)
+			return fmt.Errorf("root CA not found at %s. Run 'locksmith ca init' first", rootCertPath)
 		}
 
 		if caUntrust {
@@ -934,25 +958,27 @@ func persistBridgeTokensToDisk(cmd *cobra.Command, ws *spiffe.WorkloadServer, ca
 	}
 }
 
-func saveAndLogBridgeSecrets(cmd *cobra.Command, ws *spiffe.WorkloadServer, allowedCIDs []uint32, vsockPort uint32, noPersist bool, allowUnsealed bool) {
+func saveAndLogBridgeSecrets(cmd *cobra.Command, ws *spiffe.WorkloadServer, allowedCIDs []uint32, vsockPort uint32, noPersist bool, allowUnsealed bool) error {
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   VSock Bridge: 127.0.0.1:%d (Allowed CIDs: %v)\n", vsockPort, allowedCIDs)
 	if noPersist {
-		return
+		return nil
 	}
 	caDir := getDefaultCADir()
 	if err := os.MkdirAll(caDir, 0700); err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  Failed to create CA directory %s: %v\n", caDir, err)
-		return
+		return fmt.Errorf("failed to create CA directory %s: %w", caDir, err)
 	}
 
 	if err := sealBridgeSecretsInEnclave(cmd, ws); err != nil {
 		if !allowUnsealed {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "⚠️  CRITICAL: Bridge master key could not be sealed in hardware enclave: %v\n", err)
-			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "   The bridge key is held only in daemon memory. To persist to disk, restart with --allow-unsealed-bridge-key.")
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "   Refusing to start daemon with unsealed bridge key. To persist unsealed to disk, restart with --allow-unsealed-bridge-key.")
+			return fmt.Errorf("bridge master key could not be sealed in hardware enclave: %w", err)
 		}
 	}
 	persistBridgeKeyToDisk(cmd, ws, caDir, allowUnsealed)
 	persistBridgeTokensToDisk(cmd, ws, caDir, allowedCIDs, allowUnsealed)
+	return nil
 }
 
 var caDeriveBridgeTokenCmd = &cobra.Command{
@@ -1055,7 +1081,9 @@ microservices, and Aegisbox microVMs with kernel-level peer attestation (Darwin 
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Trust Domain: %s\n", caServeTrustDomain)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Socket Path:  %s (0600)\n", ws.SocketPath())
 		if caServeVsockPort > 0 {
-			saveAndLogBridgeSecrets(cmd, ws, pol.AllowedCIDs, caServeVsockPort, caServeNoPersistBridgeKey, caAllowUnsealedBridgeKey || caAllowUnsealedDiskKeys)
+			if err := saveAndLogBridgeSecrets(cmd, ws, pol.AllowedCIDs, caServeVsockPort, caServeNoPersistBridgeKey, caAllowUnsealedBridgeKey || caAllowUnsealedDiskKeys); err != nil {
+				return err
+			}
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "   Rate Limit:   %.0f req/s per UID\n", caServeRateLimit)
 
@@ -1109,7 +1137,7 @@ func readCADiskFile(path string, required bool) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if required {
-			return nil, fmt.Errorf("Root CA file not found at %s. Please run 'locksmith ca init' first", path)
+			return nil, fmt.Errorf("root CA file not found at %s. Please run 'locksmith ca init' first", path)
 		}
 		return nil, nil
 	}

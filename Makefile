@@ -15,7 +15,7 @@ GOBIN ?= $(GOPATH)/bin
 export PATH := $(GOBIN):$(PATH)
 
 # Tool versions
-GOLANGCI_LINT_VERSION=v1.64.8
+GOLANGCI_LINT_VERSION=v2.9.0
 GOVULNCHECK_VERSION=v1.1.4
 GOSEC_VERSION=v2.22.11
 GITLEAKS_VERSION=v8.24.2
@@ -394,15 +394,18 @@ define install_if_missing
 endef
 
 lint: ## Run golangci-lint (installs if missing)
-	$(call install_if_missing,golangci-lint,go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
-	@if [ "$(shell echo $(GO_MAJOR_MINOR) | awk '{if ($$1 > 1.26) print "new"}')" = "new" ]; then \
-		echo "⚠️  Warning: Go $(GO_VERSION) detected. golangci-lint may have compatibility issues with Go 1.27+."; \
-		echo "   Non-fatal warning on Go 1.27+ until upstream golangci-lint release."; \
-		if [ -x "$(GOBIN)/golangci-lint" ]; then "$(GOBIN)/golangci-lint" run --build-tags locksmith_admin || true; else golangci-lint run --build-tags locksmith_admin || true; fi; \
-	else \
-		echo "Running golangci-lint..."; \
-		if [ -x "$(GOBIN)/golangci-lint" ]; then "$(GOBIN)/golangci-lint" run --build-tags locksmith_admin; else golangci-lint run --build-tags locksmith_admin; fi; \
+	@if [ ! -f $(GOBIN)/golangci-lint ]; then \
+		echo "Installing golangci-lint with Go 1.27 export format support..."; \
+		mkdir -p $(GOBIN); \
+		TMP_GCL=$$(mktemp -d); \
+		(cd "$$TMP_GCL" && go mod init gcl-build >/dev/null 2>&1 && \
+		 go get github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) >/dev/null 2>&1 && \
+		 go get golang.org/x/tools@latest >/dev/null 2>&1 && \
+		 go build -o $(GOBIN)/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint); \
+		rm -rf "$$TMP_GCL"; \
 	fi
+	@echo "Running golangci-lint..."
+	@if [ -x "$(GOBIN)/golangci-lint" ]; then "$(GOBIN)/golangci-lint" run --build-tags locksmith_admin; else golangci-lint run --build-tags locksmith_admin; fi
 
 govulncheck: ## Run govulncheck (installs if missing)
 	$(call install_if_missing,govulncheck,go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION))

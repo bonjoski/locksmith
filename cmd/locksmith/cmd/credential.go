@@ -82,13 +82,14 @@ func findGitGenericSecret(host string) (*locksmith.Secret, string) {
 }
 
 func findGitIntegrationSecret(host string) (*locksmith.Secret, string) {
-	if host == "github.com" {
+	switch host {
+	case "github.com":
 		key := "github/gh/token"
 		secret, err := ls.GetWithMetadata(key)
 		if err == nil && secret != nil && len(secret.Value) > 0 {
 			return secret, key
 		}
-	} else if host == "gitlab.com" {
+	case "gitlab.com":
 		key := "gitlab/glab/token"
 		secret, err := ls.GetWithMetadata(key)
 		if err == nil && secret != nil && len(secret.Value) > 0 {

@@ -1,6 +1,7 @@
 package spiffe
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,30 @@ func FuzzMatchPattern(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, pattern, rawID string) {
-		_ = matchPattern(pattern, rawID)
+		matched := matchPattern(pattern, rawID)
+
+		// Invariant 1: Identity match - identical pattern and target always matches
+		if pattern == rawID && !matched {
+			t.Fatalf("INVARIANT VIOLATION: identical pattern and ID did not match: %q vs %q", pattern, rawID)
+		}
+
+		// Invariant 2: Non-wildcard patterns match ONLY exact strings
+		if !strings.ContainsAny(pattern, "*?[\\]") {
+			if matched && pattern != rawID {
+				t.Fatalf("INVARIANT VIOLATION: non-wildcard pattern %q matched different ID %q", pattern, rawID)
+			}
+		}
+
+		// Invariant 3: Empty pattern never matches non-empty target
+		if pattern == "" && rawID != "" && matched {
+			t.Fatalf("INVARIANT VIOLATION: empty pattern matched non-empty ID %q", rawID)
+		}
+
+		// Invariant 4: Scheme boundary - spiffe:// patterns never match non-spiffe schemes
+		if strings.HasPrefix(pattern, "spiffe://") && !strings.Contains(pattern, "*") {
+			if matched && !strings.HasPrefix(rawID, "spiffe://") {
+				t.Fatalf("INVARIANT VIOLATION: spiffe:// pattern %q matched non-spiffe ID %q", pattern, rawID)
+			}
+		}
 	})
 }
