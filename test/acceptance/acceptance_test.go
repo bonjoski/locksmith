@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -367,7 +366,7 @@ func TestAcceptance_NoPlaintextFallback(t *testing.T) {
 	}
 	time.Sleep(300 * time.Millisecond)
 	if cmd.Process != nil {
-		_ = cmd.Process.Signal(syscall.SIGTERM)
+		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 	}
 
