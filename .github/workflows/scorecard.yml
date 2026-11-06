@@ -39,7 +39,7 @@ jobs:
       - name: Run analysis (attempt 1)
         id: scorecard_attempt_1
         continue-on-error: true
-        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.0
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
@@ -54,7 +54,7 @@ jobs:
         id: scorecard_attempt_2
         if: steps.scorecard_attempt_1.outcome == 'failure'
         continue-on-error: true
-        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.0
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
@@ -67,7 +67,7 @@ jobs:
       - name: Run analysis (attempt 3)
         if: steps.scorecard_attempt_1.outcome == 'failure' && steps.scorecard_attempt_2.outcome == 'failure'
         continue-on-error: true
-        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.0
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
