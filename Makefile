@@ -394,7 +394,16 @@ define install_if_missing
 endef
 
 lint: ## Run golangci-lint (installs if missing)
-	$(call install_if_missing,golangci-lint,go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
+	@if [ ! -f $(GOBIN)/golangci-lint ]; then \
+		echo "Installing golangci-lint with Go 1.27 export format support..."; \
+		mkdir -p $(GOBIN); \
+		TMP_GCL=$$(mktemp -d); \
+		(cd "$$TMP_GCL" && go mod init gcl-build >/dev/null 2>&1 && \
+		 go get github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) >/dev/null 2>&1 && \
+		 go get golang.org/x/tools@latest >/dev/null 2>&1 && \
+		 go build -o $(GOBIN)/golangci-lint github.com/golangci/golangci-lint/v2/cmd/golangci-lint); \
+		rm -rf "$$TMP_GCL"; \
+	fi
 	@echo "Running golangci-lint..."
 	@if [ -x "$(GOBIN)/golangci-lint" ]; then "$(GOBIN)/golangci-lint" run --build-tags locksmith_admin; else golangci-lint run --build-tags locksmith_admin; fi
 
