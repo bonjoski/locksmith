@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
-- fix(security): eliminate production test seam and close post-v3.2.5 advisory gaps (v3.2.6) (#115)
-- fix(security): resolve GHSA-wfmr-rw42-3rv7 residual issues and establish black-box acceptance testbed (v3.2.5) (#114)
-- Merge pull request #113 from bonjoski/fix/ghsa-wfmr-rw42-3rv7-gap-closure
-- test(spiffe): dynamically resolve runner UID and increase burst limit in concurrency test
-- fix(security): close GHSA-wfmr-rw42-3rv7 gaps and bump to v3.2.4
+- ci(deps): bump actions/setup-node from 4.4.0 to 7.1.0 (#107)
+- ci(deps): bump github/codeql-action/analyze from 4.37.9 to 4.39.1 (#105)
+- ci(deps): bump github/codeql-action/upload-sarif from 4.37.7 to 4.39.1 (#106)
+- ci(deps): bump ossf/scorecard-action from 2.4.4 to 2.5.0 (#108)
+- chore(deps-dev): bump vite (#111)
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
