@@ -207,10 +207,6 @@ func (l *Locksmith) auditLogWithOptions(opts Options, key string, outcome audit.
 	}
 }
 
-func (l *Locksmith) getSecret(key string) (*Secret, error) {
-	return l.getSecretWithOptions(key, l.Options)
-}
-
 func (l *Locksmith) getSecretWithOptions(key string, opts Options) (*Secret, error) {
 	secret, err := l.getSecretNoRotateWithOptions(key, opts)
 	if err != nil {

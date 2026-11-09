@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore(release): bump patch version to v3.2.9 and harden isolation
 - chore(release): bump dependencies, desktop UI, and version to v3.2.8
 - ci(deps): bump actions/setup-node from 4.4.0 to 7.1.0 (#107)
 - ci(deps): bump github/codeql-action/analyze from 4.37.9 to 4.39.1 (#105)
 - ci(deps): bump github/codeql-action/upload-sarif from 4.37.7 to 4.39.1 (#106)
-- ci(deps): bump ossf/scorecard-action from 2.4.4 to 2.5.0 (#108)
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

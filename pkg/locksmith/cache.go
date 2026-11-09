@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -110,10 +111,19 @@ func writeAtomicCacheFile(path string, payload []byte) error {
 		return err
 	}
 
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("failed renaming temporary cache file: %w", err)
+	var renameErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		renameErr = os.Rename(tmpPath, path)
+		if renameErr == nil {
+			return nil
+		}
+		if runtime.GOOS == "windows" {
+			time.Sleep(time.Duration(attempt*5+5) * time.Millisecond)
+			continue
+		}
+		break
 	}
-	return nil
+	return fmt.Errorf("failed renaming temporary cache file: %w", renameErr)
 }
 
 func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
@@ -137,17 +147,59 @@ func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
 	return writeAtomicCacheFile(path, encrypted)
 }
 
+func readCacheFileWithRetry(path string) ([]byte, error) {
+	var encrypted []byte
+	var readErr error
+	for attempt := 0; attempt < 10; attempt++ {
+		encrypted, readErr = os.ReadFile(path) // #nosec G304
+		if readErr == nil || os.IsNotExist(readErr) {
+			break
+		}
+		if runtime.GOOS == "windows" {
+			time.Sleep(time.Duration(attempt*5+5) * time.Millisecond)
+			continue
+		}
+		break
+	}
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return nil, nil
+		}
+		return nil, readErr
+	}
+	return encrypted, nil
+}
+
+func (c *DiskCache) decryptCachePayload(encrypted []byte) ([]byte, bool, error) {
+	data, err := c.decrypt(encrypted)
+	if err == nil {
+		return data, false, nil
+	}
+	if len(c.LegacyMasterKey) == 32 {
+		legacyData, legacyErr := c.decryptWithKey(encrypted, c.LegacyMasterKey)
+		if legacyErr == nil {
+			return legacyData, true, nil
+		}
+	}
+	return nil, false, fmt.Errorf("failed to decrypt cache item: %w", err)
+}
+
+func (c *DiskCache) migrateLegacyCache(path string, data []byte) {
+	newEncrypted, encErr := c.encrypt(data)
+	if encErr == nil {
+		defer slice.ExplicitBzero(newEncrypted)
+		_ = writeAtomicCacheFile(path, newEncrypted)
+	}
+}
+
 func (c *DiskCache) Get(key string) (*Secret, error) {
 	path, err := c.validatePath(key)
 	if err != nil {
 		return nil, err
 	}
 
-	encrypted, err := os.ReadFile(path) // #nosec G304
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
+	encrypted, err := readCacheFileWithRetry(path)
+	if err != nil || encrypted == nil {
 		return nil, err
 	}
 	defer func() {
@@ -156,21 +208,9 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 		}
 	}()
 
-	data, err := c.decrypt(encrypted)
-	var fromLegacy bool
+	data, fromLegacy, err := c.decryptCachePayload(encrypted)
 	if err != nil {
-		// If decryption with primary master key fails, attempt legacy key if available
-		if len(c.LegacyMasterKey) == 32 {
-			legacyData, legacyErr := c.decryptWithKey(encrypted, c.LegacyMasterKey)
-			if legacyErr == nil {
-				data = legacyData
-				fromLegacy = true
-			} else {
-				return nil, fmt.Errorf("failed to decrypt cache item: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("failed to decrypt cache item: %w", err)
-		}
+		return nil, err
 	}
 	defer func() {
 		for i := range data {
@@ -178,8 +218,7 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 		}
 	}()
 
-	_, err = os.Stat(path)
-	if err != nil {
+	if _, err = os.Stat(path); err != nil {
 		return nil, err
 	}
 
@@ -190,13 +229,7 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 
 	// Transparent auto-migration: if decrypted with legacy key, re-encrypt with user-bound key
 	if fromLegacy {
-		newEncrypted, encErr := c.encrypt(data)
-		if encErr == nil {
-			defer slice.ExplicitBzero(newEncrypted)
-			if migErr := writeAtomicCacheFile(path, newEncrypted); migErr != nil {
-				// Non-fatal cache auto-migration failure; decrypted secret remains valid
-			}
-		}
+		c.migrateLegacyCache(path, data)
 	}
 
 	return &secret, nil

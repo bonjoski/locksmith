@@ -394,7 +394,9 @@ func (ws *WorkloadServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(payload)
+	if _, err := w.Write(payload); err != nil {
+		return
+	}
 }
 
 func (ws *WorkloadServer) handleBundle(w http.ResponseWriter, r *http.Request) {
@@ -423,7 +425,9 @@ func (ws *WorkloadServer) handleBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(payload)
+	if _, err := w.Write(payload); err != nil {
+		return
+	}
 }
 
 func (ws *WorkloadServer) parseSVIDTTL(r *http.Request) time.Duration {
@@ -491,7 +495,9 @@ func (ws *WorkloadServer) handleSVID(w http.ResponseWriter, r *http.Request) {
 	defer ca.ZeroBytes(payload)
 
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(payload)
+	if _, err := w.Write(payload); err != nil {
+		return
+	}
 }
 
 // Start binds the Unix Domain Socket and begins serving requests.

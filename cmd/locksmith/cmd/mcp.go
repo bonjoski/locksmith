@@ -60,13 +60,6 @@ func (s *mcpVaultStore) Get(key string) ([]byte, error) {
 	return s.ls.GetWithOptions(key, opts)
 }
 
-// newMCPServer creates and configures a new MCP server for Locksmith.
-// Extracted to a helper function for testability.
-func newMCPServer(lsMcp *locksmith.Locksmith) *mcp.Server {
-	srv, _ := newMCPServerWithLeaseManager(lsMcp)
-	return srv
-}
-
 func newMCPServerWithLeaseManager(lsMcp *locksmith.Locksmith) (*mcp.Server, *locksmith.LeaseManager) {
 	lm := locksmith.NewLeaseManager(&mcpVaultStore{ls: lsMcp}, locksmith.LeaseManagerOptions{
 		DefaultTTL:        5 * time.Minute,
@@ -166,10 +159,15 @@ func handleCheckoutLease(lm *locksmith.LeaseManager, in CheckoutLeaseInput) (*Ch
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve caller process start time: %w", err)
 	}
-	exePath, _ := protocol.GetProcessExecutablePath(pid)
+	exePath, err := protocol.GetProcessExecutablePath(pid)
+	if err != nil {
+		exePath = ""
+	}
 	var exeHash string
 	if exePath != "" {
-		exeHash, _ = protocol.HashFile(exePath)
+		if h, err := protocol.HashFile(exePath); err == nil {
+			exeHash = h
+		}
 	}
 
 	peer := &protocol.PeerCredentials{

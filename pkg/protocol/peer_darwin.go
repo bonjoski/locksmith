@@ -99,7 +99,7 @@ func GetProcessExecutablePath(pid int) (string, error) {
 
 	buf := make([]byte, procPidPathInfoMaxSize)
 	ret, _, errno := unix.Syscall6(
-		unix.SYS_PROC_INFO,
+		unix.SYS_PROC_INFO, //nolint:staticcheck // direct syscall avoids CGO libSystem linkage
 		procInfoCallPidInfo,
 		uintptr(pid),
 		procPidPathInfo,
