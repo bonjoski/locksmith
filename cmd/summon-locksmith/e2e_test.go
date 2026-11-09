@@ -1,5 +1,5 @@
-//go:build locksmith_admin && darwin
-// +build locksmith_admin,darwin
+//go:build manual_test && locksmith_admin && darwin
+// +build manual_test,locksmith_admin,darwin
 
 package main
 

@@ -5,12 +5,15 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/slice"
 )
 
 type DiskCache struct {
@@ -42,19 +45,75 @@ func NewDiskCacheWithLegacy(masterKey []byte, legacyMasterKey []byte) (*DiskCach
 }
 
 func (c *DiskCache) validatePath(key string) (string, error) {
-	path := filepath.Join(c.Dir, filepath.Clean(key))
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	absDir, err := filepath.Abs(c.Dir)
-	if err != nil {
-		return "", err
-	}
-	if !strings.HasPrefix(absPath, absDir) {
+	if strings.TrimSpace(key) == "" || strings.ContainsRune(key, 0) {
 		return "", fmt.Errorf("security: path traversal attempt detected")
 	}
-	return path, nil
+	if strings.HasPrefix(key, "/") || strings.HasPrefix(key, "\\") || filepath.IsAbs(key) {
+		return "", fmt.Errorf("security: path traversal attempt detected")
+	}
+	for _, seg := range strings.FieldsFunc(key, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == "." || seg == ".." {
+			return "", fmt.Errorf("security: path traversal attempt detected")
+		}
+	}
+
+	cleanDir, err := filepath.Abs(filepath.Clean(c.Dir))
+	if err != nil {
+		return "", err
+	}
+	cleanFull, err := filepath.Abs(filepath.Join(cleanDir, filepath.Clean(key)))
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(cleanFull, cleanDir+string(filepath.Separator)) {
+		return "", fmt.Errorf("security: path traversal attempt detected")
+	}
+	return cleanFull, nil
+}
+
+func writeAndSyncTempFile(tmp *os.File, payload []byte) error {
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed setting 0600 permissions on temporary cache file: %w", err)
+	}
+	if _, err := tmp.Write(payload); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed writing temporary cache file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("failed syncing temporary cache file: %w", err)
+	}
+	return tmp.Close()
+}
+
+func writeAtomicCacheFile(path string, payload []byte) error {
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("security: refusing to overwrite symlink in cache")
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create cache subdirectory: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(dir, ".cache-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary cache file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = os.Remove(tmpPath)
+	}()
+
+	if err := writeAndSyncTempFile(tmp, payload); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("failed renaming temporary cache file: %w", err)
+	}
+	return nil
 }
 
 func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
@@ -67,29 +126,15 @@ func (c *DiskCache) Set(key string, secret Secret, ttl time.Duration) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		for i := range data {
-			data[i] = 0
-		}
-	}()
+	defer slice.ExplicitBzero(data)
 
 	encrypted, err := c.encrypt(data)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt cache item: %w", err)
 	}
-	defer func() {
-		for i := range encrypted {
-			encrypted[i] = 0
-		}
-	}()
+	defer slice.ExplicitBzero(encrypted)
 
-	// Create parent directories in case the key contains slashes
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create cache subdirectory: %w", err)
-	}
-
-	return os.WriteFile(path, encrypted, 0600)
+	return writeAtomicCacheFile(path, encrypted)
 }
 
 func (c *DiskCache) Get(key string) (*Secret, error) {
@@ -147,12 +192,10 @@ func (c *DiskCache) Get(key string) (*Secret, error) {
 	if fromLegacy {
 		newEncrypted, encErr := c.encrypt(data)
 		if encErr == nil {
-			defer func() {
-				for i := range newEncrypted {
-					newEncrypted[i] = 0
-				}
-			}()
-			_ = os.WriteFile(path, newEncrypted, 0600) // #nosec G306 - non-fatal cache auto-migration
+			defer slice.ExplicitBzero(newEncrypted)
+			if migErr := writeAtomicCacheFile(path, newEncrypted); migErr != nil {
+				// Non-fatal cache auto-migration failure; decrypted secret remains valid
+			}
 		}
 	}
 

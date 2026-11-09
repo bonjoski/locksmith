@@ -2,10 +2,13 @@ package locksmith
 
 import (
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,22 +29,31 @@ type ActiveLease struct {
 	ExpiresAt        time.Time `json:"expires_at"`
 	MaxUses          int       `json:"max_uses"`
 	UsesCount        int       `json:"uses_count"`
-	SessionTicketID  string    `json:"session_ticket_id,omitempty"`
+	SessionTicketID  string    `json:"-"`
 	Revoked          bool      `json:"revoked"`
 	cancelWatcher    func()
 }
 
 // LeaseManagerOptions configures the lease lifecycle parameters.
 type LeaseManagerOptions struct {
-	DefaultTTL     time.Duration
-	MaxTTL         time.Duration
-	WatchInterval  time.Duration
-	RequireBioAuth bool
+	DefaultTTL               time.Duration
+	MaxTTL                   time.Duration
+	WatchInterval            time.Duration
+	RequireBioAuth           bool
+	DisableAmbientEnv        bool
+	AllowBinaries            []string
+	DenyBinaries             []string
+	SpiffeRootCA             *x509.Certificate
+	RequireSpiffeAttestation bool
 }
 
 // SecretGetter abstracts the secret retrieval source (e.g. *Locksmith).
 type SecretGetter interface {
 	Get(key string) ([]byte, error)
+}
+
+type peerSecretGetter interface {
+	GetForPeer(key string, peer *protocol.PeerCredentials) ([]byte, error)
 }
 
 // LeaseManager orchestrates ephemeral secret leases, PID liveness monitoring,
@@ -74,6 +86,11 @@ func NewLeaseManager(store SecretGetter, opts ...LeaseManagerOptions) *LeaseMana
 			opt.WatchInterval = opts[0].WatchInterval
 		}
 		opt.RequireBioAuth = opts[0].RequireBioAuth
+		opt.DisableAmbientEnv = opts[0].DisableAmbientEnv
+		opt.AllowBinaries = append([]string(nil), opts[0].AllowBinaries...)
+		opt.DenyBinaries = append([]string(nil), opts[0].DenyBinaries...)
+		opt.SpiffeRootCA = opts[0].SpiffeRootCA
+		opt.RequireSpiffeAttestation = opts[0].RequireSpiffeAttestation
 	}
 
 	lm := &LeaseManager{
@@ -95,6 +112,52 @@ func generateLeaseID() (string, error) {
 	return "ls-lease-" + hex.EncodeToString(b), nil
 }
 
+func (lm *LeaseManager) verifySpiffeSVID(req *protocol.LeaseRequest) (bool, error) {
+	if req.SpiffeID == "" {
+		return false, nil
+	}
+	if req.SpiffeSVID == "" {
+		if lm.opts.RequireSpiffeAttestation || lm.opts.SpiffeRootCA != nil {
+			return false, errors.New("unattested spiffe_id rejected: cryptographic X.509-SVID required")
+		}
+		return false, nil
+	}
+	if lm.opts.SpiffeRootCA == nil {
+		return false, errors.New("spiffe_svid rejected: no SPIFFE Root CA configured")
+	}
+
+	block, _ := pem.Decode([]byte(req.SpiffeSVID))
+	if block == nil || block.Type != "CERTIFICATE" {
+		return false, errors.New("invalid spiffe_svid PEM block")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return false, fmt.Errorf("failed parsing spiffe_svid certificate: %w", err)
+	}
+
+	roots := x509.NewCertPool()
+	roots.AddCert(lm.opts.SpiffeRootCA)
+	if _, err := cert.Verify(x509.VerifyOptions{
+		Roots:       roots,
+		KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		CurrentTime: time.Now(),
+	}); err != nil {
+		return false, fmt.Errorf("spiffe_svid verification failed: %w", err)
+	}
+
+	matchedSAN := false
+	for _, u := range cert.URIs {
+		if u != nil && u.String() == req.SpiffeID {
+			matchedSAN = true
+			break
+		}
+	}
+	if !matchedSAN {
+		return false, fmt.Errorf("spiffe_svid URI SAN does not match requested spiffe_id %q", req.SpiffeID)
+	}
+	return true, nil
+}
+
 func normalizeSpiffeRequest(req *protocol.LeaseRequest, peer *protocol.PeerCredentials) {
 	if req.SpiffeID == "" {
 		return
@@ -104,7 +167,7 @@ func normalizeSpiffeRequest(req *protocol.LeaseRequest, peer *protocol.PeerCrede
 	} else if req.LeaseTTL < 60*time.Second {
 		req.LeaseTTL = 60 * time.Second
 	}
-	if peer != nil && req.ClientPID == 0 {
+	if peer != nil && req.ClientPID == 0 && req.ProcessStartTime == 0 {
 		req.ClientPID = peer.PID
 		req.ProcessStartTime = peer.StartTime
 	}
@@ -117,11 +180,24 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
 	}
 
+	spiffeAttested, svidErr := lm.verifySpiffeSVID(req)
+	if svidErr != nil {
+		lm.logLeaseDenied(req, peer, svidErr.Error())
+		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: svidErr.Error()}, nil
+	}
+
 	normalizeSpiffeRequest(req, peer)
 
-	if err := validatePeerCreds(req, peer); err != nil {
+	if err := validatePeerCreds(req, peer, spiffeAttested); err != nil {
 		lm.logLeaseDenied(req, peer, err.Error())
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
+	}
+
+	if peer != nil {
+		if err := CheckBinaryAccessForExecutable(peer.ExePath, peer.ExeHash, lm.opts.AllowBinaries, lm.opts.DenyBinaries); err != nil {
+			lm.logLeaseDenied(req, peer, err.Error())
+			return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
+		}
 	}
 
 	lm.mu.Lock()
@@ -139,7 +215,7 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 		}
 	}
 
-	secretBytes, err := lm.fetchSecret(req.SecretName)
+	secretBytes, err := lm.fetchSecret(req.SecretName, peer)
 	if err != nil {
 		lm.logLeaseDenied(req, peer, err.Error())
 		return &protocol.LeaseResponse{Status: protocol.StatusDenied, Error: err.Error()}, nil
@@ -210,31 +286,45 @@ func (lm *LeaseManager) RequestLease(req *protocol.LeaseRequest, peer *protocol.
 	}, nil
 }
 
-func validatePeerCreds(req *protocol.LeaseRequest, peer *protocol.PeerCredentials) error {
+func validateAttestedPeerCreds(req *protocol.LeaseRequest, peer *protocol.PeerCredentials) error {
+	if req.ClientPID > 0 && peer.PID > 0 && peer.PID != req.ClientPID {
+		return fmt.Errorf("peer PID spoofing detected: kernel PID %d != payload PID %d", peer.PID, req.ClientPID)
+	}
+	if req.ClientPID > 0 && peer.StartTime > 0 && req.ProcessStartTime > 0 && peer.StartTime != req.ProcessStartTime {
+		return fmt.Errorf("process start time mismatch: kernel %d != payload %d (possible PID recycling)", peer.StartTime, req.ProcessStartTime)
+	}
+	return nil
+}
+
+func validateUnattestedPeerCreds(req *protocol.LeaseRequest, peer *protocol.PeerCredentials) error {
+	if peer.PID <= 0 {
+		return errors.New("kernel peer PID required for unattested lease request")
+	}
+	if peer.PID != req.ClientPID {
+		return fmt.Errorf("peer PID spoofing detected: kernel PID %d != payload PID %d", peer.PID, req.ClientPID)
+	}
+	if peer.StartTime > 0 && peer.StartTime != req.ProcessStartTime {
+		return fmt.Errorf("process start time mismatch: kernel %d != payload %d (possible PID recycling)", peer.StartTime, req.ProcessStartTime)
+	}
+	return nil
+}
+
+func validatePeerCreds(req *protocol.LeaseRequest, peer *protocol.PeerCredentials, spiffeAttested bool) error {
 	if peer == nil {
 		return errors.New("peer credentials required")
 	}
 
-	// For SPIFFE workload identity requests (Aegisbox microVM / daemon):
-	if req.SpiffeID != "" {
-		// When SpiffeID is provided, ClientPID might be from within a guest or microVM.
-		if req.ClientPID > 0 && peer.PID == req.ClientPID {
-			if peer.StartTime > 0 && req.ProcessStartTime > 0 && peer.StartTime != req.ProcessStartTime {
-				return fmt.Errorf("process start time mismatch: kernel %d != payload %d (possible PID recycling)", peer.StartTime, req.ProcessStartTime)
-			}
-		}
-		return nil
+	if req.ClientBinaryHash != "" && peer.ExeHash != "" && !strings.EqualFold(req.ClientBinaryHash, peer.ExeHash) {
+		return fmt.Errorf("client binary hash mismatch: kernel %s != payload %s", peer.ExeHash, req.ClientBinaryHash)
 	}
 
-	// ADV-01: Peer PID validation (Kernel vs Payload)
-	if peer.PID != req.ClientPID {
-		return fmt.Errorf("peer PID spoofing detected: kernel PID %d != payload PID %d", peer.PID, req.ClientPID)
+	// Only cryptographically attested X.509-SVID requests may omit host PID/start-time binding
+	// (e.g. a verified microVM workload identity). Caller-supplied JSON SpiffeID fields over
+	// plain UDS MUST NEVER bypass kernel PID or start-time binding (LCK-03).
+	if spiffeAttested {
+		return validateAttestedPeerCreds(req, peer)
 	}
-	// ADV-02: PID Recycling protection via StartTime
-	if peer.StartTime > 0 && req.ProcessStartTime > 0 && peer.StartTime != req.ProcessStartTime {
-		return fmt.Errorf("process start time mismatch: kernel %d != payload %d (possible PID recycling)", peer.StartTime, req.ProcessStartTime)
-	}
-	return nil
+	return validateUnattestedPeerCreds(req, peer)
 }
 
 func (lm *LeaseManager) verifySessionTicket(ticketID, secretName string) error {
@@ -248,19 +338,36 @@ func (lm *LeaseManager) verifySessionTicket(ticketID, secretName string) error {
 	return nil
 }
 
-func (lm *LeaseManager) fetchSecret(secretName string) ([]byte, error) {
+func (lm *LeaseManager) fetchSecret(secretName string, peer *protocol.PeerCredentials) ([]byte, error) {
 	if lm.store != nil {
-		secretBytes, err := lm.store.Get(secretName)
-		if err == nil && len(secretBytes) > 0 {
+		var (
+			secretBytes []byte
+			err         error
+		)
+		if ps, ok := lm.store.(peerSecretGetter); ok {
+			secretBytes, err = ps.GetForPeer(secretName, peer)
+		} else {
+			secretBytes, err = lm.store.Get(secretName)
+		}
+		if err != nil {
+			if lm.opts.DisableAmbientEnv || strings.Contains(err.Error(), "access control") || strings.Contains(err.Error(), "allowed list") {
+				return nil, err
+			}
+		} else if len(secretBytes) > 0 {
 			return secretBytes, nil
 		}
 	}
-	// Ambient environment fallback for ambient secrets (e.g. GITHUB_TOKEN, OPENAI_API_KEY)
-	if val := os.Getenv(secretName); val != "" {
-		return []byte(val), nil
+	if !lm.opts.DisableAmbientEnv {
+		// Ambient environment fallback for ambient secrets when explicitly enabled (not MCP)
+		if val := os.Getenv(secretName); val != "" {
+			return []byte(val), nil
+		}
 	}
 	if lm.store == nil {
 		return nil, errors.New("locksmith secret store not configured")
+	}
+	if lm.opts.DisableAmbientEnv {
+		return nil, fmt.Errorf("secret %q not found in vault", secretName)
 	}
 	return nil, fmt.Errorf("secret %q not found in vault or ambient environment", secretName)
 }

@@ -33,16 +33,47 @@ Biometric authentication is strictly enforced for all tool calls.`,
 			return fmt.Errorf("failed to initialize locksmith: %w", err)
 		}
 
-		// 2. Initialize and Run MCP Server
-		server := newMCPServer(lsMcp)
+		// 2. Initialize and Run MCP Server with tracked LeaseManager
+		server, lm := newMCPServerWithLeaseManager(lsMcp)
+		defer func() {
+			_ = lm.Close()
+		}()
 		transport := &mcp.StdioTransport{}
 		return server.Run(context.Background(), transport)
 	},
 }
 
+type mcpVaultStore struct {
+	ls *locksmith.Locksmith
+}
+
+func (s *mcpVaultStore) Get(key string) ([]byte, error) {
+	if s == nil || s.ls == nil {
+		return nil, errors.New("locksmith store is not initialized")
+	}
+	// Derive a call-scoped Options value copy; NEVER mutate shared s.ls.Options (LCK-01)
+	opts := s.ls.Options
+	opts.RequireBiometrics = false
+	if opts.AuditIdentity == "" || opts.AuditIdentity == "mcp:tools" {
+		opts.AuditIdentity = "mcp:checkout_lease"
+	}
+	return s.ls.GetWithOptions(key, opts)
+}
+
 // newMCPServer creates and configures a new MCP server for Locksmith.
 // Extracted to a helper function for testability.
 func newMCPServer(lsMcp *locksmith.Locksmith) *mcp.Server {
+	srv, _ := newMCPServerWithLeaseManager(lsMcp)
+	return srv
+}
+
+func newMCPServerWithLeaseManager(lsMcp *locksmith.Locksmith) (*mcp.Server, *locksmith.LeaseManager) {
+	lm := locksmith.NewLeaseManager(&mcpVaultStore{ls: lsMcp}, locksmith.LeaseManagerOptions{
+		DefaultTTL:        5 * time.Minute,
+		MaxTTL:            5 * time.Minute,
+		DisableAmbientEnv: true,
+	})
+
 	server := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "locksmith",
@@ -84,19 +115,19 @@ func newMCPServer(lsMcp *locksmith.Locksmith) *mcp.Server {
 		return nil, names, nil
 	})
 
-	// locksmith_checkout_lease: headless non-interactive ephemeral lease checkout with SPIFFE workload identity
+	// locksmith_checkout_lease: headless non-interactive ephemeral lease checkout backed by LeaseManager
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "locksmith_checkout_lease",
-		Description: "Request a short-lived ephemeral lease (60-300s TTL) for ambient secrets (e.g. GITHUB_TOKEN, OPENAI_API_KEY) using SPIFFE workload identities non-interactively.",
+		Description: "Request a short-lived ephemeral lease (60-300s TTL) for vault secrets using SPIFFE workload identities non-interactively.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in CheckoutLeaseInput) (*mcp.CallToolResult, any, error) {
-		out, err := handleCheckoutLease(lsMcp, in)
+		out, err := handleCheckoutLease(lm, in)
 		if err != nil {
 			return nil, nil, err
 		}
 		return nil, out, nil
 	})
 
-	return server
+	return server, lm
 }
 
 type CheckoutLeaseInput struct {
@@ -115,7 +146,10 @@ type CheckoutLeaseOutput struct {
 	SpiffeID    string `json:"spiffe_id"`
 }
 
-func handleCheckoutLease(lsMcp *locksmith.Locksmith, in CheckoutLeaseInput) (*CheckoutLeaseOutput, error) {
+func handleCheckoutLease(lm *locksmith.LeaseManager, in CheckoutLeaseInput) (*CheckoutLeaseOutput, error) {
+	if lm == nil {
+		return nil, errors.New("lease manager is not initialized")
+	}
 	if strings.TrimSpace(in.SecretName) == "" {
 		return nil, errors.New("secret_name is required")
 	}
@@ -127,22 +161,52 @@ func handleCheckoutLease(lsMcp *locksmith.Locksmith, in CheckoutLeaseInput) (*Ch
 	}
 
 	ttlSec := normalizeLeaseTTL(in.TTLSeconds)
-	valBytes, err := fetchMCPSecretBytes(lsMcp, in.SecretName)
+	pid := os.Getpid()
+	startTime, err := protocol.GetProcessStartTime(pid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve caller process start time: %w", err)
+	}
+	exePath, _ := protocol.GetProcessExecutablePath(pid)
+	var exeHash string
+	if exePath != "" {
+		exeHash, _ = protocol.HashFile(exePath)
+	}
+
+	peer := &protocol.PeerCredentials{
+		PID:       pid,
+		UID:       uint32(os.Getuid()),
+		GID:       uint32(os.Getgid()),
+		StartTime: startTime,
+		ExePath:   exePath,
+		ExeHash:   exeHash,
+	}
+
+	resp, err := lm.RequestLease(&protocol.LeaseRequest{
+		Version:          protocol.ProtocolVersion,
+		Action:           protocol.ActionRequestLease,
+		ClientPID:        pid,
+		ProcessStartTime: startTime,
+		ClientBinaryHash: exeHash,
+		SecretName:       in.SecretName,
+		LeaseTTL:         time.Duration(ttlSec) * time.Second,
+		SpiffeID:         spiffeID,
+	}, peer)
 	if err != nil {
 		return nil, err
 	}
-
-	leaseID := fmt.Sprintf("ls-lease-mcp-%d", time.Now().UnixNano())
-	expiresAt := time.Now().Add(time.Duration(ttlSec) * time.Second)
+	if resp.Status != protocol.StatusGranted {
+		return nil, fmt.Errorf("lease checkout denied: %s", resp.Error)
+	}
+	defer resp.Zero()
 
 	return &CheckoutLeaseOutput{
-		Status:      string(protocol.StatusGranted),
-		LeaseID:     leaseID,
+		Status:      string(resp.Status),
+		LeaseID:     resp.LeaseID,
 		SecretName:  in.SecretName,
-		SecretValue: string(valBytes),
-		ExpiresAt:   expiresAt.UTC().Format(time.RFC3339),
-		TTLSeconds:  ttlSec,
-		SpiffeID:    spiffeID,
+		SecretValue: string(resp.SecretValue),
+		ExpiresAt:   resp.ExpiresAt.UTC().Format(time.RFC3339),
+		TTLSeconds:  int(resp.TTLSeconds),
+		SpiffeID:    resp.SpiffeID,
 	}, nil
 }
 
@@ -154,25 +218,6 @@ func normalizeLeaseTTL(ttlSec int) int {
 		return 60
 	}
 	return ttlSec
-}
-
-func fetchMCPSecretBytes(lsMcp *locksmith.Locksmith, secretName string) ([]byte, error) {
-	var valBytes []byte
-	var err error
-	if lsMcp != nil {
-		prevBio := lsMcp.Options.RequireBiometrics
-		lsMcp.Options.RequireBiometrics = false
-		valBytes, err = lsMcp.Get(secretName)
-		lsMcp.Options.RequireBiometrics = prevBio
-	}
-	if (err != nil || len(valBytes) == 0) && os.Getenv(secretName) != "" {
-		valBytes = []byte(os.Getenv(secretName))
-		err = nil
-	}
-	if err != nil && len(valBytes) == 0 {
-		return nil, fmt.Errorf("secret %q not found in vault or ambient environment", secretName)
-	}
-	return valBytes, nil
 }
 
 func init() {

@@ -1,7 +1,8 @@
 name: Dependabot auto-merge
 
-# Explicitly set top-level permissions to "read-all" as a safety baseline
-permissions: read-all
+# Explicitly set top-level permissions to minimal read-only safety baseline
+permissions:
+  contents: read
 
 on: pull_request
 
@@ -19,7 +20,8 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
       - name: Enable auto-merge for Dependabot PRs
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
         run: gh pr merge --auto --merge "$PR_URL"
         env:
-          PR_URL: ${{github.event.pull_request.html_url}}
-          GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

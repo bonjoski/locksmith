@@ -3,14 +3,22 @@
 package protocol
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
-	"strconv"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
+)
+
+const (
+	procInfoCallPidInfo    = 2    // PROC_INFO_CALL_PIDINFO
+	procPidPathInfo        = 11   // PROC_PIDPATHINFO
+	procPidPathInfoMaxSize = 4096 // PROC_PIDPATHINFO_MAXSIZE
 )
 
 func getSocketPeerCred(conn net.Conn) (pid int, uid uint32, gid uint32, err error) {
@@ -24,92 +32,99 @@ func getSocketPeerCred(conn net.Conn) (pid int, uid uint32, gid uint32, err erro
 		return 0, 0, 0, fmt.Errorf("peer: failed to get raw connection: %w", err)
 	}
 
+	var xucred *unix.Xucred
+	var credErr error
 	var peerPID int
-	var sysErr error
+	var pidErr error
 
 	err = rawConn.Control(func(fd uintptr) {
-		// SOL_LOCAL is 0, LOCAL_PEERPID is 0x002 on macOS
-		peerPID, sysErr = unix.GetsockoptInt(int(fd), 0, 0x002)
+		xucred, credErr = unix.GetsockoptXucred(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERCRED)
+		if credErr != nil {
+			return
+		}
+		peerPID, pidErr = unix.GetsockoptInt(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERPID)
 	})
-
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	if sysErr != nil {
-		return 0, 0, 0, fmt.Errorf("peer: getsockopt LOCAL_PEERPID failed: %w", sysErr)
+	if credErr != nil {
+		return 0, 0, 0, fmt.Errorf("peer: getsockopt LOCAL_PEERCRED failed: %w", credErr)
+	}
+	if pidErr != nil {
+		return 0, 0, 0, fmt.Errorf("peer: getsockopt LOCAL_PEERPID failed: %w", pidErr)
+	}
+	if peerPID <= 0 {
+		return 0, 0, 0, fmt.Errorf("peer: invalid peer pid %d", peerPID)
 	}
 
-	// On macOS, UID/GID can be derived from the process if needed, default to current UID
-	return int(peerPID), uint32(os.Getuid()), uint32(os.Getgid()), nil
+	expectedUID := uint32(os.Getuid())
+	if xucred.Uid != expectedUID {
+		return 0, 0, 0, fmt.Errorf("peer: unauthorized peer uid %d (expected %d)", xucred.Uid, expectedUID)
+	}
+
+	peerGID := uint32(os.Getgid())
+	if xucred.Ngroups > 0 {
+		peerGID = xucred.Groups[0]
+	}
+
+	return peerPID, xucred.Uid, peerGID, nil
 }
 
-// GetProcessStartTime queries Darwin process start time in unix epoch seconds.
+// GetProcessStartTime queries Darwin kernel process start timestamp in nanoseconds via sysctl.
 func GetProcessStartTime(pid int) (int64, error) {
 	if pid <= 0 {
 		return 0, fmt.Errorf("peer: invalid pid %d", pid)
 	}
 
-	// Query ps -o lstart for deterministic process creation timestamp
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "lstart=").Output()
+	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	if err != nil {
 		return 0, fmt.Errorf("peer: failed to inspect pid %d start time: %w", pid, err)
 	}
-
-	cleanStr := strings.TrimSpace(string(out))
-	if cleanStr == "" {
-		return 0, fmt.Errorf("peer: empty start time for pid %d", pid)
+	if kp == nil || int(kp.Proc.P_pid) != pid {
+		return 0, fmt.Errorf("peer: pid %d no longer exists", pid)
 	}
 
-	// Format: "Mon Jan 2 15:04:05 2006"
-	t, err := unixParseDate(cleanStr)
-	if err != nil {
-		// Fallback: return a synthetic non-zero hash of the raw string to detect changes
-		return int64(len(cleanStr)), nil
+	ns := kp.Proc.P_starttime.Nano()
+	if ns <= 0 {
+		return 0, fmt.Errorf("peer: invalid kernel start timestamp for pid %d", pid)
 	}
-	return t, nil
+	return ns, nil
 }
 
-func unixParseDate(s string) (int64, error) {
-	// Standard ps date format: "Mon Jan  2 15:04:05 2006"
-	// Parse with Go's time package
-	layouts := []string{
-		"Mon Jan  2 15:04:05 2006",
-		"Mon Jan 02 15:04:05 2006",
-		"Jan  2 15:04:05 2006",
-		"Jan 02 15:04:05 2006",
-	}
-	for _, l := range layouts {
-		if t, err := parseTime(l, s); err == nil {
-			return t, nil
-		}
-	}
-	return 0, fmt.Errorf("peer: unrecognized date format %q", s)
-}
-
-func parseTime(layout, val string) (int64, error) {
-	// Simple inline wrapper
-	loc := strings.Fields(val)
-	if len(loc) < 4 {
-		return 0, fmt.Errorf("malformed date string")
-	}
-	return 1, nil // Non-zero deterministic marker
-}
-
-// GetProcessExecutablePath resolves the binary path using proc_pidpath or lsof.
+// GetProcessExecutablePath queries the kernel vnode executable path via SYS_PROC_INFO (proc_pidpath).
 func GetProcessExecutablePath(pid int) (string, error) {
 	if pid <= 0 {
 		return "", fmt.Errorf("peer: invalid pid %d", pid)
 	}
 
-	// In Darwin, proc_pidpath can be invoked or ps -o comm=
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
-	if err != nil {
-		return "", fmt.Errorf("peer: failed to get executable path for pid %d: %w", pid, err)
+	buf := make([]byte, procPidPathInfoMaxSize)
+	ret, _, errno := unix.Syscall6(
+		unix.SYS_PROC_INFO,
+		procInfoCallPidInfo,
+		uintptr(pid),
+		procPidPathInfo,
+		0,
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(len(buf)),
+	)
+	runtime.KeepAlive(buf)
+	if errno != 0 {
+		return "", fmt.Errorf("peer: proc_pidpath failed for pid %d: %w", pid, errno)
 	}
 
-	exePath := strings.TrimSpace(string(out))
-	if exePath == "" {
-		return "", fmt.Errorf("peer: empty executable path for pid %d", pid)
+	raw := buf
+	if n := int(ret); n > 0 && n < len(buf) {
+		raw = buf[:n]
+	}
+	if nul := bytes.IndexByte(raw, 0); nul >= 0 {
+		raw = raw[:nul]
+	}
+	exePath := string(raw)
+	if exePath == "" || !strings.HasPrefix(exePath, "/") {
+		return "", fmt.Errorf("peer: proc_pidpath returned empty path for pid %d", pid)
+	}
+	if resolved, err := filepath.EvalSymlinks(exePath); err == nil && resolved != "" {
+		exePath = resolved
 	}
 	return exePath, nil
 }

@@ -45,6 +45,42 @@ var credentialCmd = &cobra.Command{
 	},
 }
 
+func validateCredentialComponent(field, val string, allowEmpty bool) error {
+	if val == "" {
+		if allowEmpty {
+			return nil
+		}
+		return fmt.Errorf("invalid git credential %s: value is required", field)
+	}
+	if strings.TrimSpace(val) == "" {
+		return fmt.Errorf("invalid git credential %s: value cannot be blank", field)
+	}
+	if strings.ContainsAny(val, "/\\\x00\r\n") || strings.Contains(val, "..") {
+		return fmt.Errorf("invalid git credential %s: contains forbidden path or control characters", field)
+	}
+	return nil
+}
+
+func validateCredentialOutputLine(field, val string) error {
+	if strings.ContainsAny(val, "\x00\r\n") {
+		return fmt.Errorf("refusing to emit git credential %s containing control characters", field)
+	}
+	return nil
+}
+
+func validateGitCredentialInputs(inputs map[string]string) error {
+	if err := validateCredentialComponent("protocol", inputs["protocol"], true); err != nil {
+		return err
+	}
+	if err := validateCredentialComponent("host", inputs["host"], false); err != nil {
+		return err
+	}
+	if err := validateCredentialComponent("username", inputs["username"], true); err != nil {
+		return err
+	}
+	return nil
+}
+
 func readGitCredentialInput(r io.Reader) (map[string]string, error) {
 	scanner := bufio.NewScanner(r)
 	inputs := make(map[string]string)
@@ -52,6 +88,9 @@ func readGitCredentialInput(r io.Reader) (map[string]string, error) {
 		line := scanner.Text()
 		if line == "" {
 			break
+		}
+		if strings.ContainsAny(line, "\x00\r\n") {
+			return nil, fmt.Errorf("invalid git credential line containing control characters")
 		}
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
@@ -122,12 +161,11 @@ func findGitSingleUserSecret(host string) (*locksmith.Secret, string, string) {
 }
 
 func handleGet(cmd *cobra.Command, inputs map[string]string) error {
+	if err := validateGitCredentialInputs(inputs); err != nil {
+		return err
+	}
 	host := inputs["host"]
 	username := inputs["username"]
-
-	if host == "" {
-		return nil
-	}
 
 	var matchedSecret *locksmith.Secret
 	var matchedKey string
@@ -170,6 +208,13 @@ func handleGet(cmd *cobra.Command, inputs map[string]string) error {
 		}
 	}
 
+	if err := validateCredentialOutputLine("username", outUsername); err != nil {
+		return err
+	}
+	if err := validateCredentialOutputLine("password", string(matchedSecret.Value)); err != nil {
+		return err
+	}
+
 	// Output to stdout
 	fmt.Fprintf(cmd.OutOrStdout(), "username=%s\n", outUsername)
 	fmt.Fprintf(cmd.OutOrStdout(), "password=%s\n", string(matchedSecret.Value))
@@ -177,12 +222,18 @@ func handleGet(cmd *cobra.Command, inputs map[string]string) error {
 }
 
 func handleStore(cmd *cobra.Command, inputs map[string]string) error {
+	if err := validateGitCredentialInputs(inputs); err != nil {
+		return err
+	}
 	protocol := inputs["protocol"]
 	host := inputs["host"]
 	username := inputs["username"]
 	password := inputs["password"]
 
-	if host == "" || password == "" {
+	if err := validateCredentialOutputLine("password", password); err != nil {
+		return err
+	}
+	if password == "" {
 		return nil
 	}
 
@@ -254,12 +305,11 @@ func handleStore(cmd *cobra.Command, inputs map[string]string) error {
 }
 
 func handleErase(cmd *cobra.Command, inputs map[string]string) error {
+	if err := validateGitCredentialInputs(inputs); err != nil {
+		return err
+	}
 	host := inputs["host"]
 	username := inputs["username"]
-
-	if host == "" {
-		return nil
-	}
 
 	keysToDelete := []string{}
 	if username != "" {

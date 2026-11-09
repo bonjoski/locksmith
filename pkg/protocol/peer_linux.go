@@ -36,6 +36,13 @@ func getSocketPeerCred(conn net.Conn) (pid int, uid uint32, gid uint32, err erro
 	if sysErr != nil {
 		return 0, 0, 0, fmt.Errorf("peer: getsockopt SO_PEERCRED failed: %w", sysErr)
 	}
+	if ucred == nil || ucred.Pid <= 0 {
+		return 0, 0, 0, fmt.Errorf("peer: invalid SO_PEERCRED pid")
+	}
+	expectedUID := uint32(os.Getuid())
+	if ucred.Uid != expectedUID {
+		return 0, 0, 0, fmt.Errorf("peer: unauthorized peer uid %d (expected %d)", ucred.Uid, expectedUID)
+	}
 
 	return int(ucred.Pid), ucred.Uid, ucred.Gid, nil
 }

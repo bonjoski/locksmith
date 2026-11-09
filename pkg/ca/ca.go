@@ -70,12 +70,25 @@ func validateDNSPermitted(cleanHost string, permittedDomains []string) error {
 
 func validateHostPermitted(caCert *x509.Certificate, host string) error {
 	if caCert == nil {
-		return nil
+		return errors.New("CA certificate is nil: cannot validate name constraints")
 	}
 	if ip := net.ParseIP(host); ip != nil {
 		return validateIPPermitted(ip, caCert.PermittedIPRanges)
 	}
 	return validateDNSPermitted(strings.ToLower(strings.TrimSpace(host)), caCert.PermittedDNSDomains)
+}
+
+func (c *CA) constraintCertificate() (*x509.Certificate, error) {
+	if c == nil {
+		return nil, errors.New("CA is nil")
+	}
+	if c.Certificate != nil {
+		return c.Certificate, nil
+	}
+	if c.PQCCertificate != nil {
+		return c.PQCCertificate, nil
+	}
+	return nil, errors.New("CA is not initialized: both classical and post-quantum certificates are nil")
 }
 
 // CA represents a dual-root Certificate Authority capable of signing both
@@ -370,8 +383,36 @@ func LoadDualCA(certPEM, keyPEM, pqcCertPEM, pqcKeyPEM []byte) (*CA, error) {
 	return classicalCA, nil
 }
 
+func (c *CA) validateAndPartitionHosts(hosts []string) ([]string, []net.IP, error) {
+	constraintCert, err := c.constraintCertificate()
+	if err != nil {
+		return nil, nil, err
+	}
+	var dnsNames []string
+	var ipAddresses []net.IP
+	for _, host := range hosts {
+		if err := validateHostPermitted(constraintCert, host); err != nil {
+			return nil, nil, err
+		}
+		if c.PQCCertificate != constraintCert {
+			if err := validateHostPermitted(c.PQCCertificate, host); err != nil {
+				return nil, nil, err
+			}
+		}
+		if ip := net.ParseIP(host); ip != nil {
+			ipAddresses = append(ipAddresses, ip)
+		} else {
+			dnsNames = append(dnsNames, host)
+		}
+	}
+	return dnsNames, ipAddresses, nil
+}
+
 // IssueServerCert signs a new TLS server certificate for the provided hostnames and IP addresses.
 func (c *CA) IssueServerCert(hosts []string, validityDays int) (certPEM, keyPEM []byte, err error) {
+	if c == nil || c.Certificate == nil || c.PrivateKey == nil {
+		return nil, nil, errors.New("classical Root CA is not initialized")
+	}
 	if len(hosts) == 0 {
 		hosts = []string{"127.0.0.1", "localhost"}
 	}
@@ -393,18 +434,9 @@ func (c *CA) IssueServerCert(hosts []string, validityDays int) (certPEM, keyPEM 
 	notBefore := time.Now().Add(-1 * time.Hour)
 	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
 
-	var dnsNames []string
-	var ipAddresses []net.IP
-
-	for _, host := range hosts {
-		if err := validateHostPermitted(c.Certificate, host); err != nil {
-			return nil, nil, err
-		}
-		if ip := net.ParseIP(host); ip != nil {
-			ipAddresses = append(ipAddresses, ip)
-		} else {
-			dnsNames = append(dnsNames, host)
-		}
+	dnsNames, ipAddresses, err := c.validateAndPartitionHosts(hosts)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	cn := hosts[0]
@@ -477,18 +509,9 @@ func (c *CA) IssuePQCServerCert(hosts []string, validityDays int) (certPEM, keyP
 	notBefore := time.Now().Add(-1 * time.Hour)
 	notAfter := notBefore.Add(time.Duration(validityDays) * 24 * time.Hour)
 
-	var dnsNames []string
-	var ipAddresses []net.IP
-
-	for _, host := range hosts {
-		if err := validateHostPermitted(c.Certificate, host); err != nil {
-			return nil, nil, err
-		}
-		if ip := net.ParseIP(host); ip != nil {
-			ipAddresses = append(ipAddresses, ip)
-		} else {
-			dnsNames = append(dnsNames, host)
-		}
+	dnsNames, ipAddresses, err := c.validateAndPartitionHosts(hosts)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	cn := hosts[0]
@@ -564,6 +587,9 @@ func (c *CA) IssueDualServerCert(hosts []string, validityDays int) (*IssuedCertB
 
 // IssueClientCert signs a new TLS client certificate for mutual TLS (mTLS) authentication.
 func (c *CA) IssueClientCert(clientIdentity string, validityDays int) (certPEM, keyPEM []byte, err error) {
+	if c == nil || c.Certificate == nil || c.PrivateKey == nil {
+		return nil, nil, errors.New("classical Root CA is not initialized")
+	}
 	if clientIdentity == "" {
 		clientIdentity = "agent-client"
 	}

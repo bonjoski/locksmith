@@ -3,14 +3,16 @@ package locksmith
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/audit"
 	"github.com/bonjoski/locksmith/v2/pkg/native"
+	"github.com/bonjoski/locksmith/v2/pkg/protocol"
 	"github.com/bonjoski/locksmith/v2/pkg/rotator"
+	"github.com/bonjoski/locksmith/v2/pkg/slice"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -30,6 +32,10 @@ type Options struct {
 	// Binary access control
 	AllowBinaries []string
 	DenyBinaries  []string
+	// Peer binary attestation for IPC callers (never evaluate os.Executable() when PeerInstalled is true)
+	PeerInstalled bool
+	PeerExePath   string
+	PeerExeHash   string
 	// Audit tracking options
 	AuditIdentity string
 	DisableAudit  bool
@@ -83,12 +89,13 @@ func (b *DefaultBackend) List(service string, useBiometrics bool, prompt string)
 }
 
 type Locksmith struct {
-	Service  string
-	Cache    Cache
-	Backend  Backend
-	Options  Options
-	Config   *Config // Loaded system configuration
-	Rotators *rotator.HandlerRegistry
+	Service     string
+	Cache       Cache
+	Backend     Backend
+	Options     Options
+	Config      *Config // Loaded system configuration
+	Rotators    *rotator.HandlerRegistry
+	unlockGroup singleflight.Group
 }
 
 func New() (*Locksmith, error) {
@@ -137,8 +144,31 @@ func NewWithCache(cache Cache) *Locksmith {
 
 // Set and Delete are implemented in admin.go and are compiled when locksmith_admin is enabled.
 
+func cloneSecret(s *Secret) *Secret {
+	if s == nil {
+		return nil
+	}
+	cp := *s
+	if s.Value != nil {
+		cp.Value = make([]byte, len(s.Value))
+		copy(cp.Value, s.Value)
+	}
+	if s.Metadata != nil {
+		cp.Metadata = make(map[string]string, len(s.Metadata))
+		for k, v := range s.Metadata {
+			cp.Metadata[k] = v
+		}
+	}
+	return &cp
+}
+
 func (l *Locksmith) Get(key string) ([]byte, error) {
-	secret, err := l.getSecret(key)
+	return l.GetWithOptions(key, l.Options)
+}
+
+// GetWithOptions retrieves a secret using call-scoped Options without mutating shared Locksmith state.
+func (l *Locksmith) GetWithOptions(key string, opts Options) ([]byte, error) {
+	secret, err := l.getSecretWithOptions(key, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -151,26 +181,40 @@ func (l *Locksmith) Get(key string) ([]byte, error) {
 	return valueCopy, nil
 }
 
-func (l *Locksmith) auditLog(key string, outcome audit.Outcome, reason string) {
-	if key == MasterKeyAccount || (l != nil && l.Options.DisableAudit) {
+// GetForPeer retrieves a secret on behalf of an IPC peer, enforcing binary access control
+// against the peer's kernel-attested executable path and SHA-256 hash rather than os.Executable().
+func (l *Locksmith) GetForPeer(key string, peer *protocol.PeerCredentials) ([]byte, error) {
+	opts := l.Options
+	opts.PeerInstalled = true
+	if peer != nil {
+		opts.PeerExePath = peer.ExePath
+		opts.PeerExeHash = peer.ExeHash
+	}
+	return l.GetWithOptions(key, opts)
+}
+
+func (l *Locksmith) auditLogWithOptions(opts Options, key string, outcome audit.Outcome, reason string) {
+	if key == MasterKeyAccount || opts.DisableAudit {
 		return
 	}
-	identity := ""
-	if l != nil {
-		identity = l.Options.AuditIdentity
-	}
-	_ = audit.Log(audit.Event{
+	if err := audit.Log(audit.Event{
 		SecretName: key,
-		Identity:   identity,
+		Identity:   opts.AuditIdentity,
 		Outcome:    outcome,
 		Reason:     reason,
-	})
+	}); err != nil {
+		return
+	}
 }
 
 func (l *Locksmith) getSecret(key string) (*Secret, error) {
-	secret, err := l.getSecretNoRotate(key)
+	return l.getSecretWithOptions(key, l.Options)
+}
+
+func (l *Locksmith) getSecretWithOptions(key string, opts Options) (*Secret, error) {
+	secret, err := l.getSecretNoRotateWithOptions(key, opts)
 	if err != nil {
-		l.auditLog(key, audit.OutcomeDenied, err.Error())
+		l.auditLogWithOptions(opts, key, audit.OutcomeDenied, err.Error())
 		return nil, err
 	}
 
@@ -183,21 +227,21 @@ func (l *Locksmith) getSecret(key string) (*Secret, error) {
 		if secret.SecretType != "" {
 			reason = fmt.Sprintf("Vault secret retrieved (type: %s)", secret.SecretType)
 		}
-		l.auditLog(key, audit.OutcomeGranted, reason)
+		l.auditLogWithOptions(opts, key, audit.OutcomeGranted, reason)
 		return secret, nil
 	}
 
-	return l.handleExpiredSecret(key, secret)
+	return l.handleExpiredSecretWithOptions(key, secret, opts)
 }
 
-func (l *Locksmith) handleExpiredSecret(key string, secret *Secret) (*Secret, error) {
+func (l *Locksmith) handleExpiredSecretWithOptions(key string, secret *Secret, opts Options) (*Secret, error) {
 	if NormalizeSecretType(secret.SecretType) != SecretTypeOAuthToken {
-		l.auditLog(key, audit.OutcomeGranted, "Vault secret retrieved (expired non-oauth)")
+		l.auditLogWithOptions(opts, key, audit.OutcomeGranted, "Vault secret retrieved (expired non-oauth)")
 		return secret, nil
 	}
 
 	if !l.hasRotationRuleForKey(key) {
-		l.auditLog(key, audit.OutcomeGranted, "Vault secret retrieved (expired, no rotation rule)")
+		l.auditLogWithOptions(opts, key, audit.OutcomeGranted, "Vault secret retrieved (expired, no rotation rule)")
 		return secret, nil
 	}
 
@@ -206,17 +250,17 @@ func (l *Locksmith) handleExpiredSecret(key string, secret *Secret) (*Secret, er
 		if strings.Contains(errMsg, "rotation unavailable in this compile profile") {
 			return secret, nil
 		}
-		l.auditLog(key, audit.OutcomeDenied, fmt.Sprintf("secret '%s' is expired and rotation failed: %v", key, err))
+		l.auditLogWithOptions(opts, key, audit.OutcomeDenied, fmt.Sprintf("secret '%s' is expired and rotation failed: %v", key, err))
 		return nil, fmt.Errorf("secret '%s' is expired and automatic oauth rotation failed: %w", key, err)
 	}
 
-	rotated, err := l.getSecretNoRotate(key)
+	rotated, err := l.getSecretNoRotateWithOptions(key, opts)
 	if err != nil {
-		l.auditLog(key, audit.OutcomeDenied, fmt.Sprintf("secret '%s' rotated but retrieval failed: %v", key, err))
+		l.auditLogWithOptions(opts, key, audit.OutcomeDenied, fmt.Sprintf("secret '%s' rotated but retrieval failed: %v", key, err))
 		return nil, fmt.Errorf("secret '%s' rotated but retrieval failed: %w", key, err)
 	}
 
-	l.auditLog(key, audit.OutcomeGranted, "Vault secret retrieved after auto-rotation")
+	l.auditLogWithOptions(opts, key, audit.OutcomeGranted, "Vault secret retrieved after auto-rotation")
 	return rotated, nil
 }
 
@@ -237,75 +281,76 @@ func (l *Locksmith) hasRotationRuleForKey(key string) bool {
 }
 
 func (l *Locksmith) getSecretNoRotate(key string) (*Secret, error) {
-	// 1. Check Cache (skip if BypassCache is true)
-	if !l.Options.BypassCache && !l.Cache.IsExpired(key, DefaultCacheTTL) {
-		secret, err := l.Cache.Get(key)
-		if err == nil && secret != nil {
-			return secret, nil
+	return l.getSecretNoRotateWithOptions(key, l.Options)
+}
+
+func (l *Locksmith) checkActiveCache(key string, opts Options) *Secret {
+	if !opts.BypassCache && l.Cache != nil && !l.Cache.IsExpired(key, DefaultCacheTTL) {
+		if secret, err := l.Cache.Get(key); err == nil && secret != nil {
+			return secret
 		}
 	}
+	return nil
+}
 
-	// 1a. OnlyCached mode: if cache is expired or missing, return nil without keychain fallback
-	// This prevents biometric prompts on every git operation when cache expires.
-	if l.Options.OnlyCached {
-		return nil, nil
+func (l *Locksmith) loadAndCacheSecret(key string, opts Options) (*Secret, error) {
+	if cached := l.checkActiveCache(key, opts); cached != nil {
+		return cloneSecret(cached), nil
 	}
 
-	// 1b. Binary whitelisting enforcement (moved to helper)
-	if err := l.checkBinaryAccess(); err != nil {
-		return nil, err
+	prompt := opts.getPrompt("Authentication required to access '%s'", key)
+	data, getErr := l.Backend.Get(l.Service, key, opts.RequireBiometrics, prompt)
+	if getErr != nil {
+		return nil, getErr
 	}
-
-	// 2. Fallback to Keychain (triggers biometric prompt if required)
-	prompt := l.Options.getPrompt("Authentication required to access '%s'", key)
-	data, err := l.Backend.Get(l.Service, key, l.Options.RequireBiometrics, prompt)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		for i := range data {
-			data[i] = 0
-		}
-	}()
+	defer slice.ExplicitBzero(data)
 
 	var secret Secret
-	if err := json.Unmarshal(data, &secret); err != nil {
-		return nil, err
+	if unmarshalErr := json.Unmarshal(data, &secret); unmarshalErr != nil {
+		return nil, unmarshalErr
 	}
 
-	// 3. Update Cache for subsequent calls (skip if BypassCache is true)
-	if !l.Options.BypassCache {
+	if !opts.BypassCache && l.Cache != nil {
 		_ = l.Cache.Set(key, secret, DefaultCacheTTL)
 	}
 
-	return &secret, nil
+	return cloneSecret(&secret), nil
+}
+
+func (l *Locksmith) getSecretNoRotateWithOptions(key string, opts Options) (*Secret, error) {
+	// 1. Check Cache (skip if BypassCache is true)
+	if cached := l.checkActiveCache(key, opts); cached != nil {
+		return cached, nil
+	}
+
+	// 1a. OnlyCached mode: if cache is expired or missing, return nil without keychain fallback
+	if opts.OnlyCached {
+		return nil, nil
+	}
+
+	// 1b. Binary whitelisting enforcement (evaluates peer binary if PeerInstalled/PeerExePath/PeerExeHash set)
+	if err := l.checkBinaryAccessWithOptions(opts); err != nil {
+		return nil, err
+	}
+
+	// 2. Coalesce concurrent cold-cache Keychain / MasterKey unlocks via singleflight
+	// so N=8 parallel subagents do not trigger 8 simultaneous Touch ID prompts.
+	flightKey := fmt.Sprintf("%s\x00%s\x00%t\x00%t", l.Service, key, opts.RequireBiometrics, opts.BypassCache)
+	val, err, _ := l.unlockGroup.Do(flightKey, func() (any, error) {
+		return l.loadAndCacheSecret(key, opts)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if val == nil {
+		return nil, nil
+	}
+	return cloneSecret(val.(*Secret)), nil
 }
 
 func (l *Locksmith) List() (map[string]SecretMetadata, error) {
-	// ... existing List implementation ...
-	// Binary whitelisting enforcement before listing
-	if l.Config != nil {
-		execPath, _ := os.Executable()
-		ac := l.Config.AccessControl
-		if len(ac.DenyBinaries) > 0 {
-			for _, d := range ac.DenyBinaries {
-				if execPath == d {
-					return nil, fmt.Errorf("binary %s is explicitly denied by access control", execPath)
-				}
-			}
-		}
-		if len(ac.AllowBinaries) > 0 {
-			allowed := false
-			for _, a := range ac.AllowBinaries {
-				if execPath == a {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return nil, fmt.Errorf("binary %s is not in allowed list", execPath)
-			}
-		}
+	if err := l.checkBinaryAccessWithOptions(l.Options); err != nil {
+		return nil, err
 	}
 
 	prompt := l.Options.getPrompt("Authentication required to list secrets", "")
@@ -359,7 +404,12 @@ func (l *Locksmith) ListKeyNames() ([]string, error) {
 
 // GetWithMetadata retrieves a secret with its metadata
 func (l *Locksmith) GetWithMetadata(key string) (*Secret, error) {
-	return l.getSecret(key)
+	return l.getSecretWithOptions(key, l.Options)
+}
+
+// GetWithMetadataAndOptions retrieves a secret with its metadata using call-scoped Options.
+func (l *Locksmith) GetWithMetadataAndOptions(key string, opts Options) (*Secret, error) {
+	return l.getSecretWithOptions(key, opts)
 }
 
 // ListWithMetadata returns all secrets with their metadata

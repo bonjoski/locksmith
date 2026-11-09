@@ -27,9 +27,15 @@ func TestMCPServer(t *testing.T) {
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(time.Hour),
 	}
+	mc.secrets["vault-clamped-key"] = locksmith.Secret{
+		Value:     []byte("sk-vault-clamped-test"),
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
 
 	// 2. Initialize MCP Server and Client
-	server := newMCPServer(lsTest)
+	server, lm := newMCPServerWithLeaseManager(lsTest)
+	defer lm.Close()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 
 	go func() {
@@ -70,11 +76,11 @@ func TestMCPServer(t *testing.T) {
 
 	// 6. Test Tool: locksmith_checkout_lease
 	t.Run("checkout_lease", func(t *testing.T) {
-		testCheckoutLease(t, ctx, session)
+		testCheckoutLease(t, ctx, session, lm)
 	})
 }
 
-func testCheckoutLease(t *testing.T, ctx context.Context, session *mcp.ClientSession) {
+func testCheckoutLease(t *testing.T, ctx context.Context, session *mcp.ClientSession, lm *locksmith.LeaseManager) {
 	// Test checkout from vault
 	res, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "locksmith_checkout_lease",
@@ -104,13 +110,16 @@ func testCheckoutLease(t *testing.T, ctx context.Context, session *mcp.ClientSes
 	if int(leaseData["ttl_seconds"].(float64)) != 120 {
 		t.Errorf("Expected ttl 120, got %v", leaseData["ttl_seconds"])
 	}
+	leaseID, _ := leaseData["lease_id"].(string)
+	if _, tracked := lm.GetLease(leaseID); !tracked {
+		t.Fatalf("Expected lease %q to be tracked in LeaseManager", leaseID)
+	}
 
-	// Test checkout ambient env secret
-	t.Setenv("OPENAI_API_KEY", "sk-mcp-ambient-test")
+	// Test TTL clamping (600 -> 300) for vault-backed secret
 	res2, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "locksmith_checkout_lease",
 		Arguments: map[string]any{
-			"secret_name": "OPENAI_API_KEY",
+			"secret_name": "vault-clamped-key",
 			"ttl_seconds": 600, // should clamp to 300
 		},
 	})
@@ -125,11 +134,24 @@ func testCheckoutLease(t *testing.T, ctx context.Context, session *mcp.ClientSes
 	if err := json.Unmarshal([]byte(text2), &leaseData2); err != nil {
 		t.Fatalf("Failed to parse json: %v", err)
 	}
-	if leaseData2["secret_value"] != "sk-mcp-ambient-test" {
-		t.Errorf("Expected 'sk-mcp-ambient-test', got '%v'", leaseData2["secret_value"])
+	if leaseData2["secret_value"] != "sk-vault-clamped-test" {
+		t.Errorf("Expected 'sk-vault-clamped-test', got '%v'", leaseData2["secret_value"])
 	}
 	if int(leaseData2["ttl_seconds"].(float64)) != 300 {
 		t.Errorf("Expected clamped ttl 300, got %v", leaseData2["ttl_seconds"])
+	}
+
+	// LCK-01: Arbitrary host environment variables MUST NOT be exfiltrated via MCP
+	t.Setenv("HOST_ENV_CANARY_SECRET", "env-exfil-should-be-blocked")
+	resEnv, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "locksmith_checkout_lease",
+		Arguments: map[string]any{
+			"secret_name": "HOST_ENV_CANARY_SECRET",
+			"ttl_seconds": 120,
+		},
+	})
+	if err == nil && !resEnv.IsError {
+		t.Fatalf("CRITICAL (LCK-01): MCP checkout_lease leaked host environment variable!")
 	}
 }
 

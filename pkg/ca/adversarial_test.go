@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -594,5 +595,94 @@ func TestAdversarial_RootCANameConstraintsEnforcement(t *testing.T) {
 		t.Fatalf("Expected non-empty cert PEM for broad domains")
 	}
 	t.Logf("PASS: Legitimate local domain issuance succeeded under Name Constraints.")
+}
+
+func assertLCK08ForbiddenServerHosts(t *testing.T, pqcOnlyCA *CA) {
+	t.Helper()
+	if _, _, err := pqcOnlyCA.IssuePQCServerCert([]string{"apple.com"}, 7); !errors.Is(err, ErrForbiddenHostname) {
+		t.Fatalf("CRITICAL (LCK-08): PQC-only CA permitted forbidden DNS apple.com (err=%v)", err)
+	}
+	if _, _, err := pqcOnlyCA.IssuePQCServerCert([]string{"8.8.8.8"}, 7); !errors.Is(err, ErrForbiddenHostname) {
+		t.Fatalf("CRITICAL (LCK-08): PQC-only CA permitted forbidden IP 8.8.8.8 (err=%v)", err)
+	}
+	certPEM, keyPEM, err := pqcOnlyCA.IssuePQCServerCert([]string{"localhost", "127.0.0.1"}, 7)
+	if err != nil {
+		t.Fatalf("expected localhost PQC cert issuance to succeed, got: %v", err)
+	}
+	ZeroBytes(keyPEM)
+	if len(certPEM) == 0 {
+		t.Fatal("expected non-empty PQC server certificate")
+	}
+}
+
+func assertLCK08SPIFFEDomains(t *testing.T, pqcOnlyCA *CA) *SPIFFEID {
+	t.Helper()
+	rogueID, err := ParseSPIFFEID("spiffe://evil.domain/ns/prod/sa/attacker")
+	if err != nil {
+		t.Fatalf("ParseSPIFFEID: %v", err)
+	}
+	if _, _, err := pqcOnlyCA.IssuePQCSVID(&SVIDProfile{SPIFFEID: rogueID, TTL: 10 * time.Minute}); err == nil || !strings.Contains(err.Error(), "not permitted by CA URI constraints") {
+		t.Fatalf("CRITICAL (LCK-08): PQC-only CA permitted foreign SPIFFE trust domain (err=%v)", err)
+	}
+
+	legitID, err := ParseSPIFFEID("spiffe://bonjoski.local/ns/dev/sa/worker")
+	if err != nil {
+		t.Fatalf("ParseSPIFFEID: %v", err)
+	}
+	svidCert, svidKey, err := pqcOnlyCA.IssuePQCSVID(&SVIDProfile{SPIFFEID: legitID, TTL: 10 * time.Minute})
+	if err != nil {
+		t.Fatalf("expected legitimate PQC SVID issuance to succeed, got: %v", err)
+	}
+	ZeroBytes(svidKey)
+	if len(svidCert) == 0 {
+		t.Fatal("expected non-empty PQC SVID certificate")
+	}
+	return legitID
+}
+
+func assertLCK08EmptyCAFailsClosed(t *testing.T, legitID *SPIFFEID) {
+	t.Helper()
+	emptyCA := &CA{}
+	if _, _, err := emptyCA.IssueServerCert([]string{"localhost"}, 1); err == nil {
+		t.Fatal("CRITICAL (LCK-08): empty CA failed open on IssueServerCert")
+	}
+	if _, _, err := emptyCA.IssuePQCServerCert([]string{"localhost"}, 1); err == nil {
+		t.Fatal("CRITICAL (LCK-08): empty CA failed open on IssuePQCServerCert")
+	}
+	if _, _, err := emptyCA.IssueClientCert("agent", 1); err == nil {
+		t.Fatal("CRITICAL (LCK-08): empty CA failed open on IssueClientCert")
+	}
+	if _, _, err := emptyCA.IssuePQCSVID(&SVIDProfile{SPIFFEID: legitID, TTL: 10 * time.Minute}); err == nil {
+		t.Fatal("CRITICAL (LCK-08): empty CA failed open on IssuePQCSVID")
+	}
+}
+
+// TestAdversarial_LCK08_PQCOnlyCAEnforcesNameAndSPIFFEConstraints verifies that
+// when classical c.Certificate is nil (PQC-only CA mode), Name Constraints and
+// SPIFFE trust domain bounds are still strictly enforced against c.PQCCertificate,
+// and an empty CA fails closed when both are nil.
+func TestAdversarial_LCK08_PQCOnlyCAEnforcesNameAndSPIFFEConstraints(t *testing.T) {
+	dualRoot, err := GenerateRootCAWithConfig(RootCAConfig{
+		CommonName:          "PQC Constraint Root",
+		Organization:        "Bonjoski",
+		ValidityDays:        30,
+		PermittedDNSDomains: []string{"localhost", ".localhost"},
+		PermittedURIDomains: []string{"bonjoski.local"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateRootCAWithConfig failed: %v", err)
+	}
+
+	pqcOnlyCA, err := LoadCA(dualRoot.PQCCertPEM, dualRoot.PQCKeyPEM)
+	if err != nil {
+		t.Fatalf("LoadCA(PQCCertPEM, PQCKeyPEM) failed: %v", err)
+	}
+	if pqcOnlyCA.Certificate != nil || pqcOnlyCA.PQCCertificate == nil {
+		t.Fatalf("expected PQC-only CA state (Certificate=nil, PQCCertificate!=nil)")
+	}
+
+	assertLCK08ForbiddenServerHosts(t, pqcOnlyCA)
+	legitID := assertLCK08SPIFFEDomains(t, pqcOnlyCA)
+	assertLCK08EmptyCAFailsClosed(t, legitID)
 }
 

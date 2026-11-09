@@ -6,8 +6,9 @@ on:
       - 'v*' # Triggers on version tags (e.g., v1.0.0)
   workflow_dispatch: # Allows manual trigger from Actions tab for testing
 
-# 1. Explicitly set top-level permissions to "read-all" as a safety baseline
-permissions: read-all
+# 1. Explicitly set top-level permissions to minimal read-only safety baseline
+permissions:
+  contents: read
 
 jobs:
   build-and-release:

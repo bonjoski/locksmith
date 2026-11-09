@@ -51,12 +51,9 @@ func GetPeerInfo(conn net.Conn) (*PeerCredentials, error) {
 		return nil, fmt.Errorf("peer: failed to get executable path for pid %d: %w", pid, err)
 	}
 
-	var exeHash string
-	if exePath != "" {
-		hash, err := HashFile(exePath)
-		if err == nil {
-			exeHash = hash
-		}
+	exeHash, err := HashFile(exePath)
+	if err != nil {
+		return nil, fmt.Errorf("peer: failed to hash executable %q for pid %d: %w", exePath, pid, err)
 	}
 
 	return &PeerCredentials{

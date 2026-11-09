@@ -346,3 +346,136 @@ func TestAdversarial_HMACBridgeCIDTransposition(t *testing.T) {
 func init() {
 	_ = errors.New("") // ensure errors import
 }
+
+// TestAdversarial_LCK05_EmptyRulesDenyArbitrarySPIFFEID verifies that when
+// Policy.Rules is empty, a caller can ONLY obtain its own DefaultSPIFFEIDForIdentity
+// and cannot mint arbitrary ?spiffe_id= identities.
+func TestAdversarial_LCK05_EmptyRulesDenyArbitrarySPIFFEID(t *testing.T) {
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.Rules = nil // len(Rules) == 0
+
+	caller := &spiffe.CallerIdentity{
+		PID:  1234,
+		UID:  uint32(os.Getuid()),
+		Comm: "worker-bin",
+	}
+
+	if _, err := pol.ResolveSPIFFEID(caller, "spiffe://bonjoski.local/ns/prod/sa/cluster-admin"); err == nil {
+		t.Fatal("CRITICAL (LCK-05): empty Policy.Rules permitted arbitrary ?spiffe_id= escalation!")
+	}
+
+	defaultID := pol.DefaultSPIFFEIDForIdentity(caller)
+	resolved, err := pol.ResolveSPIFFEID(caller, defaultID)
+	if err != nil {
+		t.Fatalf("expected caller's own default SPIFFE ID %q to be authorized, got: %v", defaultID, err)
+	}
+	if resolved.String() != defaultID {
+		t.Fatalf("expected %q, got %q", defaultID, resolved.String())
+	}
+}
+
+func floodCID3AndVerifyThrottled(t *testing.T, tcpClient *http.Client, tokenCID3 string) {
+	t.Helper()
+	cid3Throttled := false
+	for i := 0; i < 10; i++ {
+		req, reqErr := http.NewRequest("GET", "http://127.0.0.1:29299/v1/bundle", nil)
+		if reqErr != nil {
+			t.Fatalf("NewRequest CID3: %v", reqErr)
+		}
+		req.Header.Set("X-Locksmith-CID", "3")
+		req.Header.Set("X-Locksmith-Bridge-Token", tokenCID3)
+		resp, doErr := tcpClient.Do(req)
+		if doErr != nil {
+			t.Fatalf("CID3 request failed: %v", doErr)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusTooManyRequests {
+			cid3Throttled = true
+			break
+		}
+	}
+	if !cid3Throttled {
+		t.Fatal("expected CID=3 flood to trigger 429 rate limiting")
+	}
+}
+
+func verifyCID4AndUDSNotThrottled(t *testing.T, tcpClient *http.Client, tokenCID4, sockPath string) {
+	t.Helper()
+	reqCID4, err := http.NewRequest("GET", "http://127.0.0.1:29299/v1/bundle", nil)
+	if err != nil {
+		t.Fatalf("NewRequest CID4: %v", err)
+	}
+	reqCID4.Header.Set("X-Locksmith-CID", "4")
+	reqCID4.Header.Set("X-Locksmith-Bridge-Token", tokenCID4)
+	respCID4, err := tcpClient.Do(reqCID4)
+	if err != nil {
+		t.Fatalf("CID4 request failed: %v", err)
+	}
+	_ = respCID4.Body.Close()
+	if respCID4.StatusCode != http.StatusOK {
+		t.Fatalf("CRITICAL (LCK-05): noisy-neighbor CID=3 throttled independent microVM CID=4 (status=%d)!", respCID4.StatusCode)
+	}
+
+	udsClient := newUnixHTTPClient(sockPath)
+	respUDS, err := udsClient.Get("http://localhost/v1/bundle")
+	if err != nil {
+		t.Fatalf("UDS request failed: %v", err)
+	}
+	_ = respUDS.Body.Close()
+	if respUDS.StatusCode != http.StatusOK {
+		t.Fatalf("CRITICAL (LCK-05): microVM bridge flood throttled host UDS caller (status=%d)!", respUDS.StatusCode)
+	}
+}
+
+// TestAdversarial_LCK05_CompositeRateLimitIsolatesMicroVMCIDs verifies that
+// rate limiters are keyed by composite (Transport, UID, CID) so a noisy-neighbor
+// microVM (CID=3, UID=0) exhausting its burst cannot DoS microVM CID=4 (UID=0)
+// or host UDS workloads.
+func TestAdversarial_LCK05_CompositeRateLimitIsolatesMicroVMCIDs(t *testing.T) {
+	masterKey := []byte("0123456789abcdef0123456789abcdef")
+	deriver, err := spiffe.NewBridgeTokenDeriver(masterKey)
+	if err != nil {
+		t.Fatalf("NewBridgeTokenDeriver: %v", err)
+	}
+	tokenCID3 := deriver.DeriveToken(3)
+	tokenCID4 := deriver.DeriveToken(4)
+
+	rootCA, err := ca.GenerateRootCA("RateLimit Isolation CA", "Bonjoski", 30)
+	if err != nil {
+		t.Fatalf("GenerateRootCA: %v", err)
+	}
+
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.AllowedCIDs = []uint32{3, 4}
+
+	sockPath := shortTempSock(t, "cid-rl")
+	ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
+		SocketPath:  sockPath,
+		VsockPort:   29299,
+		BridgeKey:   masterKey,
+		TrustDomain: "bonjoski.local",
+		Policy:      pol,
+		CA:          rootCA,
+		RateLimit:   rate.Limit(1),
+		BurstLimit:  2,
+	})
+	if err != nil {
+		t.Fatalf("NewWorkloadServer: %v", err)
+	}
+
+	go func() {
+		if srvErr := ws.Start(); srvErr != nil && !errors.Is(srvErr, http.ErrServerClosed) {
+			t.Logf("server exit: %v", srvErr)
+		}
+	}()
+	defer func() {
+		if stopErr := ws.Stop(context.Background()); stopErr != nil {
+			t.Logf("server stop: %v", stopErr)
+		}
+	}()
+	time.Sleep(80 * time.Millisecond)
+
+	tcpClient := &http.Client{Timeout: 2 * time.Second}
+	floodCID3AndVerifyThrottled(t, tcpClient, tokenCID3)
+	verifyCID4AndUDSNotThrottled(t, tcpClient, tokenCID4, sockPath)
+}

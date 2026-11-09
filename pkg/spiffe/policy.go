@@ -255,8 +255,25 @@ func (p *Policy) checkBasicCallerAccess(identity *CallerIdentity) error {
 	return nil
 }
 
+// DefaultSPIFFEIDForIdentity computes the canonical default SPIFFE URI for an attested caller.
+func (p *Policy) DefaultSPIFFEIDForIdentity(identity *CallerIdentity) string {
+	if identity != nil && identity.VsockCID > 0 {
+		return fmt.Sprintf("spiffe://%s/vm/cid/%d", p.TrustDomain, identity.VsockCID)
+	}
+	comm := "app"
+	if identity != nil && identity.Comm != "" {
+		comm = identity.Comm
+	}
+	cleanComm := strings.ToLower(strings.ReplaceAll(comm, " ", "-"))
+	return fmt.Sprintf("spiffe://%s/workload/%s", p.TrustDomain, cleanComm)
+}
+
 func (p *Policy) authorizeAgainstRules(reqStr string, identity *CallerIdentity) error {
 	if len(p.Rules) == 0 {
+		defaultID := p.DefaultSPIFFEIDForIdentity(identity)
+		if reqStr != defaultID {
+			return fmt.Errorf("%w: requested SPIFFE ID %q requires an explicit policy rule (caller default is %q)", ErrUnauthorizedWorkload, reqStr, defaultID)
+		}
 		return nil
 	}
 	for _, rule := range p.Rules {
@@ -305,18 +322,7 @@ func (p *Policy) ResolveSPIFFEID(identity *CallerIdentity, requested string) (*c
 		return parsed, nil
 	}
 
-	var defaultURI string
-	if identity != nil && identity.VsockCID > 0 {
-		defaultURI = fmt.Sprintf("spiffe://%s/vm/cid/%d", p.TrustDomain, identity.VsockCID)
-	} else {
-		comm := "app"
-		if identity != nil && identity.Comm != "" {
-			comm = identity.Comm
-		}
-		cleanComm := strings.ToLower(strings.ReplaceAll(comm, " ", "-"))
-		defaultURI = fmt.Sprintf("spiffe://%s/workload/%s", p.TrustDomain, cleanComm)
-	}
-
+	defaultURI := p.DefaultSPIFFEIDForIdentity(identity)
 	parsed, err := ca.ParseSPIFFEID(defaultURI)
 	if err != nil {
 		return nil, err

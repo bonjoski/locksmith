@@ -312,21 +312,36 @@ func (c *CA) validateSVIDProfilePermitted(profile *SVIDProfile) error {
 	if profile == nil || profile.SPIFFEID == nil {
 		return ErrInvalidSPIFFEIDFormat
 	}
-	if c.Certificate != nil && len(c.Certificate.PermittedURIDomains) > 0 {
-		td := strings.ToLower(profile.SPIFFEID.TrustDomain())
-		matched := false
-		for _, permURI := range c.Certificate.PermittedURIDomains {
-			if td == strings.ToLower(permURI) {
-				matched = true
-				break
+	constraintCert, err := c.constraintCertificate()
+	if err != nil {
+		return err
+	}
+	checkCertConstraints := func(caCert *x509.Certificate) error {
+		if len(caCert.PermittedURIDomains) > 0 {
+			td := strings.ToLower(profile.SPIFFEID.TrustDomain())
+			matched := false
+			for _, permURI := range caCert.PermittedURIDomains {
+				if td == strings.ToLower(permURI) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return fmt.Errorf("security violation: SPIFFE trust domain %q is not permitted by CA URI constraints %v", td, caCert.PermittedURIDomains)
 			}
 		}
-		if !matched {
-			return fmt.Errorf("security violation: SPIFFE trust domain %q is not permitted by CA URI constraints %v", td, c.Certificate.PermittedURIDomains)
+		for _, host := range profile.Hosts {
+			if err := validateHostPermitted(caCert, host); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
-	for _, host := range profile.Hosts {
-		if err := validateHostPermitted(c.Certificate, host); err != nil {
+	if err := checkCertConstraints(constraintCert); err != nil {
+		return err
+	}
+	if c.PQCCertificate != nil && c.PQCCertificate != constraintCert {
+		if err := checkCertConstraints(c.PQCCertificate); err != nil {
 			return err
 		}
 	}

@@ -75,23 +75,24 @@ func (a *DarwinAttestor) AttestPeer(conn net.Conn) (*CallerIdentity, error) {
 	}
 
 	kp, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
-	if err != nil {
+	if err != nil || kp == nil || int(kp.Proc.P_pid) != pid {
 		return nil, fmt.Errorf("%w: process %d terminated (TOCTOU race): %v", ErrProcessIdentityRace, pid, err)
 	}
 
-	startTime := time.Unix(int64(kp.Proc.P_starttime.Sec), int64(kp.Proc.P_starttime.Usec)*1000)
+	startTime := time.Unix(0, kp.Proc.P_starttime.Nano())
 
 	var gid uint32
 	if xucred.Ngroups > 0 {
 		gid = xucred.Groups[0]
 	}
 
-	var exePath, exeHash string
-	if p, err := protocol.GetProcessExecutablePath(pid); err == nil {
-		exePath = p
-		if h, err := protocol.HashFile(exePath); err == nil {
-			exeHash = h
-		}
+	exePath, err := protocol.GetProcessExecutablePath(pid)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to resolve kernel executable path for pid %d: %v", ErrAttestationFailed, pid, err)
+	}
+	exeHash, err := protocol.HashFile(exePath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to hash executable %q for pid %d: %v", ErrAttestationFailed, exePath, pid, err)
 	}
 
 	return &CallerIdentity{

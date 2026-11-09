@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
+	"github.com/bonjoski/locksmith/v2/pkg/slice"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -52,6 +53,9 @@ var addCmd = &cobra.Command{
 			if host == "" {
 				return fmt.Errorf("git host cannot be empty")
 			}
+			if err := validateCredentialComponent("host", host, false); err != nil {
+				return err
+			}
 
 			// If username was not provided as arg, prompt for it
 			if len(args) < 2 {
@@ -62,6 +66,9 @@ var addCmd = &cobra.Command{
 				}
 				username = strings.TrimSpace(input)
 			}
+			if err := validateCredentialComponent("username", username, true); err != nil {
+				return err
+			}
 
 			// Prompt for password/token
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Password/Token: ")
@@ -71,6 +78,7 @@ var addCmd = &cobra.Command{
 					return fmt.Errorf("error reading password/token: %w", err)
 				}
 				password = string(secretInput)
+				slice.ExplicitBzero(secretInput)
 				_, _ = fmt.Fprintln(cmd.OutOrStdout())
 			} else {
 				input, err := reader.ReadString('\n')
@@ -82,6 +90,9 @@ var addCmd = &cobra.Command{
 			if password == "" {
 				return fmt.Errorf("password/token cannot be empty")
 			}
+			if err := validateCredentialOutputLine("password", password); err != nil {
+				return err
+			}
 
 			// Construct key
 			var key string
@@ -92,11 +103,7 @@ var addCmd = &cobra.Command{
 			}
 
 			secretBytes := []byte(password)
-			defer func() {
-				for i := range secretBytes {
-					secretBytes[i] = 0
-				}
-			}()
+			defer slice.ExplicitBzero(secretBytes)
 
 			metadata := map[string]string{
 				"protocol": "https",
@@ -241,9 +248,7 @@ var addCmd = &cobra.Command{
 		}
 
 		// Zero the secret bytes after use
-		for i := range secretBytes {
-			secretBytes[i] = 0
-		}
+		slice.ExplicitBzero(secretBytes)
 
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Successfully saved secret '%s' (expires at %v)\n", key, expiresAt.Format(time.RFC822))
 		return nil

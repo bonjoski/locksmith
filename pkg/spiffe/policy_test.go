@@ -24,16 +24,22 @@ func TestPolicy_Authorize(t *testing.T) {
 		Comm: "rogue-agent",
 	}
 
-	validID, _ := ca.ParseSPIFFEID("spiffe://bonjoski.local/ns/dev/sa/worker")
+	defaultID, _ := ca.ParseSPIFFEID("spiffe://bonjoski.local/workload/agent-worker")
+	arbitraryID, _ := ca.ParseSPIFFEID("spiffe://bonjoski.local/ns/dev/sa/worker")
 	foreignDomainID, _ := ca.ParseSPIFFEID("spiffe://corp.external/ns/dev/sa/worker")
 
-	// 1. Authorized identity + matching trust domain
-	if err := pol.Authorize(validIdentity, validID); err != nil {
-		t.Errorf("expected authorized, got: %v", err)
+	// 1. Authorized identity + caller's own default SPIFFE ID (no rules required)
+	if err := pol.Authorize(validIdentity, defaultID); err != nil {
+		t.Errorf("expected caller default SPIFFE ID to be authorized, got: %v", err)
+	}
+
+	// 1b. Arbitrary non-default SPIFFE ID rejected when Rules is empty (LCK-05)
+	if err := pol.Authorize(validIdentity, arbitraryID); err == nil {
+		t.Errorf("expected arbitrary non-default SPIFFE ID to be rejected when Rules is empty")
 	}
 
 	// 2. Unauthorized UID rejected
-	if err := pol.Authorize(invalidIdentity, validID); err == nil {
+	if err := pol.Authorize(invalidIdentity, defaultID); err == nil {
 		t.Errorf("expected unauthorized UID to be rejected, got nil")
 	}
 
@@ -43,7 +49,7 @@ func TestPolicy_Authorize(t *testing.T) {
 	}
 
 	// 4. Nil identity rejected
-	if err := pol.Authorize(nil, validID); err == nil {
+	if err := pol.Authorize(nil, defaultID); err == nil {
 		t.Errorf("expected nil identity to be rejected, got nil")
 	}
 
@@ -52,23 +58,28 @@ func TestPolicy_Authorize(t *testing.T) {
 		VsockCID: 3,
 		Comm:     "aegisbox-vm",
 	}
-	if err := pol.Authorize(vmIdentity, validID); err == nil {
+	vmDefaultCID3, _ := ca.ParseSPIFFEID("spiffe://bonjoski.local/vm/cid/3")
+	if err := pol.Authorize(vmIdentity, vmDefaultCID3); err == nil {
 		t.Errorf("expected vsock identity to be rejected when AllowedCIDs is empty")
 	}
 
-	// 6. AllowedCIDs permits explicit CID
+	// 6. AllowedCIDs permits explicit CID for its pinned default VM ID, rejects arbitrary ID
 	pol.AllowedCIDs = []uint32{3}
-	if err := pol.Authorize(vmIdentity, validID); err != nil {
-		t.Errorf("expected CID 3 to be authorized when AllowedCIDs=[3], got: %v", err)
+	if err := pol.Authorize(vmIdentity, vmDefaultCID3); err != nil {
+		t.Errorf("expected CID 3 to be authorized for pinned VM ID when AllowedCIDs=[3], got: %v", err)
+	}
+	if err := pol.Authorize(vmIdentity, arbitraryID); err == nil {
+		t.Errorf("expected CID 3 arbitrary ID to be rejected without explicit rule")
 	}
 
 	// 7. Restrictive AllowedCIDs mismatch
 	pol.AllowedCIDs = []uint32{4, 5}
-	if err := pol.Authorize(vmIdentity, validID); err == nil {
+	if err := pol.Authorize(vmIdentity, vmDefaultCID3); err == nil {
 		t.Errorf("expected CID 3 to be rejected when AllowedCIDs=[4,5]")
 	}
 	vmIdentity.VsockCID = 4
-	if err := pol.Authorize(vmIdentity, validID); err != nil {
+	vmDefaultCID4, _ := ca.ParseSPIFFEID("spiffe://bonjoski.local/vm/cid/4")
+	if err := pol.Authorize(vmIdentity, vmDefaultCID4); err != nil {
 		t.Errorf("expected CID 4 to be authorized, got: %v", err)
 	}
 }
@@ -81,16 +92,12 @@ func TestPolicy_ResolveSPIFFEID(t *testing.T) {
 		Comm: "my agent",
 	}
 
-	// Explicit request
-	resolved, err := pol.ResolveSPIFFEID(identity, "spiffe://bonjoski.local/ns/dev/sa/custom")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resolved.String() != "spiffe://bonjoski.local/ns/dev/sa/custom" {
-		t.Errorf("got %q, want custom ID", resolved.String())
+	// Arbitrary explicit request without rules must fail closed (LCK-05)
+	if _, err := pol.ResolveSPIFFEID(identity, "spiffe://bonjoski.local/ns/dev/sa/custom"); err == nil {
+		t.Fatalf("expected custom SPIFFE ID without policy rules to be rejected")
 	}
 
-	// Default fallback derivation from comm
+	// Default fallback derivation from comm succeeds without rules
 	defaultResolved, err := pol.ResolveSPIFFEID(identity, "")
 	if err != nil {
 		t.Fatalf("unexpected error resolving default ID: %v", err)
@@ -99,7 +106,7 @@ func TestPolicy_ResolveSPIFFEID(t *testing.T) {
 		t.Errorf("got %q, want spiffe://bonjoski.local/workload/my-agent", defaultResolved.String())
 	}
 
-	// Default fallback derivation for vsock microVM
+	// Default fallback derivation for vsock microVM succeeds without rules
 	pol.AllowedCIDs = []uint32{3}
 	vmIdentity := &spiffe.CallerIdentity{VsockCID: 3}
 	vmResolved, err := pol.ResolveSPIFFEID(vmIdentity, "")
@@ -108,6 +115,21 @@ func TestPolicy_ResolveSPIFFEID(t *testing.T) {
 	}
 	if vmResolved.String() != "spiffe://bonjoski.local/vm/cid/3" {
 		t.Errorf("got %q, want spiffe://bonjoski.local/vm/cid/3", vmResolved.String())
+	}
+
+	// Explicit custom request succeeds once an explicit PolicyRule authorizes it
+	pol.Rules = []spiffe.PolicyRule{
+		{
+			SPIFFEPattern: "spiffe://bonjoski.local/ns/dev/sa/*",
+			AllowedUIDs:   []uint32{uint32(os.Getuid())},
+		},
+	}
+	resolved, err := pol.ResolveSPIFFEID(identity, "spiffe://bonjoski.local/ns/dev/sa/custom")
+	if err != nil {
+		t.Fatalf("unexpected error with explicit rule: %v", err)
+	}
+	if resolved.String() != "spiffe://bonjoski.local/ns/dev/sa/custom" {
+		t.Errorf("got %q, want custom ID", resolved.String())
 	}
 }
 

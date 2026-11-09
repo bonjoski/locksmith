@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/slice"
 )
 
 // Current ETX Protocol Version
@@ -51,6 +53,7 @@ type LeaseRequest struct {
 	SessionTicket    string        `json:"session_ticket,omitempty"`
 	TargetCommand    string        `json:"target_command,omitempty"`
 	SpiffeID         string        `json:"spiffe_id,omitempty"`
+	SpiffeSVID       string        `json:"spiffe_svid,omitempty"`
 }
 
 // ValidateSpiffeID validates standard SPIFFE workload identity URI format.
@@ -84,24 +87,48 @@ func ValidateSpiffeID(spiffeID string) error {
 	return nil
 }
 
+func (r *LeaseRequest) validateSpiffeFields() error {
+	if err := ValidateSpiffeID(r.SpiffeID); err != nil {
+		return fmt.Errorf("etx: invalid spiffe_id: %w", err)
+	}
+	if r.ClientPID < 0 || r.ProcessStartTime < 0 {
+		return errors.New("etx: client_pid and process_start_time cannot be negative")
+	}
+	if r.ClientPID > 0 && r.ProcessStartTime <= 0 {
+		return errors.New("etx: process_start_time must be positive when client_pid is specified")
+	}
+	if r.ClientPID == 0 && r.ProcessStartTime > 0 {
+		return errors.New("etx: client_pid must be positive when process_start_time is specified")
+	}
+	return nil
+}
+
+func (r *LeaseRequest) validatePIDFields() error {
+	if r.SpiffeSVID != "" {
+		return errors.New("etx: spiffe_svid requires spiffe_id")
+	}
+	if r.ClientPID <= 0 {
+		return errors.New("etx: client_pid must be positive")
+	}
+	if r.ProcessStartTime <= 0 {
+		return errors.New("etx: process_start_time must be positive (used for PID recycling protection)")
+	}
+	return nil
+}
+
 // Validate checks the completeness and sanity of a lease request.
 func (r *LeaseRequest) Validate() error {
 	if r.Version != ProtocolVersion {
 		return fmt.Errorf("etx: unsupported protocol version %q, expected %q", r.Version, ProtocolVersion)
 	}
 
-	// For headless SPIFFE workloads (Aegisbox microVM / daemon), ClientPID can be 0 or omitted
-	// if a valid SpiffeID is provided.
 	if r.SpiffeID != "" {
-		if err := ValidateSpiffeID(r.SpiffeID); err != nil {
-			return fmt.Errorf("etx: invalid spiffe_id: %w", err)
+		if err := r.validateSpiffeFields(); err != nil {
+			return err
 		}
 	} else {
-		if r.ClientPID <= 0 {
-			return errors.New("etx: client_pid must be positive")
-		}
-		if r.ProcessStartTime <= 0 {
-			return errors.New("etx: process_start_time must be positive (used for PID recycling protection)")
+		if err := r.validatePIDFields(); err != nil {
+			return err
 		}
 	}
 
@@ -129,9 +156,7 @@ type LeaseResponse struct {
 // Zero securely wipes the secret value from memory.
 func (res *LeaseResponse) Zero() {
 	if res.SecretValue != nil {
-		for i := range res.SecretValue {
-			res.SecretValue[i] = 0
-		}
+		slice.ExplicitBzero(res.SecretValue)
 		res.SecretValue = nil
 	}
 }

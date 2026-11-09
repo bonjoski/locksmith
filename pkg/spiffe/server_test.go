@@ -129,9 +129,17 @@ func TestWorkloadServer_EndToEnd(t *testing.T) {
 	}
 
 	sockPath := shortTempSock(t, "workload")
+	pol := spiffe.NewDefaultPolicy("bonjoski.local")
+	pol.Rules = []spiffe.PolicyRule{
+		{
+			SPIFFEPattern: "spiffe://bonjoski.local/ns/dev/sa/test-agent",
+			AllowedUIDs:   []uint32{uint32(os.Getuid())},
+		},
+	}
 	ws, err := spiffe.NewWorkloadServer(spiffe.ServerConfig{
 		SocketPath:  sockPath,
 		TrustDomain: "bonjoski.local",
+		Policy:      pol,
 		CA:          rootCA,
 	})
 	if err != nil {

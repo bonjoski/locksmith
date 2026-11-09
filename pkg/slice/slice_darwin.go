@@ -56,12 +56,25 @@ func Create(secret []byte) (Slice, error) {
 			return nil, fmt.Errorf("failed closing write pipe: %w", err)
 		}
 	} else {
-		// For larger payloads exceeding typical pipe buffer sizes, write asynchronously
-		// and close writer as soon as all bytes are pushed.
-		go func() {
-			defer w.Close()
-			_, _ = w.Write(secret)
-		}()
+		// For larger payloads exceeding typical pipe buffer sizes, copy into an owned buffer,
+		// write asynchronously, zeroize the owned buffer upon completion, and close the writer.
+		buf := make([]byte, len(secret))
+		copy(buf, secret)
+		go func(owned []byte) {
+			defer ExplicitBzero(owned)
+			defer func() {
+				if closeErr := w.Close(); closeErr != nil {
+					return
+				}
+			}()
+			for total := 0; total < len(owned); {
+				n, writeErr := w.Write(owned[total:])
+				if writeErr != nil {
+					return
+				}
+				total += n
+			}
+		}(buf)
 	}
 
 	return &darwinSlice{reader: r}, nil

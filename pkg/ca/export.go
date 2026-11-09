@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/slice"
 )
 
 var (
@@ -86,9 +88,7 @@ func ResolveFilenames(format ExportFormat, name string) (*ExportedFiles, error) 
 
 // ZeroBytes explicitly clears memory buffers to prevent private key residue.
 func ZeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
+	slice.ExplicitBzero(b)
 }
 
 func checkSymlink(path string) error {
@@ -190,8 +190,9 @@ func (c *CA) ExportContainerCerts(opts *ExportOptions) error {
 		return fmt.Errorf("failed to issue SVID for container export: %w", err)
 	}
 
-	// Zeroize private key in memory once written to disk
+	// Zeroize private keys in memory once written to disk
 	defer ZeroBytes(bundle.KeyPEM)
+	defer ZeroBytes(bundle.PQCKeyPEM)
 
 	// Write Certificate (0644)
 	if err := WriteAtomicFile(opts.OutDir, files.CertName, bundle.CertPEM, 0644); err != nil {

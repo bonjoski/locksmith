@@ -30,8 +30,21 @@ const (
 	identityContextKey    contextKey = "caller_identity"
 	attestErrContextKey   contextKey = "attest_error"
 	tcpBridgeContextKey   contextKey = "tcp_bridge"
+	transportContextKey   contextKey = "transport"
 	bridgeDomainSeparator            = "locksmith-spiffe-bridge-v1:cid:"
+
+	defaultReadHeaderTimeout = 5 * time.Second
+	defaultReadTimeout       = 10 * time.Second
+	defaultWriteTimeout      = 10 * time.Second
+	defaultIdleTimeout       = 60 * time.Second
+	maxRateLimiterBuckets    = 4096
 )
+
+type rateLimitKey struct {
+	Transport string
+	UID       uint32
+	CID       uint32
+}
 
 // BridgeTokenDeriver computes and verifies domain-separated CID bridge tokens.
 type BridgeTokenDeriver struct {
@@ -92,7 +105,7 @@ type WorkloadServer struct {
 	httpServer    *http.Server
 	vsockServer   *http.Server
 	rateMu        sync.Mutex
-	rateLimiters  map[uint32]*rate.Limiter
+	rateLimiters  map[rateLimitKey]*rate.Limiter
 }
 
 func applyDefaultSocketPath(cfg *ServerConfig) error {
@@ -170,8 +183,10 @@ func (ws *WorkloadServer) connContext(ctx context.Context, c net.Conn) context.C
 	if c.RemoteAddr() != nil {
 		switch c.RemoteAddr().Network() {
 		case "tcp":
+			ctx = context.WithValue(ctx, transportContextKey, "tcp_bridge")
 			return context.WithValue(ctx, tcpBridgeContextKey, true)
 		case "vsock":
+			ctx = context.WithValue(ctx, transportContextKey, "vsock")
 			cid, err := parseVsockAddr(c.RemoteAddr())
 			if err != nil {
 				return context.WithValue(ctx, attestErrContextKey, fmt.Errorf("%w: %v", ErrAttestationFailed, err))
@@ -184,6 +199,7 @@ func (ws *WorkloadServer) connContext(ctx context.Context, c net.Conn) context.C
 			return context.WithValue(ctx, identityContextKey, identity)
 		}
 	}
+	ctx = context.WithValue(ctx, transportContextKey, "uds")
 	identity, err := ws.cfg.Attestor.AttestPeer(c)
 	if err != nil {
 		return context.WithValue(ctx, attestErrContextKey, err)
@@ -199,7 +215,7 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 
 	ws := &WorkloadServer{
 		cfg:          cfg,
-		rateLimiters: make(map[uint32]*rate.Limiter),
+		rateLimiters: make(map[rateLimitKey]*rate.Limiter),
 	}
 	if len(cfg.BridgeKey) > 0 {
 		deriver, err := NewBridgeTokenDeriver(cfg.BridgeKey)
@@ -215,8 +231,12 @@ func NewWorkloadServer(cfg ServerConfig) (*WorkloadServer, error) {
 	mux.HandleFunc("/v1/svid", ws.handleSVID)
 
 	ws.httpServer = &http.Server{
-		Handler:     mux,
-		ConnContext: ws.connContext,
+		Handler:           mux,
+		ConnContext:       ws.connContext,
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		ReadTimeout:       defaultReadTimeout,
+		WriteTimeout:      defaultWriteTimeout,
+		IdleTimeout:       defaultIdleTimeout,
 	}
 
 	return ws, nil
@@ -248,14 +268,42 @@ func (ws *WorkloadServer) BridgeToken() string {
 	return ws.cfg.BridgeToken
 }
 
-func (ws *WorkloadServer) checkRateLimit(uid uint32) bool {
+func (ws *WorkloadServer) resolveRateLimitKey(r *http.Request, identity *CallerIdentity) rateLimitKey {
+	transport := "uds"
+	if t, ok := r.Context().Value(transportContextKey).(string); ok && t != "" {
+		transport = t
+	} else if isBridge, _ := r.Context().Value(tcpBridgeContextKey).(bool); isBridge {
+		transport = "tcp_bridge"
+	} else if identity != nil && identity.VsockCID > 0 {
+		transport = "vsock"
+	}
+
+	var uid, cid uint32
+	if identity != nil {
+		uid = identity.UID
+		cid = identity.VsockCID
+	}
+	return rateLimitKey{
+		Transport: transport,
+		UID:       uid,
+		CID:       cid,
+	}
+}
+
+func (ws *WorkloadServer) checkRateLimit(key rateLimitKey) bool {
 	ws.rateMu.Lock()
 	defer ws.rateMu.Unlock()
 
-	limiter, exists := ws.rateLimiters[uid]
+	limiter, exists := ws.rateLimiters[key]
 	if !exists {
+		if len(ws.rateLimiters) >= maxRateLimiterBuckets {
+			for k := range ws.rateLimiters {
+				delete(ws.rateLimiters, k)
+				break
+			}
+		}
 		limiter = rate.NewLimiter(ws.cfg.RateLimit, ws.cfg.BurstLimit)
-		ws.rateLimiters[uid] = limiter
+		ws.rateLimiters[key] = limiter
 	}
 	return limiter.Allow()
 }
@@ -340,10 +388,13 @@ func (ws *WorkloadServer) getIdentity(r *http.Request) (*CallerIdentity, error) 
 }
 
 func (ws *WorkloadServer) handleHealth(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+	payload, err := json.Marshal(map[string]string{"status": "ok"})
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(payload)
 }
 
 func (ws *WorkloadServer) handleBundle(w http.ResponseWriter, r *http.Request) {
@@ -353,7 +404,7 @@ func (ws *WorkloadServer) handleBundle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !ws.checkRateLimit(identity.UID) {
+	if !ws.checkRateLimit(ws.resolveRateLimitKey(r, identity)) {
 		http.Error(w, ErrRateLimitExceeded.Error(), http.StatusTooManyRequests)
 		return
 	}
@@ -366,11 +417,13 @@ func (ws *WorkloadServer) handleBundle(w http.ResponseWriter, r *http.Request) {
 		resp.PQCCAPEM = string(ws.cfg.CA.PQCCertPEM)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	payload, err := json.Marshal(resp)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(payload)
 }
 
 func (ws *WorkloadServer) parseSVIDTTL(r *http.Request) time.Duration {
@@ -392,7 +445,7 @@ func (ws *WorkloadServer) handleSVID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !ws.checkRateLimit(identity.UID) {
+	if !ws.checkRateLimit(ws.resolveRateLimitKey(r, identity)) {
 		http.Error(w, ErrRateLimitExceeded.Error(), http.StatusTooManyRequests)
 		return
 	}
@@ -416,8 +469,9 @@ func (ws *WorkloadServer) handleSVID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Zeroize private key in memory once served
+	// Zeroize both classical and PQC private keys in memory once served
 	defer ca.ZeroBytes(bundle.KeyPEM)
+	defer ca.ZeroBytes(bundle.PQCKeyPEM)
 
 	fp := fmt.Sprintf("%x", sha256.Sum256(bundle.CertPEM))
 	resp := SVIDResponse{
@@ -429,11 +483,15 @@ func (ws *WorkloadServer) handleSVID(w http.ResponseWriter, r *http.Request) {
 		Fingerprint: fp,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	payload, err := json.Marshal(resp)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	defer ca.ZeroBytes(payload)
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(payload)
 }
 
 // Start binds the Unix Domain Socket and begins serving requests.
@@ -473,8 +531,12 @@ func (ws *WorkloadServer) Start() error {
 		}
 		ws.vsockListener = vl
 		ws.vsockServer = &http.Server{
-			Handler:     ws.httpServer.Handler,
-			ConnContext: ws.httpServer.ConnContext,
+			Handler:           ws.httpServer.Handler,
+			ConnContext:       ws.httpServer.ConnContext,
+			ReadHeaderTimeout: defaultReadHeaderTimeout,
+			ReadTimeout:       defaultReadTimeout,
+			WriteTimeout:      defaultWriteTimeout,
+			IdleTimeout:       defaultIdleTimeout,
 		}
 		go func() {
 			if serveErr := ws.vsockServer.Serve(vl); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {

@@ -2,7 +2,10 @@ package protocol_test
 
 import (
 	"bytes"
+	"fmt"
+	"net"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -160,4 +163,108 @@ func TestAdversarial_PayloadExhaustion(t *testing.T) {
 		t.Fatalf("length mismatch")
 	}
 	t.Logf("PASS: Large payload handled without panics or memory corruption")
+}
+
+func assertLCK04PeerFields(t *testing.T, peer *protocol.PeerCredentials) {
+	t.Helper()
+	if peer.PID != os.Getpid() {
+		t.Fatalf("expected peer PID %d, got %d", os.Getpid(), peer.PID)
+	}
+	if peer.UID != uint32(os.Getuid()) {
+		t.Fatalf("expected peer UID %d, got %d", os.Getuid(), peer.UID)
+	}
+	if peer.StartTime <= 1 {
+		t.Fatalf("CRITICAL (LCK-04): GetPeerInfo returned hardcoded/invalid StartTime=%d", peer.StartTime)
+	}
+	if runtime.GOOS == "darwin" && peer.StartTime < 1_000_000_000_000_000_000 {
+		t.Fatalf("CRITICAL (LCK-04): Darwin StartTime=%d is not a valid nanosecond epoch timestamp", peer.StartTime)
+	}
+	if !strings.HasPrefix(peer.ExePath, "/") {
+		t.Fatalf("CRITICAL (LCK-04): expected absolute kernel executable path, got %q", peer.ExePath)
+	}
+	if !strings.HasPrefix(peer.ExeHash, "sha256:") || len(peer.ExeHash) != len("sha256:")+64 {
+		t.Fatalf("CRITICAL (LCK-04): expected valid sha256 ExeHash, got %q", peer.ExeHash)
+	}
+}
+
+func assertLCK04InvalidPIDs(t *testing.T) {
+	t.Helper()
+	if _, err := protocol.GetProcessStartTime(-1); err == nil {
+		t.Fatal("expected error for negative PID in GetProcessStartTime")
+	}
+	if _, err := protocol.GetProcessStartTime(99999999); err == nil {
+		t.Fatal("expected error for non-existent PID in GetProcessStartTime")
+	}
+	if _, err := protocol.GetProcessExecutablePath(99999999); err == nil {
+		t.Fatal("expected error for non-existent PID in GetProcessExecutablePath")
+	}
+}
+
+// TestAdversarial_LCK04_KernelPeerInspectionNoPS verifies that Unix socket peer
+// inspection queries kernel structures directly (LOCAL_PEERCRED/LOCAL_PEERPID,
+// SysctlKinfoProc, SYS_PROC_INFO / procfs) rather than spawning external `ps`
+// or returning hardcoded placeholder timestamps.
+func TestAdversarial_LCK04_KernelPeerInspectionNoPS(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("kernel UDS peer credential inspection test applies to darwin/linux")
+	}
+
+	sockPath := fmt.Sprintf("/tmp/ls-lck04-%d-%d.sock", os.Getpid(), time.Now().UnixNano()%100000)
+	defer func() {
+		if rmErr := os.Remove(sockPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			t.Logf("remove socket: %v", rmErr)
+		}
+	}()
+
+	ln, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatalf("listen unix: %v", err)
+	}
+	defer func() {
+		if closeErr := ln.Close(); closeErr != nil {
+			t.Logf("listener close: %v", closeErr)
+		}
+	}()
+
+	peerCh := make(chan *protocol.PeerCredentials, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		srvConn, acceptErr := ln.Accept()
+		if acceptErr != nil {
+			errCh <- acceptErr
+			return
+		}
+		defer func() {
+			if cErr := srvConn.Close(); cErr != nil {
+				t.Logf("srvConn close: %v", cErr)
+			}
+		}()
+		info, pErr := protocol.GetPeerInfo(srvConn)
+		if pErr != nil {
+			errCh <- pErr
+			return
+		}
+		peerCh <- info
+	}()
+
+	clientConn, err := net.Dial("unix", sockPath)
+	if err != nil {
+		t.Fatalf("dial unix: %v", err)
+	}
+	defer func() {
+		if cErr := clientConn.Close(); cErr != nil {
+			t.Logf("clientConn close: %v", cErr)
+		}
+	}()
+
+	select {
+	case pErr := <-errCh:
+		t.Fatalf("GetPeerInfo failed: %v", pErr)
+	case peer := <-peerCh:
+		assertLCK04PeerFields(t, peer)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for GetPeerInfo")
+	}
+
+	assertLCK04InvalidPIDs(t)
 }

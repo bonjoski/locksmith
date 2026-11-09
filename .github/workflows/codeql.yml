@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 # Set strict permissions at the top level
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   analyze:
@@ -37,7 +38,7 @@ jobs:
           cache: true
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: c-cpp, go  # Analyze both C/C++ (CGO) and Go code
 
