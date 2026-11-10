@@ -1,11 +1,13 @@
 package locksmith
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -221,11 +223,72 @@ func assertLCK03LeaseAndListRedaction(t *testing.T, sendJSON func(map[string]any
 	}
 }
 
+func makeJSONSocketSender(t *testing.T, sockPath string) func(map[string]any) []byte {
+	t.Helper()
+	return func(payload map[string]any) []byte {
+		t.Helper()
+		conn, dialErr := net.Dial("unix", sockPath)
+		if dialErr != nil {
+			t.Fatalf("dial socket: %v", dialErr)
+		}
+		defer func() {
+			if cErr := conn.Close(); cErr != nil {
+				t.Logf("conn close: %v", cErr)
+			}
+		}()
+		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+		raw, mErr := json.Marshal(payload)
+		if mErr != nil {
+			t.Fatalf("marshal request: %v", mErr)
+		}
+		if _, wErr := conn.Write(raw); wErr != nil {
+			t.Fatalf("write request: %v", wErr)
+		}
+		reader := bufio.NewReader(conn)
+		line, rErr := reader.ReadBytes('\n')
+		if rErr != nil && !errors.Is(rErr, io.EOF) {
+			t.Fatalf("read response: %v", rErr)
+		}
+		return bytes.TrimSpace(line)
+	}
+}
+
+func startLCK03Daemon(t *testing.T, lm *LeaseManager, sockPath string, pub ed25519.PublicKey) func() {
+	t.Helper()
+	server := NewDaemonServer(lm, sockPath)
+	server.StepUpPublicKey = pub
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		if srvErr := server.ListenAndServe(ctx); srvErr != nil {
+			t.Logf("daemon exit: %v", srvErr)
+		}
+	}()
+
+	for i := 0; i < 30; i++ {
+		c, dialErr := net.Dial("unix", sockPath)
+		if dialErr == nil {
+			_ = c.Close()
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return func() {
+		cancel()
+		_ = server.Close()
+	}
+}
+
 // TestAdversarial_LCK03_SessionTicketRedactionAndStepUpGate verifies:
 // 1. Unauthenticated UDS callers cannot invoke create_session.
 // 2. Signed step_up_token authorizes create_session once and blocks token replay.
 // 3. list_leases redacts SessionTicketID so bearer session tickets never leak.
 func TestAdversarial_LCK03_SessionTicketRedactionAndStepUpGate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("UDS daemon session and step-up gate test applies to darwin/linux")
+	}
+
 	t.Setenv("LOCKSMITH_AUDIT_PATH", filepath.Join(t.TempDir(), "audit.jsonl"))
 
 	store := &mockSecretStore{
@@ -241,65 +304,21 @@ func TestAdversarial_LCK03_SessionTicketRedactionAndStepUpGate(t *testing.T) {
 		t.Fatalf("ed25519 keygen: %v", err)
 	}
 
-	sockPath := fmt.Sprintf("/tmp/ls-lck03-%d-%d.sock", os.Getpid(), time.Now().UnixNano()%100000)
+	sockDir := "/tmp"
+	if runtime.GOOS == "windows" {
+		sockDir = os.TempDir()
+	}
+	sockPath := filepath.Join(sockDir, fmt.Sprintf("ls-lck03-%d-%d.sock", os.Getpid(), time.Now().UnixNano()%100000))
 	defer func() {
 		if rmErr := os.Remove(sockPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			t.Logf("cleanup socket: %v", rmErr)
 		}
 	}()
 
-	server := NewDaemonServer(lm, sockPath)
-	server.StepUpPublicKey = pub
+	cleanup := startLCK03Daemon(t, lm, sockPath, pub)
+	defer cleanup()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		if srvErr := server.ListenAndServe(ctx); srvErr != nil {
-			t.Logf("daemon exit: %v", srvErr)
-		}
-	}()
-	defer func() {
-		if closeErr := server.Close(); closeErr != nil {
-			t.Logf("server close: %v", closeErr)
-		}
-	}()
-
-	for i := 0; i < 30; i++ {
-		c, dialErr := net.Dial("unix", sockPath)
-		if dialErr == nil {
-			if cErr := c.Close(); cErr != nil {
-				t.Logf("probe close: %v", cErr)
-			}
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	sendJSON := func(payload map[string]any) []byte {
-		t.Helper()
-		conn, dialErr := net.Dial("unix", sockPath)
-		if dialErr != nil {
-			t.Fatalf("dial socket: %v", dialErr)
-		}
-		defer func() {
-			if cErr := conn.Close(); cErr != nil {
-				t.Logf("conn close: %v", cErr)
-			}
-		}()
-		raw, mErr := json.Marshal(payload)
-		if mErr != nil {
-			t.Fatalf("marshal request: %v", mErr)
-		}
-		if _, wErr := conn.Write(raw); wErr != nil {
-			t.Fatalf("write request: %v", wErr)
-		}
-		respBytes, rErr := io.ReadAll(conn)
-		if rErr != nil {
-			t.Fatalf("read response: %v", rErr)
-		}
-		return respBytes
-	}
-
+	sendJSON := makeJSONSocketSender(t, sockPath)
 	ticketID := assertLCK03UnauthAndStepUp(t, sendJSON, priv)
 	assertLCK03LeaseAndListRedaction(t, sendJSON, ticketID)
 }
