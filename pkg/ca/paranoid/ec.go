@@ -132,19 +132,19 @@ func CheckECPrivateKey(priv *ecdsa.PrivateKey, opts CheckOptions) error {
 	if err := CheckECPublicKey(&priv.PublicKey); err != nil {
 		return err
 	}
-	if err := checkScalarBounds(priv.D, priv.Curve.Params().N); err != nil {
+	if err := checkScalarBounds(priv.D, priv.Params().N); err != nil {
 		return err
 	}
 
-	curveByteLen := (priv.Curve.Params().BitSize + 7) / 8
+	curveByteLen := (priv.Params().BitSize + 7) / 8
 	dBytes := padScalarToCurveLen(priv.D.Bytes(), curveByteLen)
 
 	if err := checkScalarEntropyAndWeight(dBytes, opts.MinEntropyRatio); err != nil {
 		return err
 	}
 
-	x, y := priv.Curve.ScalarBaseMult(priv.D.Bytes())
-	if x.Cmp(priv.PublicKey.X) != 0 || y.Cmp(priv.PublicKey.Y) != 0 {
+	x, y := priv.ScalarBaseMult(priv.D.Bytes())
+	if x.Cmp(priv.X) != 0 || y.Cmp(priv.Y) != 0 {
 		return ErrPointNotOnCurve
 	}
 

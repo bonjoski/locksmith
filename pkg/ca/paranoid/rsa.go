@@ -83,7 +83,7 @@ func CheckRSAPrivateKey(priv *rsa.PrivateKey, opts CheckOptions) error {
 			diff.Abs(diff)
 
 			// Bound: |p - q| < 2^(bitLen/4)
-			bitLen := priv.PublicKey.N.BitLen()
+			bitLen := priv.N.BitLen()
 			threshold := new(big.Int).Lsh(bigOne, uint(bitLen/4))
 			if diff.Cmp(threshold) < 0 {
 				return ErrFermatFactorable

@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- feat(ca): embed pure-Go paranoid crypto checks and bump version to v3.2.10
 - fix(ca): prevent nil-pointer dereference during host partition validation
 - fix(ci): resolve golangci-lint issues, async slice zeroize race, and windows file locking
 - chore(release): bump patch version to v3.2.9 and harden isolation
 - chore(release): bump dependencies, desktop UI, and version to v3.2.8
-- ci(deps): bump actions/setup-node from 4.4.0 to 7.1.0 (#107)
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

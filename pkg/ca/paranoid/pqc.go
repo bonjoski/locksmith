@@ -106,9 +106,5 @@ func isTrivialPattern(b []byte) bool {
 
 	// Check repeating 4-byte pattern across entire key
 	pattern := b[:4]
-	if bytes.Equal(bytes.Repeat(pattern, len(b)/4), b[:(len(b)/4)*4]) {
-		return true
-	}
-
-	return false
+	return bytes.Equal(bytes.Repeat(pattern, len(b)/4), b[:(len(b)/4)*4])
 }
