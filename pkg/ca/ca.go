@@ -394,7 +394,7 @@ func (c *CA) validateAndPartitionHosts(hosts []string) ([]string, []net.IP, erro
 		if err := validateHostPermitted(constraintCert, host); err != nil {
 			return nil, nil, err
 		}
-		if c.PQCCertificate != constraintCert {
+		if c.PQCCertificate != nil && c.PQCCertificate != constraintCert {
 			if err := validateHostPermitted(c.PQCCertificate, host); err != nil {
 				return nil, nil, err
 			}
