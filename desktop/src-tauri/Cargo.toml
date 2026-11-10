@@ -1,6 +1,6 @@
 [package]
 name = "locksmith-desktop"
-version = "3.2.9"
+version = "3.2.10"
 description = "Locksmith Cockpit - Biometric Credential Control Plane"
 authors = ["bonjoski"]
 edition = "2021"

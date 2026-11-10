@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.2.10] - 2026-11-10
+
+### Security & Cryptographic Hardening (Native Paranoid Crypto CA Verification)
+- **Pure-Go Cryptanalytic Verification Engine (`pkg/ca/paranoid`):**
+  - Integrated zero-dependency cryptanalytic inspection engine ported from Google Paranoid Crypto (`google/paranoid_crypto`) with sub-50µs execution latency and zero Hop Tax.
+  - **NIST SP 800-90B Pre-Flight RNG Continuous Health Guard:** Added Repetition Count Test (RCT) and Adaptive Proportion Test (APT) validation on `crypto/rand.Reader` prior to Root CA generation.
+  - **Elliptic Curve Integrity:** Enforced explicit Weierstrass curve equation validation ($y^2 \equiv x^3 - 3x + b \pmod p$), point at infinity rejection ($\mathcal{O}$), order verification, weak scalar bounds, repeating byte pattern detection, sign-extension checks, normalized Shannon entropy ratio, and Hamming weight bounds.
+  - **Legacy & Imported RSA Screening:** Implemented Infineon ROCA detection (CVE-2017-15361), Fermat close-prime factorization test ($|p - q| < 2^{n/4}$), small public exponent enforcement ($e \ge 65537$, odd), and small prime factor trial division ($< 1000$).
+  - **Post-Quantum Cryptography (ML-DSA-65 / NIST FIPS 204):** Added exact byte length validation and structural non-triviality checks for raw keys and SPKI bit strings.
+- **Sovereign CA Pipeline Integration (`pkg/ca` & `pkg/spiffe`):**
+  - Hooked paranoid verification into `GenerateRootCAWithConfig`, `LoadCA`, `LoadDualCA`, `IssueServerCert`, `IssueClientCert`, `IssueSVID`, and `IssuePQCSVID`.
+
 ## [3.2.7] - 2026-11-05
 
 ### Security & Verification Hardening (GHSA-wfmr-rw42-3rv7 Measured Verification Closure)

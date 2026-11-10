@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/ca/paranoid"
 )
 
 var (
@@ -165,6 +167,9 @@ func (c *CA) IssueSVID(profile *SVIDProfile) (certPEM, keyPEM []byte, err error)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate ephemeral private key: %w", err)
 	}
+	if err := paranoid.CheckECPrivateKey(privKey, paranoid.DefaultCheckOptions()); err != nil {
+		return nil, nil, fmt.Errorf("generated ephemeral SVID private key failed paranoid verification: %w", err)
+	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
@@ -232,6 +237,9 @@ func (c *CA) IssuePQCSVID(profile *SVIDProfile) (certPEM, keyPEM []byte, err err
 	srvKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate ephemeral ML-DSA-65 key: %w", err)
+	}
+	if err := paranoid.CheckMLDSA65PrivateKey(srvKey.Bytes()); err != nil {
+		return nil, nil, fmt.Errorf("generated ephemeral PQC SVID private key failed paranoid verification: %w", err)
 	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)

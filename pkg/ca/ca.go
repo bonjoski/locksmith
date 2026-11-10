@@ -21,6 +21,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/bonjoski/locksmith/v2/pkg/ca/paranoid"
 )
 
 const (
@@ -165,6 +167,11 @@ func GenerateRootCA(commonName, organization string, validityDays int) (*CA, err
 func GenerateRootCAWithConfig(cfg RootCAConfig) (*CA, error) {
 	resolveRootCANameConstraints(&cfg)
 
+	// 0. Pre-Flight RNG Continuous Health Check (NIST SP 800-90B)
+	if err := paranoid.CheckRNGHealth(rand.Reader); err != nil {
+		return nil, fmt.Errorf("pre-flight CA RNG health check failed: %w", err)
+	}
+
 	notBefore := time.Now().Add(-1 * time.Hour)
 	notAfter := notBefore.Add(time.Duration(cfg.ValidityDays) * 24 * time.Hour)
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
@@ -173,6 +180,9 @@ func GenerateRootCAWithConfig(cfg RootCAConfig) (*CA, error) {
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate CA private key: %w", err)
+	}
+	if err := paranoid.CheckECPrivateKey(privKey, paranoid.DefaultCheckOptions()); err != nil {
+		return nil, fmt.Errorf("generated CA private key failed paranoid security verification: %w", err)
 	}
 
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
@@ -228,6 +238,9 @@ func GenerateRootCAWithConfig(cfg RootCAConfig) (*CA, error) {
 	pqcPrivKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ML-DSA-65 CA private key: %w", err)
+	}
+	if err := paranoid.CheckMLDSA65PrivateKey(pqcPrivKey.Bytes()); err != nil {
+		return nil, fmt.Errorf("generated PQC CA private key failed paranoid security verification: %w", err)
 	}
 
 	pqcSerialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
@@ -297,8 +310,7 @@ func GenerateRootCAWithConfig(cfg RootCAConfig) (*CA, error) {
 	}, nil
 }
 
-// LoadCA parses an existing CA from PEM-encoded certificate and private key bytes.
-func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
+func parseAndVerifyCACert(certPEM []byte) (*x509.Certificate, error) {
 	certBlock, _ := pem.Decode(certPEM)
 	if certBlock == nil || certBlock.Type != "CERTIFICATE" {
 		return nil, errors.New("invalid or missing CERTIFICATE PEM block")
@@ -313,9 +325,17 @@ func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
 		return nil, errors.New("provided certificate is not a Certificate Authority")
 	}
 
+	if err := paranoid.CheckCertificate(cert, paranoid.DefaultCheckOptions()); err != nil {
+		return nil, fmt.Errorf("loaded CA certificate failed paranoid security verification: %w", err)
+	}
+
+	return cert, nil
+}
+
+func parseAndVerifyCAPrivateKey(keyPEM []byte) (*ecdsa.PrivateKey, *mldsa.PrivateKey, error) {
 	keyBlock, _ := pem.Decode(keyPEM)
 	if keyBlock == nil {
-		return nil, errors.New("invalid or missing private key PEM block")
+		return nil, nil, errors.New("invalid or missing private key PEM block")
 	}
 
 	var privKey *ecdsa.PrivateKey
@@ -323,24 +343,50 @@ func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
 
 	switch keyBlock.Type {
 	case "EC PRIVATE KEY":
+		var err error
 		privKey, err = x509.ParseECPrivateKey(keyBlock.Bytes)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse EC private key: %w", err)
+			return nil, nil, fmt.Errorf("failed to parse EC private key: %w", err)
 		}
 	case "PRIVATE KEY":
 		pkcs8Key, err := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
+			return nil, nil, fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
 		}
 		if ec, ok := pkcs8Key.(*ecdsa.PrivateKey); ok {
 			privKey = ec
 		} else if pqc, ok := pkcs8Key.(*mldsa.PrivateKey); ok {
 			pqcPrivKey = pqc
 		} else {
-			return nil, errors.New("private key is neither ECDSA nor ML-DSA")
+			return nil, nil, errors.New("private key is neither ECDSA nor ML-DSA")
 		}
 	default:
-		return nil, fmt.Errorf("unsupported private key block type: %s", keyBlock.Type)
+		return nil, nil, fmt.Errorf("unsupported private key block type: %s", keyBlock.Type)
+	}
+
+	if pqcPrivKey != nil {
+		if err := paranoid.CheckMLDSA65PrivateKey(pqcPrivKey.Bytes()); err != nil {
+			return nil, nil, fmt.Errorf("loaded PQC CA private key failed paranoid security verification: %w", err)
+		}
+	} else if privKey != nil {
+		if err := paranoid.CheckECPrivateKey(privKey, paranoid.DefaultCheckOptions()); err != nil {
+			return nil, nil, fmt.Errorf("loaded CA private key failed paranoid security verification: %w", err)
+		}
+	}
+
+	return privKey, pqcPrivKey, nil
+}
+
+// LoadCA parses an existing CA from PEM-encoded certificate and private key bytes.
+func LoadCA(certPEM, keyPEM []byte) (*CA, error) {
+	cert, err := parseAndVerifyCACert(certPEM)
+	if err != nil {
+		return nil, err
+	}
+
+	privKey, pqcPrivKey, err := parseAndVerifyCAPrivateKey(keyPEM)
+	if err != nil {
+		return nil, err
 	}
 
 	if pqcPrivKey != nil {
@@ -424,6 +470,9 @@ func (c *CA) IssueServerCert(hosts []string, validityDays int) (certPEM, keyPEM 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate server private key: %w", err)
 	}
+	if err := paranoid.CheckECPrivateKey(serverPrivKey, paranoid.DefaultCheckOptions()); err != nil {
+		return nil, nil, fmt.Errorf("generated server private key failed paranoid verification: %w", err)
+	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
@@ -498,6 +547,9 @@ func (c *CA) IssuePQCServerCert(hosts []string, validityDays int) (certPEM, keyP
 	srvKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate ML-DSA-65 server private key: %w", err)
+	}
+	if err := paranoid.CheckMLDSA65PrivateKey(srvKey.Bytes()); err != nil {
+		return nil, nil, fmt.Errorf("generated PQC server private key failed paranoid verification: %w", err)
 	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
@@ -601,6 +653,9 @@ func (c *CA) IssueClientCert(clientIdentity string, validityDays int) (certPEM, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate client private key: %w", err)
 	}
+	if err := paranoid.CheckECPrivateKey(clientPrivKey, paranoid.DefaultCheckOptions()); err != nil {
+		return nil, nil, fmt.Errorf("generated client private key failed paranoid verification: %w", err)
+	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
@@ -667,6 +722,9 @@ func (c *CA) IssuePQCClientCert(clientIdentity string, validityDays int) (certPE
 	clientKey, err := mldsa.GenerateKey(mldsa.MLDSA65())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate ML-DSA-65 client private key: %w", err)
+	}
+	if err := paranoid.CheckMLDSA65PrivateKey(clientKey.Bytes()); err != nil {
+		return nil, nil, fmt.Errorf("generated PQC client private key failed paranoid verification: %w", err)
 	}
 
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)

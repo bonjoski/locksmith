@@ -228,3 +228,46 @@ func TestDualRootClientCertIssuance(t *testing.T) {
 	}
 }
 
+func TestParanoidCAIntegration(t *testing.T) {
+	// 1. GenerateRootCA runs pre-flight RNG health and key checks
+	rootCA, err := GenerateRootCAWithConfig(RootCAConfig{
+		CommonName:   "Paranoid Verified Root CA",
+		Organization: "Bonjoski Paranoid Test",
+		ValidityDays: 365,
+	})
+	if err != nil {
+		t.Fatalf("GenerateRootCAWithConfig failed: %v", err)
+	}
+
+	// 2. Issue server cert runs paranoid checks on leaf
+	certPEM, keyPEM, err := rootCA.IssueServerCert([]string{"localhost", "127.0.0.1"}, 30)
+	if err != nil {
+		t.Fatalf("IssueServerCert failed: %v", err)
+	}
+	if len(certPEM) == 0 || len(keyPEM) == 0 {
+		t.Fatal("expected non-empty cert and key")
+	}
+
+	// 3. Issue SPIFFE SVID runs paranoid checks
+	spiffeID, err := ParseSPIFFEID("spiffe://bonjoski.local/ns/test/sa/agent-worker")
+	if err != nil {
+		t.Fatalf("ParseSPIFFEID failed: %v", err)
+	}
+	svidCertPEM, svidKeyPEM, err := rootCA.IssueSVID(&SVIDProfile{
+		SPIFFEID: spiffeID,
+	})
+	if err != nil {
+		t.Fatalf("IssueSVID failed: %v", err)
+	}
+	if len(svidCertPEM) == 0 || len(svidKeyPEM) == 0 {
+		t.Fatal("expected non-empty SVID cert and key")
+	}
+
+	// 4. Test LoadCA with tampered/corrupted certificate is rejected
+	corruptedCertPEM := []byte("-----BEGIN CERTIFICATE-----\nZmFrZWNlcnRpZmljYXRlCg==\n-----END CERTIFICATE-----\n")
+	if _, err := LoadCA(corruptedCertPEM, rootCA.KeyPEM); err == nil {
+		t.Error("expected LoadCA to reject corrupted certificate")
+	}
+}
+
+
