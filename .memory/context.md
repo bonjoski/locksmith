@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore(release): bump minor version to v3.3.0
 - feat(vault): implement zero-config-secret workload credential slicer (AntiFox defense)
 - feat(crypto): biometric client assertions and hardware git-sign (RFC-2026-11-13-29)
 - test(locksmith): skip UDS session test on windows and use line framing
 - fix(paranoid): resolve staticcheck embedded field and boolean return findings
-- feat(ca): embed pure-Go paranoid crypto checks and bump version to v3.2.10
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
