@@ -328,10 +328,10 @@ func TestSlicer_RevokeAll(t *testing.T) {
 func TestSlicer_SanitizeEnvironment(t *testing.T) {
 	dirtyEnv := []string{
 		"PATH=/usr/bin:/bin",
-		"AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
-		"AWS_SECRET_ACCESS_KEY=test-dummy-secret-key-12345",
-		"AWS_SESSION_TOKEN=AQoDYXdzEJr1...",
-		"AWS_SECURITY_TOKEN=legacy_token",
+		"AWS_ACCESS_KEY_ID=dummy",
+		"AWS_SECRET_ACCESS_KEY=dummy",
+		"AWS_SESSION_TOKEN=dummy",
+		"AWS_SECURITY_TOKEN=dummy",
 		"AWS_REGION=us-west-2",
 		"USER=agent",
 		"LOCKSMITH_SECRET_DB_PASS=xyz123",
