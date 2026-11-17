@@ -13,6 +13,7 @@ var (
 	ls                  *locksmith.Locksmith
 	cfg                 *locksmith.Config
 	globalBiometricReqs bool
+	nonInteractive      bool
 )
 
 var rootCmd = &cobra.Command{
@@ -37,18 +38,24 @@ var rootCmd = &cobra.Command{
 				return nil
 			}
 			opts := locksmith.Options{
-				RequireBiometrics: true, // EXE always requires biometrics
+				RequireBiometrics: !nonInteractive,
+				OnlyCached:        nonInteractive,
 				PromptMessage:     cfg.Auth.PromptMessage,
 			}
 			var err error
 			ls, err = locksmith.NewWithOptions(opts)
 			if err != nil {
+				if nonInteractive {
+					fmt.Fprintln(os.Stderr, "ERR_BIOMETRIC_INTERACTION_REQUIRED: interactive biometric prompt blocked in non-interactive mode. Use 'locksmith session' or acquire an ambient lease.")
+					os.Exit(82)
+				}
 				return fmt.Errorf("error initializing locksmith: %w", err)
 			}
 			ls.Config = cfg
 		} else {
 			// Apply config to injected test double
-			ls.Options.RequireBiometrics = globalBiometricReqs
+			ls.Options.RequireBiometrics = globalBiometricReqs && !nonInteractive
+			ls.Options.OnlyCached = nonInteractive
 			ls.Options.PromptMessage = cfg.Auth.PromptMessage
 			ls.Config = cfg
 		}
@@ -77,4 +84,17 @@ func Execute(v string) {
 }
 
 func init() {
+	rootCmd.PersistentFlags().BoolVar(&nonInteractive, "non-interactive", false, "Prevent interactive prompts; exit 82 if authentication required")
+
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print the version number of locksmith",
+		Run: func(cmd *cobra.Command, args []string) {
+			v := rootCmd.Version
+			if v == "" {
+				v = locksmith.Version
+			}
+			fmt.Printf("locksmith version %s\n", v)
+		},
+	})
 }
