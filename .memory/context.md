@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- deps(deps): bump github.com/bonjoski/shield from 0.2.1 to 0.2.4 (#123)
+- chore(deps): bump go to 1.27.4 to remediate GO-2026-6859
 - fix(lint): check gitsign return values, simplify selectors & isolate test homedir
 - docs(use-cases): add task-oriented developer recipes and README quickstarts
 - docs(adr): initialize sanitized public architectural decision records
-- feat(cli): add 'version' command and '--non-interactive' flag (UB-CLI-v1 harmonization)
-- chore(desktop): bump locksmith-desktop version to 3.3.1 in Cargo.lock
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
