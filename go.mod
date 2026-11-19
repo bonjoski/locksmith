@@ -1,6 +1,6 @@
 module github.com/bonjoski/locksmith/v2
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/bonjoski/shield v0.2.1
