@@ -14,7 +14,7 @@ As a security-focused tool, we have strict requirements for contributions:
 
 ### Prerequisites
 
-- Go v1.27.3+
+- Go v1.27.4+
 - `make`
 - Tooling: `golangci-lint`, `gosec`, `gitleaks` (installed automatically via `make check`)
 

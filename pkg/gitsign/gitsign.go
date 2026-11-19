@@ -189,7 +189,10 @@ func parseGitArgs(args []string) (isVerify bool, statusFD int, sigFile, dataFile
 				dataFile = args[i+2]
 			}
 		} else if strings.HasPrefix(arg, "--status-fd=") {
-			_, _ = fmt.Sscanf(arg, "--status-fd=%d", &statusFD)
+			var parsedFD int
+			if _, err := fmt.Sscanf(arg, "--status-fd=%d", &parsedFD); err == nil {
+				statusFD = parsedFD
+			}
 		}
 	}
 	return isVerify, statusFD, sigFile, dataFile
@@ -235,7 +238,9 @@ func handleGitSign(stdin io.Reader, stdout, stderr io.Writer, statusFD int, priv
 		_, _ = fmt.Fprint(stderr, statusMsg)
 	}
 
-	_ = AppendTransparencyLog(att, "")
+	if err := AppendTransparencyLog(att, ""); err != nil {
+		return 1, fmt.Errorf("gitsign: record commit transparency failed: %w", err)
+	}
 
 	if _, err = fmt.Fprint(stdout, armored); err != nil {
 		return 1, fmt.Errorf("gitsign: write signature to stdout failed: %w", err)

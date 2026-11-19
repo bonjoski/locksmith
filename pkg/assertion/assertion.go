@@ -369,9 +369,9 @@ func (a *SessionAmortizer) DeriveSubagentKey(subagentID string) (*ecdsa.PrivateK
 	}
 
 	priv := new(ecdsa.PrivateKey)
-	priv.PublicKey.Curve = curve
+	priv.Curve = curve
 	priv.D = d
-	priv.PublicKey.X, priv.PublicKey.Y = curve.ScalarBaseMult(d.Bytes())
+	priv.X, priv.Y = curve.ScalarBaseMult(d.Bytes())
 
 	return priv, nil
 }

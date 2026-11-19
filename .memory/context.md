@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
-- chore(release): bump version to v3.3.1
-- chore(release): bump minor version to v3.3.0
-- feat(vault): implement zero-config-secret workload credential slicer (AntiFox defense)
-- feat(crypto): biometric client assertions and hardware git-sign (RFC-2026-11-13-29)
-- test(locksmith): skip UDS session test on windows and use line framing
+- fix(lint): check gitsign return values, simplify selectors & isolate test homedir
+- docs(use-cases): add task-oriented developer recipes and README quickstarts
+- docs(adr): initialize sanitized public architectural decision records
+- feat(cli): add 'version' command and '--non-interactive' flag (UB-CLI-v1 harmonization)
+- chore(desktop): bump locksmith-desktop version to 3.3.1 in Cargo.lock
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
