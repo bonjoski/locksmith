@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- docs(use-cases): add task-oriented developer recipes and README quickstarts
 - docs(adr): initialize sanitized public architectural decision records
 - feat(cli): add 'version' command and '--non-interactive' flag (UB-CLI-v1 harmonization)
 - chore(desktop): bump locksmith-desktop version to 3.3.1 in Cargo.lock
 - chore(release): bump version to v3.3.1
-- chore(release): bump minor version to v3.3.0
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

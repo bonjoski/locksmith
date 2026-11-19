@@ -35,6 +35,10 @@ func takeDirectorySnapshot(root string) (map[string]int64, error) {
 // TestAdversarial_ZeroDiskResidue verifies that heavy workload slicing and caching
 // produces zero bytes and zero files on disk, disarming AntiFox disk/config scraping.
 func TestAdversarial_ZeroDiskResidue(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+	t.Setenv("USERPROFILE", tempHome)
+
 	tempDir := os.TempDir()
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
