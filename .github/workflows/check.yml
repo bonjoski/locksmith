@@ -34,9 +34,18 @@ jobs:
           chmod +x scripts/dev/validate-workflows.sh
           ./scripts/dev/validate-workflows.sh
 
-      - name: Validate Airlock Policy & Sandbox Readiness
+      - name: Validate Airlock Policy & Sandbox Readiness (SHA-256 Pinned v0.12.0)
         run: |
-          curl -fsSL https://raw.githubusercontent.com/bonjoski/airlock/176416d9f864fef2d9cc4c18943d9c13600a34ae/install.sh | sh
+          set -euo pipefail
+          AIRLOCK_URL="https://github.com/bonjoski/airlock/releases/download/v0.12.0/airlock_darwin_arm64.tar.gz"
+          AIRLOCK_SHA256="93ab261bdb6e0760da1497a72a33ac40c0297ecf4791c177ae3ab55323ef139a"
+          TMP_TGZ="$(mktemp)"
+          curl -fsSL "$AIRLOCK_URL" -o "$TMP_TGZ"
+          echo "${AIRLOCK_SHA256}  ${TMP_TGZ}" | shasum -a 256 -c -
+          mkdir -p "$HOME/.airlock/bin"
+          tar -xzf "$TMP_TGZ" -C "$HOME/.airlock/bin" ./airlock
+          rm -f "$TMP_TGZ"
+          "$HOME/.airlock/bin/airlock" --version
           "$HOME/.airlock/bin/airlock" doctor || true
           "$HOME/.airlock/bin/airlock" config validate --config ./airlock.yaml
 

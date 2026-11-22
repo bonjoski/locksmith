@@ -6,3 +6,4 @@ d017b104e7387e93074de39a400aa947783cbbe4:pkg/vault/runtime/slicer_test.go:generi
 d017b104e7387e93074de39a400aa947783cbbe4:pkg/vault/runtime/slicer_test.go:generic-api-key:333
 d017b104e7387e93074de39a400aa947783cbbe4:pkg/vault/runtime/slicer_test.go:aws-access-token:28
 d017b104e7387e93074de39a400aa947783cbbe4:pkg/vault/runtime/slicer_test.go:aws-access-token:213
+c56fe28260c9d231b7bbc7fd9de466f71febf09c:cmd/locksmith/cmd/mcp_test.go:generic-api-key:99

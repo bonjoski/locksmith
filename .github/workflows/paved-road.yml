@@ -1,0 +1,26 @@
+name: Paved-Road Security Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paved-road-pr:
+    uses: bonjoski/.github/.github/workflows/paved-road-pr.yml@5c95f5f0b0d71a7bf076439e523fd52a61128d25
+    with:
+      base_ref: origin/main
+      run_argus: true
+      run_soulcaster: true
+      run_aegisbox: false
+      fail_on_proven: true

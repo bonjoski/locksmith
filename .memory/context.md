@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- feat(protocol,mcp): add ETX DSSE signing, zero-exposure opaque agent leases, and UB-MCP-v1 errors (RFC-2026-11-22-49)
 - chore(release): bump minor version to v3.4.0
 - feat(migrate,ux): add symlink-safe locksmith migrate .env and UB-CLI-v2 FixForwardError
 - feat(crypto): add strict keystore frame boundary and constant-time MAC verification & bump v3.3.3
 - ci(release): make notarization non-fatal when apple legal agreements are pending
-- chore(release): bump patch version to v3.3.2
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.
