@@ -25,3 +25,9 @@
 - Control Socket: `~/.locksmith/locksmith.sock`
 - SPIFFE Socket: `~/.locksmith/spiffe.sock`
 - Documentation: README.md & AGENTS.md
+
+
+## Paved-Road Integration (`2026-11-22`: `migrate .env`, Opaque Leases & DSSE)
+- One-command `.env` elimination: `locksmith migrate .env` (symlink-safe Touch ID batch import + `.gitignore` update + shred)
+- Zero-exposure MCP (`UB-MCP-v1`): `locksmith_checkout_lease` returns opaque `lease_id` only (zero raw bytes); `locksmith_get_secret` disabled by default for agents (`exit_code: 40`; opt-in `--allow-raw-agent-secrets`)
+- UDS actions: `sign_dsse`, `get_session_pubkey`, `mint_opaque_lease`, `redeem_opaque_lease`

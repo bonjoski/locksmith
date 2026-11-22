@@ -14,6 +14,7 @@ import (
 
 	"github.com/bonjoski/locksmith/v2/pkg/audit"
 	"github.com/bonjoski/locksmith/v2/pkg/protocol"
+	"github.com/bonjoski/locksmith/v2/pkg/slice"
 )
 
 // ActiveLease represents an in-flight ephemeral credential lease.
@@ -63,7 +64,9 @@ type LeaseManager struct {
 	store         SecretGetter
 	opts          LeaseManagerOptions
 	activeLeases  map[string]*ActiveLease
+	opaqueLeases  map[string]*opaqueLease
 	sessionTokens map[string]*protocol.SessionTicket
+	sessionKeys   map[string]*sessionLeafKey
 	stopChan      chan struct{}
 	closed        bool
 }
@@ -97,7 +100,9 @@ func NewLeaseManager(store SecretGetter, opts ...LeaseManagerOptions) *LeaseMana
 		store:         store,
 		opts:          opt,
 		activeLeases:  make(map[string]*ActiveLease),
+		opaqueLeases:  make(map[string]*opaqueLease),
 		sessionTokens: make(map[string]*protocol.SessionTicket),
+		sessionKeys:   make(map[string]*sessionLeafKey),
 		stopChan:      make(chan struct{}),
 	}
 
@@ -408,6 +413,10 @@ func (lm *LeaseManager) RevokeLease(req *protocol.RevokeRequest, peer *protocol.
 
 	lm.revokeLocked(lease)
 	delete(lm.activeLeases, req.LeaseID)
+	if ol, ok := lm.opaqueLeases[req.LeaseID]; ok {
+		ol.zeroAndStop()
+		delete(lm.opaqueLeases, req.LeaseID)
+	}
 	lm.logLeaseRevoked(lease, "Lease revoked by client")
 
 	return &protocol.RevokeResponse{Success: true}, nil
@@ -621,8 +630,19 @@ func (lm *LeaseManager) Close() error {
 	for _, lease := range lm.activeLeases {
 		lm.revokeLocked(lease)
 	}
+	for _, ol := range lm.opaqueLeases {
+		ol.zeroAndStop()
+	}
+	for _, sk := range lm.sessionKeys {
+		if sk != nil && len(sk.priv) > 0 {
+			slice.ExplicitBzero(sk.priv)
+			sk.priv = nil
+		}
+	}
 	lm.activeLeases = make(map[string]*ActiveLease)
+	lm.opaqueLeases = make(map[string]*opaqueLease)
 	lm.sessionTokens = make(map[string]*protocol.SessionTicket)
+	lm.sessionKeys = make(map[string]*sessionLeafKey)
 	lm.mu.Unlock()
 	return nil
 }

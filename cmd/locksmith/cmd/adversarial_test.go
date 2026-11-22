@@ -154,8 +154,12 @@ func runLCK01Worker(ctx context.Context, session *mcp.ClientSession, lsTest *loc
 		return
 	}
 	id, ok := payload["lease_id"].(string)
-	if !ok || !strings.HasPrefix(id, "ls-lease-") {
-		t.Errorf("worker %d invalid lease_id: %v", worker, payload["lease_id"])
+	if !ok || !strings.HasPrefix(id, "lease_") {
+		t.Errorf("worker %d invalid opaque lease_id: %v", worker, payload["lease_id"])
+		return
+	}
+	if _, leaked := payload["secret_value"]; leaked {
+		t.Errorf("worker %d CRITICAL: opaque checkout_lease leaked secret_value", worker)
 		return
 	}
 
@@ -185,7 +189,7 @@ func TestAdversarial_LCK01_MCPConcurrentOptionsIsolationAndEnvBlock(t *testing.T
 	lsTest.Backend = &syncMockBackend{cache: mc}
 	lsTest.Options.RequireBiometrics = true
 
-	server, lm := newMCPServerWithLeaseManager(lsTest)
+	server, lm := newMCPServerWithOptions(lsTest, MCPServerOptions{AllowRawAgentSecrets: true})
 	defer lm.Close()
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()

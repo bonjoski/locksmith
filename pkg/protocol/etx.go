@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -32,13 +33,38 @@ const (
 type Action string
 
 const (
-	ActionRequestLease  Action = "request_lease"
-	ActionRevokeLease   Action = "revoke_lease"
-	ActionCreateSession Action = "create_session"
-	ActionRevokeSession Action = "revoke_session"
-	ActionListLeases    Action = "list_leases"
-	ActionPing          Action = "ping"
+	ActionRequestLease      Action = "request_lease"
+	ActionRevokeLease       Action = "revoke_lease"
+	ActionCreateSession     Action = "create_session"
+	ActionRevokeSession     Action = "revoke_session"
+	ActionListLeases        Action = "list_leases"
+	ActionPing              Action = "ping"
+	ActionSignDSSE          Action = "sign_dsse"
+	ActionGetSessionPubKey  Action = "get_session_pubkey"
+	ActionMintOpaqueLease   Action = "mint_opaque_lease"
+	ActionRedeemOpaqueLease Action = "redeem_opaque_lease"
 )
+
+var (
+	sessionIDPattern     = regexp.MustCompile(`^sess_[0-9A-Za-z_-]{4,64}$`)
+	opaqueLeaseIDPattern = regexp.MustCompile(`^lease_[0-9A-Za-z_-]{8,128}$`)
+)
+
+// ValidateSessionID enforces the canonical session identifier format (^sess_[0-9A-Za-z_-]{4,64}$).
+func ValidateSessionID(sessionID string) error {
+	if !sessionIDPattern.MatchString(sessionID) {
+		return fmt.Errorf("etx: invalid session_id %q (must match ^sess_[0-9A-Za-z_-]{4,64}$)", sessionID)
+	}
+	return nil
+}
+
+// ValidateOpaqueLeaseID enforces the canonical opaque lease handle format (^lease_[0-9A-Za-z_-]{8,128}$).
+func ValidateOpaqueLeaseID(leaseID string) error {
+	if !opaqueLeaseIDPattern.MatchString(leaseID) {
+		return fmt.Errorf("etx: invalid lease_id %q (must match ^lease_[0-9A-Za-z_-]{8,128}$)", leaseID)
+	}
+	return nil
+}
 
 // LeaseRequest represents an inquiry from Airlock/Agent runner to Locksmith.
 type LeaseRequest struct {

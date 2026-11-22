@@ -23,6 +23,9 @@ func DefaultSocketPath() string {
 	if sock := os.Getenv("LOCKSMITH_SOCKET"); sock != "" {
 		return sock
 	}
+	if sock := os.Getenv("LOCKSMITH_SOCK"); sock != "" {
+		return sock
+	}
 	home, err := os.UserHomeDir()
 	if err == nil && home != "" {
 		return filepath.Join(home, ".locksmith", "locksmithd.sock")
@@ -208,6 +211,14 @@ func (s *DaemonServer) dispatchAction(conn net.Conn, action protocol.Action, pay
 		s.handleRevokeSession(conn, payload)
 	case protocol.ActionListLeases:
 		s.handleListLeases(conn)
+	case protocol.ActionSignDSSE:
+		s.handleSignDSSE(conn, payload, peer)
+	case protocol.ActionGetSessionPubKey:
+		s.handleGetSessionPubKey(conn, payload, peer)
+	case protocol.ActionMintOpaqueLease:
+		s.handleMintOpaqueLease(conn, payload, peer)
+	case protocol.ActionRedeemOpaqueLease:
+		s.handleRedeemOpaqueLease(conn, payload, peer)
 	default:
 		writeJSONError(conn, fmt.Sprintf("unsupported action %q", action))
 	}
@@ -345,6 +356,78 @@ func (s *DaemonServer) handleListLeases(conn net.Conn) {
 		"status": "OK",
 		"leases": leases,
 	})
+}
+
+func (s *DaemonServer) handleSignDSSE(conn net.Conn, payload []byte, peer *protocol.PeerCredentials) {
+	if s.lm == nil {
+		writeJSONError(conn, "lease manager is not initialized")
+		return
+	}
+	var req protocol.SignDSSERequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		writeJSONError(conn, "invalid sign_dsse request payload")
+		return
+	}
+	resp, err := s.lm.SignDSSE(&req, peer)
+	if err != nil {
+		writeJSONError(conn, err.Error())
+		return
+	}
+	_ = json.NewEncoder(conn).Encode(resp)
+}
+
+func (s *DaemonServer) handleGetSessionPubKey(conn net.Conn, payload []byte, peer *protocol.PeerCredentials) {
+	if s.lm == nil {
+		writeJSONError(conn, "lease manager is not initialized")
+		return
+	}
+	var req protocol.GetSessionPubKeyRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		writeJSONError(conn, "invalid get_session_pubkey request payload")
+		return
+	}
+	resp, err := s.lm.GetSessionPubKey(&req, peer)
+	if err != nil {
+		writeJSONError(conn, err.Error())
+		return
+	}
+	_ = json.NewEncoder(conn).Encode(resp)
+}
+
+func (s *DaemonServer) handleMintOpaqueLease(conn net.Conn, payload []byte, peer *protocol.PeerCredentials) {
+	if s.lm == nil {
+		writeJSONError(conn, "lease manager is not initialized")
+		return
+	}
+	var req protocol.MintOpaqueLeaseRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		writeJSONError(conn, "invalid mint_opaque_lease request payload")
+		return
+	}
+	resp, err := s.lm.MintOpaqueLease(&req, peer)
+	if err != nil {
+		writeJSONError(conn, err.Error())
+		return
+	}
+	_ = json.NewEncoder(conn).Encode(resp)
+}
+
+func (s *DaemonServer) handleRedeemOpaqueLease(conn net.Conn, payload []byte, peer *protocol.PeerCredentials) {
+	if s.lm == nil {
+		writeJSONError(conn, "lease manager is not initialized")
+		return
+	}
+	var req protocol.RedeemOpaqueLeaseRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		writeJSONError(conn, "invalid redeem_opaque_lease request payload")
+		return
+	}
+	resp, err := s.lm.RedeemOpaqueLease(&req, peer)
+	if err != nil {
+		writeJSONError(conn, err.Error())
+		return
+	}
+	_ = json.NewEncoder(conn).Encode(resp)
 }
 
 func writeJSONError(conn net.Conn, msg string) {

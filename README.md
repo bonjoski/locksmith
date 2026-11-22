@@ -84,6 +84,7 @@ Every primary developer use case is backed by dedicated, copy-pasteable recipes 
 | Use Case | Scenario & Quick Recipe | Full Guide |
 | :--- | :--- | :--- |
 | **Touch ID Secrets Checkout** | Retrieve hardware-protected secrets into RAM with Touch ID:<br/>`locksmith get OPENAI_API_KEY` | [Guide](docs/use-cases/01-touch-id-secret-checkout.md) |
+| **Zero-Exposure Opaque Agent Leases (`UB-MCP-v1`)** | Mint single-use opaque `lease_id` handles over MCP (`locksmith_checkout_lease`) with zero raw secret bytes in LLM context, redeemed via `FD=3` memory slice by `airlock_exec`/`aegisbox_exec` (`locksmith_get_secret` blocked by default with `exit_code: 40`):<br/>`locksmith mcp` (opt-in raw only via `--allow-raw-agent-secrets`) | [Guide](docs/use-cases/02-mcp-secret-injection.md) |
 | **Zero-Plaintext MCP Injection** | Serve credentials to Claude Code / Cursor over local MCP with auto-expiring leases:<br/>`locksmith agent` (in `claude_desktop_config.json`) | [Guide](docs/use-cases/02-mcp-secret-injection.md) |
 | **Ephemeral Subshell Injection** | Launch an interactive subshell with in-memory secrets and auto-scrub:<br/>`locksmith env --ttl 300s -- zsh` | [Guide](docs/use-cases/03-ephemeral-subshell-injection.md) |
 | **Sovereign Local SPIFFE CA** | Issue short-lived mTLS X.509 SVID certificates for local microservices:<br/>`locksmith ca issue --spiffe-id spiffe://local.dev/workload/api` | [Guide](docs/use-cases/04-spiffe-svid-issuance.md) |
@@ -447,11 +448,12 @@ Add Locksmith to your `claude_desktop_config.json` or Cursor MCP settings:
 ```
 
 ### Supported Tools
-- `locksmith_get_secret`: Retrieve a secret (requires Touch ID/biometrics).
+- `locksmith_checkout_lease`: Mint an opaque, single-use ephemeral lease handle (`{lease_id, env_var, expires_at, delivery: "fd3_memory_slice"}`) bound to `(session_id, peer_uid)` for out-of-band `FD=3` injection inside `airlock_exec` / `aegisbox_exec`. **Never returns raw secret bytes to the LLM.**
 - `locksmith_list_secrets`: List names of stored secrets.
+- `locksmith_get_secret`: **Disabled by default for AI agents** (returns a `UB-MCP-v1` `LOCKSMITH_RAW_SECRET_BLOCKED` error with `exit_code: 40` and `self_heal` pointing to `locksmith_checkout_lease`). Pass `--allow-raw-agent-secrets` only for explicit human-supervised opt-in.
 
 > [!IMPORTANT]
-> When an AI agent requests a secret, you will be prompted for biometrics on your hardware. The AI cannot bypass this gate.
+> Autonomous agents never receive plaintext credentials in MCP responses. Opaque `lease_id` handles expire in 60–300s, are bound to the caller's session and local OS UID, and are zeroized in daemon RAM immediately upon single-use redemption or expiration.
 
 ### Sovereign Certificate Authority (`locksmith ca`)
 
