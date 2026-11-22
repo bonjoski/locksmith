@@ -32,18 +32,7 @@ Security invariants:
 	Example: "  locksmith migrate .env\n  locksmith migrate .env --project my-app --why\n  locksmith migrate .env --json --keep-source",
 	Args:    cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		defer func() {
-			migrateProject = ""
-			migrateDir = "."
-			migrateKeepSource = false
-			migrateJSON = false
-			migrateExpiresIn = ""
-			_ = cmd.Flags().Set("project", "")
-			_ = cmd.Flags().Set("dir", ".")
-			_ = cmd.Flags().Set("keep-source", "false")
-			_ = cmd.Flags().Set("json", "false")
-			_ = cmd.Flags().Set("expires-in", "")
-		}()
+		defer resetMigrateFlags(cmd)
 
 		envPath := ".env"
 		if len(args) == 1 {
@@ -62,7 +51,9 @@ Security invariants:
 					WhyOneLiner:    "Use a standard duration such as 24h, 30d, or 90d.",
 					ExitCode:       1,
 				}
-				_ = ffe.Render(cmd.ErrOrStderr(), migrateJSON, showWhy)
+				if renderErr := ffe.Render(cmd.ErrOrStderr(), migrateJSON, showWhy); renderErr != nil {
+					return errors.Join(ffe, renderErr)
+				}
 				return ffe
 			}
 			ttl = parsed
@@ -89,7 +80,9 @@ Security invariants:
 		if err != nil {
 			var ffe *ux.FixForwardError
 			if errors.As(err, &ffe) {
-				_ = ffe.Render(cmd.ErrOrStderr(), migrateJSON, showWhy)
+				if renderErr := ffe.Render(cmd.ErrOrStderr(), migrateJSON, showWhy); renderErr != nil {
+					return errors.Join(ffe, renderErr)
+				}
 				return ffe
 			}
 			return err
@@ -97,6 +90,29 @@ Security invariants:
 
 		return res.Render(cmd.OutOrStdout(), migrateJSON, showWhy)
 	},
+}
+
+func resetMigrateFlags(cmd *cobra.Command) {
+	migrateProject = ""
+	migrateDir = "."
+	migrateKeepSource = false
+	migrateJSON = false
+	migrateExpiresIn = ""
+	defaults := [][2]string{
+		{"project", ""},
+		{"dir", "."},
+		{"keep-source", "false"},
+		{"json", "false"},
+		{"expires-in", ""},
+	}
+	for _, d := range defaults {
+		if f := cmd.Flags().Lookup(d[0]); f != nil {
+			f.Changed = false
+			if err := f.Value.Set(d[1]); err != nil {
+				continue
+			}
+		}
+	}
 }
 
 func init() {

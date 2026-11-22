@@ -123,7 +123,9 @@ func (e *UBMCPError) HumanText() string {
 		ExitCode:       s.ExitCode,
 	}
 	var buf bytes.Buffer
-	_ = ff.Render(&buf, false, false)
+	if err := ff.Render(&buf, false, false); err != nil {
+		return s.Code + ": " + s.Summary
+	}
 	return strings.TrimRight(buf.String(), "\n")
 }
 

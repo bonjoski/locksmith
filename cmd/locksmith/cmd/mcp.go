@@ -74,7 +74,9 @@ func detectReachableDaemonSocket() string {
 		return ""
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(250 * time.Millisecond))
+	if err := conn.SetDeadline(time.Now().Add(250 * time.Millisecond)); err != nil {
+		return ""
+	}
 	if err := json.NewEncoder(conn).Encode(map[string]any{"action": protocol.ActionPing}); err != nil {
 		return ""
 	}
@@ -102,10 +104,6 @@ func (s *mcpVaultStore) Get(key string) ([]byte, error) {
 		opts.AuditIdentity = "mcp:checkout_lease"
 	}
 	return s.ls.GetWithOptions(key, opts)
-}
-
-func newMCPServerWithLeaseManager(lsMcp *locksmith.Locksmith) (*mcp.Server, *locksmith.LeaseManager) {
-	return newMCPServerWithOptions(lsMcp, MCPServerOptions{})
 }
 
 func newMCPServerWithOptions(lsMcp *locksmith.Locksmith, mcpOpts MCPServerOptions) (*mcp.Server, *locksmith.LeaseManager) {
@@ -290,9 +288,9 @@ func buildOpaqueLeaseMintRequest(in CheckoutLeaseInput, spiffeID, sessionID, tar
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to resolve caller process start time: %w", err)
 	}
-	exePath, _ := protocol.GetProcessExecutablePath(pid)
-	var exeHash string
-	if exePath != "" {
+	var exePath, exeHash string
+	if p, pErr := protocol.GetProcessExecutablePath(pid); pErr == nil && p != "" {
+		exePath = p
 		if h, hErr := protocol.HashFile(exePath); hErr == nil {
 			exeHash = h
 		}
@@ -350,7 +348,9 @@ func mintOpaqueLeaseViaDaemon(sockPath string, req *protocol.MintOpaqueLeaseRequ
 		return nil, err
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
+	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		return nil, err
+	}
 
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return nil, err
