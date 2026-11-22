@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
+	"github.com/bonjoski/locksmith/v2/pkg/ux"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +16,7 @@ var (
 	cfg                 *locksmith.Config
 	globalBiometricReqs bool
 	nonInteractive      bool
+	showWhy             bool
 )
 
 var rootCmd = &cobra.Command{
@@ -78,6 +81,14 @@ func Execute(v string) {
 		}
 	}
 	if err := rootCmd.Execute(); err != nil {
+		var ffe *ux.FixForwardError
+		if errors.As(err, &ffe) {
+			code := ffe.ExitCode
+			if code == 0 {
+				code = 1
+			}
+			os.Exit(code)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -85,6 +96,7 @@ func Execute(v string) {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&nonInteractive, "non-interactive", false, "Prevent interactive prompts; exit 82 if authentication required")
+	rootCmd.PersistentFlags().BoolVar(&showWhy, "why", false, "Show progressive disclosure explanation, threat model, and references")
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",

@@ -87,6 +87,7 @@ Every primary developer use case is backed by dedicated, copy-pasteable recipes 
 | **Zero-Plaintext MCP Injection** | Serve credentials to Claude Code / Cursor over local MCP with auto-expiring leases:<br/>`locksmith agent` (in `claude_desktop_config.json`) | [Guide](docs/use-cases/02-mcp-secret-injection.md) |
 | **Ephemeral Subshell Injection** | Launch an interactive subshell with in-memory secrets and auto-scrub:<br/>`locksmith env --ttl 300s -- zsh` | [Guide](docs/use-cases/03-ephemeral-subshell-injection.md) |
 | **Sovereign Local SPIFFE CA** | Issue short-lived mTLS X.509 SVID certificates for local microservices:<br/>`locksmith ca issue --spiffe-id spiffe://local.dev/workload/api` | [Guide](docs/use-cases/04-spiffe-svid-issuance.md) |
+| **60-Second Plaintext `.env` Migration (UB-CLI-v2)** | Import `.env` into Touch ID keychain in one amortized batch, harden `.gitignore`, and zero-overwrite shred `.env` (rejects symlinks fail-closed):<br/>`locksmith migrate .env` (`--why` / `--json` / `--keep-source`) | [Guide](docs/use-cases/05-migrate-plaintext-env.md) |
 | **Automated Plaintext `.env` Migration** | Scan legacy projects and migrate `.env` files into biometric storage:<br/>`locksmith doctor --migrate` | [Guide](docs/use-cases/05-migrate-plaintext-env.md) |
 
 ---
