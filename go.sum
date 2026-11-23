@@ -1,5 +1,5 @@
-github.com/bonjoski/shield v0.2.4 h1:Fs8RHt0JDXLBU7az+iKutpg8/TMCte/lvct8xHgSCR4=
-github.com/bonjoski/shield v0.2.4/go.mod h1:IcS8uOoR7ZOaPqkrXSs/IwYNnsAbS1juGFkpXOcSunM=
+github.com/bonjoski/shield v0.3.0 h1:QWOC7JCVEQfvTgtN0k0CYB8NpkbXsFno105fqSqD6tw=
+github.com/bonjoski/shield v0.3.0/go.mod h1:IcS8uOoR7ZOaPqkrXSs/IwYNnsAbS1juGFkpXOcSunM=
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/danieljoos/wincred v1.2.3 h1:v7dZC2x32Ut3nEfRH+vhoZGvN72+dQ/snVXo/vMFLdQ=
 github.com/danieljoos/wincred v1.2.3/go.mod h1:6qqX0WNrS4RzPZ1tnroDzq9kY3fu1KwE7MRLQK4X0bs=
