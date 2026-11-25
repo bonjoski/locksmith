@@ -1,0 +1,6 @@
+scope: bonjoski/locksmith
+paths:
+  pkg/ca: bonjoski/locksmith/ca
+  pkg/spiffe: bonjoski/locksmith/spiffe
+  pkg/vault: bonjoski/locksmith/vault
+  pkg/crypto: bonjoski/locksmith/crypto
