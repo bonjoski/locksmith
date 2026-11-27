@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bonjoski/locksmith/v2/internal/aiprovider"
+	"github.com/bonjoski/locksmith/v2/internal/redact"
 	"github.com/bonjoski/locksmith/v2/pkg/locksmith"
-	"github.com/bonjoski/shield/pkg/provider"
-	"github.com/bonjoski/shield/pkg/shield"
 	"github.com/spf13/cobra"
 )
 
@@ -100,7 +100,7 @@ var integrationsDoctorCmd = &cobra.Command{
 }
 
 func runShieldDoctorAdvisory(cmd *cobra.Command, summary []string, findings []locksmith.IntegrationPlaintextFinding) error {
-	shieldEngine := shield.NewEngine(shield.DefaultConfig())
+	redactEngine := redact.NewEngine(redact.DefaultConfig())
 	var rawPrompt strings.Builder
 	rawPrompt.WriteString("Audit report summary:\n")
 	for _, s := range summary {
@@ -121,11 +121,14 @@ func runShieldDoctorAdvisory(cmd *cobra.Command, summary []string, findings []lo
 	}
 	rawPrompt.WriteString("\nProvide security remediation recommendations.")
 
-	redacted, _, err := shieldEngine.Redact(rawPrompt.String())
-	if err != nil {
-		return fmt.Errorf("shield redaction failed: %w", err)
+	redacted, tm, err := redactEngine.Redact(rawPrompt.String())
+	if tm != nil {
+		defer tm.Zeroize()
 	}
-	if err := shieldEngine.FailClosedWireGuard([]byte(redacted)); err != nil {
+	if err != nil {
+		return fmt.Errorf("redaction failed: %w", err)
+	}
+	if err := redactEngine.FailClosedWireGuard([]byte(redacted)); err != nil {
 		return fmt.Errorf("fail-closed wire guard blocked payload: %w", err)
 	}
 
@@ -133,15 +136,15 @@ func runShieldDoctorAdvisory(cmd *cobra.Command, summary []string, findings []lo
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	prov := provider.NewFromEnv()
-	resp, err := prov.Complete(ctx, provider.Request{
+	prov := aiprovider.NewFromEnv()
+	resp, err := prov.Complete(ctx, aiprovider.Request{
 		Model: "auto",
-		Messages: []provider.Message{
-			{Role: provider.RoleUser, Content: redacted},
+		Messages: []aiprovider.Message{
+			{Role: aiprovider.RoleUser, Content: redacted},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("shield ai completion failed: %w", err)
+		return fmt.Errorf("ai completion failed: %w", err)
 	}
 
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "\n[Shield Protected AI Advisory]")

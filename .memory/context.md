@@ -14,11 +14,11 @@ Implementing roadmap features (next: Application-Level Access Control / Binary W
 - [ ] Implement Application-Level Access Control / Binary Whitelisting (Feature #3).
 
 ## Recent Changes
+- chore(coppermind): add repo-confined .coppermind.yaml hierarchical scope manifest
 - chore(release): fix golangci-lint errcheck/unused findings and bump to v3.4.1
 - ci(paved-road): wire SHA-pinned paved-road gate and harden check.yml airlock install
 - feat(protocol,mcp): add ETX DSSE signing, zero-exposure opaque agent leases, and UB-MCP-v1 errors (RFC-2026-11-22-49)
 - chore(release): bump minor version to v3.4.0
-- feat(migrate,ux): add symlink-safe locksmith migrate .env and UB-CLI-v2 FixForwardError
 
 ## Important Decisions
 - **Context Persistence**: Decided to use the `.memory` folder for persistent AI-readable context.

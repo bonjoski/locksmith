@@ -298,3 +298,38 @@ func TestIntegrationsDoctorWithAIFlag(t *testing.T) {
 		t.Fatalf("expected Shield AI Advisory in output, got: %s", out)
 	}
 }
+
+func TestAdversarial_IntegrationsDoctorAIZeroSecretLeakage(t *testing.T) {
+	outBuf, _ := setupTest()
+	defer func() {
+		integrationsDoctorAI = false
+		integrationsDoctorPaths = nil
+	}()
+
+	secrets := []string{
+		"sk-test-secret-key-1234567890abcdef",
+		"AKIA" + "IOSFODNN7EXAMPLE",
+		"k9J2m!xQ8$vP4zL7*wR1tY6#bN3cV5mZ",
+	}
+	customFile := filepath.Join(t.TempDir(), "ai.env")
+	content := strings.Join([]string{
+		"OPENAI_API_KEY=" + secrets[0],
+		"AWS_ACCESS_KEY_ID=AKIA\u00ad\ufe0fIOSFODNN7EXAMPLE",
+		"CUSTOM_TOKEN=" + secrets[2],
+	}, "\n") + "\n"
+	if err := os.WriteFile(customFile, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write custom path file: %v", err)
+	}
+
+	rootCmd.SetArgs([]string{"integrations", "doctor", "--ai", "--path", customFile})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("integrations doctor --ai --path failed: %v", err)
+	}
+
+	out := outBuf.String()
+	for _, s := range secrets {
+		if strings.Contains(out, s) {
+			t.Fatalf("secret %q leaked into CLI output: %s", s, out)
+		}
+	}
+}
